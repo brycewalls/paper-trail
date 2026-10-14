@@ -262,11 +262,11 @@ private struct SplitRow: View {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     Image(systemName: "rectangle.split.3x1")
                         .font(.body.weight(.semibold))
-                        .foregroundStyle(CaptureStyle.accent)
+                        .foregroundStyle(Color(.accent))
                     VStack(alignment: .leading, spacing: 2) {
                         Text(model.splitTitle)
                             .font(.headline)
-                            .foregroundStyle(CaptureStyle.accent)
+                            .foregroundStyle(Color(.accent))
                         Text(model.splitDetail)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
@@ -293,7 +293,7 @@ private struct SplitRow: View {
             Label {
                 Text(model.splitDetail).font(.subheadline)
             } icon: {
-                Image(systemName: "checkmark.circle.fill").foregroundStyle(CaptureStyle.file)
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(Color(.file))
             }
             .padding(.vertical, 4)
         case .failed:
@@ -301,11 +301,11 @@ private struct SplitRow: View {
                 Label {
                     Text(model.splitDetail).font(.subheadline)
                 } icon: {
-                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(CaptureStyle.unsure)
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color(.unsure))
                 }
                 Button("Try again", action: model.splitIntoDocuments)
                     .font(.subheadline.weight(.semibold))
-                    .tint(CaptureStyle.accent)
+                    .tint(Color(.accent))
                     .frame(minHeight: 44)
             }
             .padding(.top, 4)

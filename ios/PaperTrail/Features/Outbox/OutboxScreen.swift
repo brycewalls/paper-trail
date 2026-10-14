@@ -1,5 +1,6 @@
 // Owner: outbox. FUNCTIONAL STAND-IN, not the design. Rebuild to docs/design-spec.md once it
-// exists. Reads the pipeline straight from SwiftData.
+// exists. Reads the pipeline straight from SwiftData. Pushed from the outbox accessory onto the
+// current tab's NavigationStack (RootView owns the stack).
 import SwiftUI
 import SwiftData
 
@@ -11,13 +12,12 @@ struct OutboxScreen: View {
     }
 
     var body: some View {
-        NavigationStack {
-            List(outbox) { item in
+        List(outbox) { item in
                 VStack(alignment: .leading) {
                     Text(item.card?.title ?? item.fileName)
                     Text(item.stage.rawValue.capitalized)
                         .font(.footnote)
-                        .foregroundStyle(item.stage == .failed ? Theme.shred : Theme.muted)
+                        .foregroundStyle(item.stage == .failed ? Palette.danger : .secondary)
                 }
             }
             .overlay {
@@ -27,6 +27,5 @@ struct OutboxScreen: View {
                 }
             }
             .navigationTitle("Outbox")
-        }
     }
 }

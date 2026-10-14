@@ -4,6 +4,7 @@ import SwiftUI
 
 struct SettingsScreen: View {
     @Environment(AppEnvironment.self) private var env
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
@@ -19,14 +20,18 @@ struct SettingsScreen: View {
                 if env.isSample {
                     Section {
                         Text("This build runs on sample data. Nothing is sent to Claude, Drive or Firestore.")
-                            .foregroundStyle(Theme.muted)
+                            .foregroundStyle(.secondary)
                     }
                 }
+                Section {
+                    DeckSettingsRows() // deck
+                } header: { Text("Sorting") } footer: { Text(DeckSettings.footer) }
                 Section("About") {
                     LabeledContent("Version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")
                 }
             }
             .navigationTitle("Settings")
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
     }
 }

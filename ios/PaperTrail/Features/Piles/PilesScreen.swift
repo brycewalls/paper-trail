@@ -83,7 +83,7 @@ struct PilesScreen: View {
             }
         }
         if !model.safe.isEmpty {
-            Section("Safe to shred") {
+            Section(caps: "Safe to shred") {
                 ForEach(model.visibleSafe) { doc in
                     row(doc, subtitle: model.shredSubtitle(doc)) { PileKit.StatusPill(kind: .safe) }
                         .swipeActions(edge: .trailing) {
@@ -108,7 +108,7 @@ struct PilesScreen: View {
             }
         }
         if !model.waiting.isEmpty {
-            Section("Waiting") {
+            Section(caps: "Waiting") {
                 ForEach(model.waiting) { doc in
                     row(doc, subtitle: model.waitingSubtitle(doc)) {
                         PileKit.StatusPill(kind: .waiting(model.waitingPill(doc)))
@@ -124,7 +124,7 @@ struct PilesScreen: View {
                                             description: Text("Cards marked Keep original show up here.")))
         }
         if !model.toPutAway.isEmpty {
-            Section("To put away") {
+            Section(caps: "To put away") {
                 ForEach(model.toPutAway) { doc in
                     row(doc, subtitle: model.keepSubtitle(doc)) { EmptyView() }
                         .swipeActions(edge: .trailing) {
@@ -135,7 +135,7 @@ struct PilesScreen: View {
             }
         }
         if !model.inBinder.isEmpty {
-            Section("In the binder") {
+            Section(caps: "In the binder") {
                 ForEach(model.inBinder) { doc in
                     row(doc, subtitle: model.keepSubtitle(doc)) {
                         Image(systemName: "archivebox").foregroundStyle(.secondary).accessibilityLabel("Put away")
@@ -159,7 +159,7 @@ struct PilesScreen: View {
             }
         }
         ForEach(model.filedByMonth, id: \.title) { group in
-            Section(group.title) {
+            Section(caps: group.title) {
                 ForEach(group.docs) { doc in
                     row(doc, subtitle: model.filedSubtitle(doc)) { PileKit.VerdictBadge(verdict: doc.verdict) }
                         .contextMenu {

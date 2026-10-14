@@ -107,7 +107,7 @@ struct SenderRuleDetailScreen: View {
                 }
             }
 
-            Section("Verdict") {
+            Section(caps: "Verdict") {
                 Picker("Verdict", selection: Binding(
                     get: { rule.verdict ?? .scanShred }, set: { rule.verdict = $0 })) {
                     ForEach(Verdict.allCases, id: \.self) { Text($0.stamp).tag($0) }

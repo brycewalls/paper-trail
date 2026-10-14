@@ -6,6 +6,7 @@ import SwiftUI
 
 struct OutboxScreen: View {
     @Environment(AppEnvironment.self) private var env
+    @Environment(AppRouter.self) private var router: AppRouter?
     private let injected: OutboxViewModel?
 
     /// How RootView's router pushes it (`case .outbox: OutboxScreen()`).
@@ -14,12 +15,16 @@ struct OutboxScreen: View {
 
     var body: some View {
         OutboxList(model: injected ?? OutboxViewModel(env: env))
+            // Spec 4.4: the accessory hides while the Outbox itself is on screen.
+            .onAppear { router?.accessoryHiders.insert("outbox") }
+            .onDisappear { router?.accessoryHiders.remove("outbox") }
     }
 }
 
 private struct OutboxList: View {
     @State private var model: OutboxViewModel
     @Query private var items: [PipelineItem]
+    @State private var now = Date.now
 
     init(model: OutboxViewModel) {
         _model = State(initialValue: model)
@@ -32,9 +37,15 @@ private struct OutboxList: View {
     private var byID: [UUID: PipelineItem] { Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) }) }
 
     var body: some View {
-        // Refresh the "Trying again in 2 min." countdown every half minute.
-        TimelineView(.periodic(from: .now, by: 30)) { context in
-            content(model: model, now: context.date)
+        // The List is the screen's root (not wrapped in a TimelineView) so the large title
+        // collapses with the scroll like every other screen.
+        content(model: model, now: now)
+        .task {
+            // Refresh the "Trying again in 2 min." countdown every half minute.
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(30))
+                now = .now
+            }
         }
         .navigationTitle("Outbox")
         .navigationBarTitleDisplayMode(.large)
@@ -60,21 +71,21 @@ private struct OutboxList: View {
                 ReconnectBanner(model: model)
             }
             if !attention.isEmpty {
-                Section("Needs attention") {
+                Section(caps: "Needs attention") {
                     ForEach(attention) { entry in
                         if let item = byID[entry.id] { attentionRow(item, entry: entry, model: model, now: now) }
                     }
                 }
             }
             if !uploading.isEmpty {
-                Section("Uploading") {
+                Section(caps: "Uploading") {
                     ForEach(uploading) { entry in
                         if let item = byID[entry.id] { uploadingRow(item, entry: entry, model: model) }
                     }
                 }
             }
             if !today.isEmpty {
-                Section("Filed today") {
+                Section(caps: "Filed today") {
                     ForEach(Array(today.enumerated()), id: \.element.id) { index, entry in
                         FiledRow(entry: entry, isFirst: index == 0)
                     }
@@ -215,7 +226,7 @@ struct OutboxEarlierScreen: View {
     var body: some View {
         List {
             ForEach(groups, id: \.day) { group in
-                Section(group.day.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())) {
+                Section(caps: group.day.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())) {
                     ForEach(group.entries) { entry in FiledRow(entry: entry, isFirst: false) }
                 }
             }

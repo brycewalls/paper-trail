@@ -50,7 +50,7 @@ struct CardDetailScreen: View {
                 .listRowInsets(EdgeInsets(top: 0, leading: Space.xl, bottom: 0, trailing: Space.xl))
             }
 
-            Section("Details") {
+            Section(caps: "Details") {
                 field("Title", .title) { TextField("Title", text: edit(\.title, .title)) }
                 field("Sender", .issuer) { TextField("Sender", text: edit(\.issuer, .issuer)) }
                 dateRow
@@ -59,7 +59,7 @@ struct CardDetailScreen: View {
                 }
             }
 
-            Section("Filing") {
+            Section(caps: "Filing") {
                 NavigationLink {
                     FolderPicker(selection: edit(\.folder, .folder))
                 } label: {
@@ -98,7 +98,7 @@ struct CardDetailScreen: View {
                 }
             }
 
-            Section("About") {
+            Section(caps: "About") {
                 TextField("Summary", text: $draft.summary, axis: .vertical)
                     .lineLimit(2...8)
                 LabeledContent("Retention") {

@@ -56,21 +56,21 @@ private struct PaperlessContent: View {
                 }
             }
             if !model.checkBackSoon.isEmpty {
-                Section("Check back soon") {
+                Section(caps: "Check back soon") {
                     ForEach(model.checkBackSoon) { sender in
                         senderRow(sender, title: sender.issuer, subtitle: model.checkBackText(sender), status: sender.status)
                     }
                 }
             }
             if !model.toDo.isEmpty {
-                Section("To do") {
+                Section(caps: "To do") {
                     ForEach(model.toDo) { sender in
                         senderRow(sender, title: sender.issuer, subtitle: model.firstStep(sender), status: .toDo)
                     }
                 }
             }
             if let group = model.doneGroup {
-                Section("Done") {
+                Section(caps: "Done") {
                     if model.doneSenders.count == 1, let only = model.doneSenders.first {
                         senderRow(only, title: only.issuer, subtitle: nil, status: only.status)
                     } else {

@@ -21,7 +21,7 @@ struct SettingsScreen: View {
                     SenderRulesSettingsRow(docs: env.docs)   // classify (#21)
                     ShredHoldRow()                           // outbox
                     DeckSettingsRows()                       // deck
-                } header: { Text("Sorting") } footer: { Text(DeckSettings.footer) }
+                } header: { Text("Sorting").textCase(.uppercase) } footer: { Text(DeckSettings.footer) }
                 // Section "Scanning and privacy": capture and auth add their rows here.
                 Section {
                 } footer: {

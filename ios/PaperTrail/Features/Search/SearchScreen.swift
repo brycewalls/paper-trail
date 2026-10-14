@@ -28,18 +28,18 @@ private struct SearchContent: View {
             chipRow
             if model.isSearching {
                 if !model.hits.isEmpty {
-                    Section(model.resultsTitle) {
+                    Section(caps: model.resultsTitle) {
                         ForEach(model.hits) { hit in resultRow(hit) }
                     }
                 }
                 if !model.driveHits.isEmpty {
-                    Section("Also in Drive") {
+                    Section(caps: "Also in Drive") {
                         ForEach(model.driveHits, id: \.id) { file in driveRow(file) }
                     }
                 }
             } else {
                 if !model.recents.isEmpty {
-                    Section("Recent") {
+                    Section(caps: "Recent") {
                         ForEach(model.recents, id: \.self) { text in
                             Button { model.use(text) } label: {
                                 HStack(spacing: 12) {
@@ -57,7 +57,7 @@ private struct SearchContent: View {
                     }
                 }
                 if !model.suggestedSenders.isEmpty {
-                    Section("Suggested") {
+                    Section(caps: "Suggested") {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 8) {
                                 ForEach(model.suggestedSenders, id: \.self) { sender in

@@ -149,3 +149,18 @@ struct AvatarButton: View {
         return letters.isEmpty ? "PT" : letters.uppercased()
     }
 }
+
+// MARK: - Section headers
+
+/// A section header in capitals, as Direction A draws every section label (spec 2.2, "uppercase
+/// by Section"). iOS 26 no longer capitalizes list headers on its own.
+struct CapsHeader: View {
+    let title: String
+    var body: some View { Text(title).textCase(.uppercase) }
+}
+
+extension Section where Parent == CapsHeader, Footer == EmptyView, Content: View {
+    init(caps title: String, @ViewBuilder content: () -> Content) {
+        self.init(content: content, header: { CapsHeader(title: title) })
+    }
+}

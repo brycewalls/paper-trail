@@ -8,7 +8,7 @@ struct SenderDetailScreen: View {
     var body: some View {
         if let sender = model.sender(id: senderID) {
             Form {
-                Section("Status") {
+                Section(caps: "Status") {
                     Picker("Status", selection: Binding(
                         get: { sender.status },
                         set: { status in Task { await model.setStatus(sender, to: status) } })) {
@@ -16,7 +16,7 @@ struct SenderDetailScreen: View {
                     }
                     .pickerStyle(.menu)
                 }
-                Section("How to stop paper") {
+                Section(caps: "How to stop paper") {
                     let steps = model.steps(sender)
                     if steps.isEmpty {
                         Text("No steps yet. Look for paperless or e-delivery in their account settings.")
@@ -31,14 +31,14 @@ struct SenderDetailScreen: View {
                         }
                     }
                 }
-                Section("Check back") {
+                Section(caps: "Check back") {
                     DatePicker("Check back", selection: Binding(
                         get: { PileFormat.date(iso: sender.checkBackAt) ?? model.now().addingTimeInterval(35 * 86_400) },
                         set: { date in Task { await model.setCheckBack(sender, to: date) } }),
                                displayedComponents: .date)
                         .datePickerStyle(.compact)
                 }
-                Section("Seen") {
+                Section(caps: "Seen") {
                     Text(model.seenText(sender))
                 }
                 if let action = primaryAction(sender) {

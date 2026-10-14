@@ -27,19 +27,19 @@ struct FiledDocumentView: View {
                 .padding(.vertical, 4)
             }
             if let snippet = SearchIndex.snippet(doc.fullText, words: highlight, before: 80, after: 240) {
-                Section("Matching text") {
+                Section(caps: "Matching text") {
                     Text(SearchHighlight.attributed("\u{201C}\(snippet)\u{201D}", words: highlight))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
             }
-            Section("Details") {
+            Section(caps: "Details") {
                 LabeledContent("Title", value: doc.title)
                 LabeledContent("Sender", value: doc.issuer)
                 LabeledContent("Date", value: dateText)
                 LabeledContent("Type", value: doc.docType)
             }
-            Section("Filing") {
+            Section(caps: "Filing") {
                 LabeledContent("Folder", value: PileFormat.breadcrumb(for: doc))
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Filename").foregroundStyle(.secondary).font(.footnote)
@@ -49,7 +49,7 @@ struct FiledDocumentView: View {
                 .accessibilityElement(children: .combine)
                 LabeledContent("Paper", value: paperText)
             }
-            Section("About") {
+            Section(caps: "About") {
                 if !doc.summary.isEmpty { Text(doc.summary) }
                 LabeledContent("Retention", value: doc.retention)
                 if doc.sensitive {

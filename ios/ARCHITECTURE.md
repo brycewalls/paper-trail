@@ -187,6 +187,19 @@ The Firebase iOS app is registered (`Paper Trail iOS`, `1:814219266285:ios:34d37
 
 VisionKit's `VNDocumentCameraViewController` for Scan (the custom scanner, #32, is parked). Files and Photos imports. A PDF built at good quality with an invisible OCR text layer (Vision, accurate) so Drive search finds it (#22); imported PDFs keep their original bytes. A SHA-256 content hash for the duplicate check (#2). `CaptureService.sampleDocuments()` is the simulator test seam: it feeds sample pages as if scanned. Every path ends in `CaptureIntake.add`.
 
+How it's built (capture, `Features/Capture/`):
+
+- **Hosting.** Sort adds two lines: `ScanMenuButton()` in its toolbar and `.captureFlow { model.refresh() }` on its content. `captureFlow` owns the `CaptureController` (in the environment), the full-screen scanner and review cover, the Files and Photos pickers and the unsupported-file alert. `ImportMenuButton()` is there for the Sort empty state.
+- **Pages.** Scanner and photo pages are normalized to upright JPEGs, 1700 px on the short side (about 200 dpi letter, same as the web scanner), quality 0.82, and embedded in the PDF without recompression. Image pages are 612 pt wide with the photo's own aspect.
+- **Review (spec 4.11).** Pages are written to `FileStore` under `review/<session>/` with a `manifest.json` (`ReviewSession`) before the review appears and after every edit, so a review left open reopens on the next launch. Each group is read as it forms: OCR, PDF, hash, duplicate check, then `ReadingQueue.read` on an item made with `CaptureIntake.makeItem` (not yet in SwiftData). "Send to the deck" inserts the items (`CaptureIntake.add(items:)`); groups still reading go in when they finish. The review folder is deleted once every sent group is in SwiftData.
+- **Splitting (#19).** A scan starts as one document until `ClassifyService.proposeSplit(pageTexts:)` exists; `ScanReviewViewModel` takes it as an optional `SplitProposer` and applies any proposal that covers every page once, in order. Imports start as one document per file, photos as one document.
+- **Byte for byte.** An imported PDF is filed as its original bytes only while its group is exactly that file (all pages, in order, none rotated). Split, joined or rotated, it's assembled fresh (vector pages drawn as is, plus a text layer for pages that had no text).
+- **Text.** `PipelineItem.ocrText` holds every page's text, capped at 100,000 characters (the same cap as `fullText`). PDF pages that already have text use it instead of OCR. OCR failing never blocks capture.
+- **Duplicates (#2).** `contentHash` is SHA-256 hex of the bytes that will be filed. The review checks it against `FiledDoc.contentHash` (first `docs()` snapshot, 3 second limit) and against other `PipelineItem`s.
+- **CaptureService.** `LiveCaptureService` is the one-shot version (pages already grouped) for callers outside the review, such as deck's sample loader. The review builds documents page by page through the same `DocumentBuilder`, so both paths make identical PDFs.
+- **Thumbnails.** `PipelineItem.thumbnailName` is `items/<uuid>.thumb.jpg`, 600 px on the long side. When the outbox deletes an item's PDF it should delete this file too.
+- **Simulator seam.** In the simulator (where the iOS 27 runtime reports VisionKit as supported but has no camera) and wherever VisionKit isn't supported, Scan document feeds `SampleScanSource` pages through the same review. Launch arguments: `-PTScanSource <path>` (a folder of images or a PDF), `-PTScanSeam` (use the seam on a device), `-PTOpenScan` (start a scan when Sort appears).
+
 ## Testing
 
 - Swift Testing (`import Testing`) in `PaperTrailTests/`. Test view models and feature logic against `AppEnvironment.sample()`; contract tests decode real JSON from the function and the web app.

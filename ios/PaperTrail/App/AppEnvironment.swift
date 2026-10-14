@@ -51,7 +51,7 @@ final class AppEnvironment {
             classify: FakeClassifyService(),         // classify: replace with the live ClassifyService
             drive: FakeDriveService(),               // outbox: replace with the live DriveService
             docs: FakeDocStore(),                    // piles/outbox: replace with the Firestore DocStore
-            capture: FakeCaptureService(files: files), // capture: replace with the live CaptureService
+            capture: LiveCaptureService(files: files), // capture: live (Vision OCR, PDF text layer, SHA-256)
             outbox: FakeOutboxService(),             // outbox: replace with the live OutboxService
             // outbox: switch to inMemory: false with the live outbox, so the pipeline survives a relaunch.
             files: files, modelContainer: PipelineStore.container(inMemory: true),

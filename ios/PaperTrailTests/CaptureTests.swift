@@ -194,6 +194,21 @@ struct CaptureTests {
         #expect(ReviewStore.latest(files: env.files) == nil)
     }
 
+    /// #66: an edit before start() used to start a second read of the same group, and the first
+    /// read finishing cleared the second's task, so waitUntilIdle returned while it still ran.
+    @Test func startAfterAnEditReadsEachDocumentOnce() async throws {
+        let env = environment()
+        let fake = try #require(env.classify as? FakeClassifyService)
+        let model = try scanReview(env: env, pages: 3)
+        model.split(model.groups[0].id, after: 0)
+        model.split(model.groups[1].id, after: 0)
+        model.start()
+        await model.waitUntilIdle()
+        #expect(fake.requests.count == 3)
+        #expect(model.groups.allSatisfy { model.header($0).isRead })
+        model.discard()
+    }
+
     @Test func sendBeforeReadingFinishesStillDeliversEverything() async throws {
         let env = environment()
         let model = try scanReview(env: env, pages: 2)

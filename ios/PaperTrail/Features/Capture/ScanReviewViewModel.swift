@@ -5,6 +5,11 @@
 // through the classify ReadingQueue). "Send to the deck" adds the groups' items to SwiftData;
 // groups still reading join the deck as soon as they're done.
 //
+// A scanned pile (#54): a multi-page scan group is OCR'd and built at once, but Claude's read
+// waits until the split is decided, so a pile that gets split never spends a read on the whole
+// stack. "Split into documents" finishing (split, one document, or failed), the person cutting
+// or joining it, and Send each decide it; the resulting documents are read then.
+//
 // Logic only, no SwiftUI: ScanReviewScreen draws this.
 import Foundation
 import SwiftData
@@ -18,6 +23,8 @@ final class ScanReviewViewModel {
         case read(header: String)
         /// The read failed. The card still goes to the deck, where it offers Try again.
         case failed
+        /// A scanned pile, OCR'd and built, waiting for the split decision before Claude reads it (#54).
+        case held
     }
 
     struct GroupState {
@@ -73,6 +80,10 @@ final class ScanReviewViewModel {
     private var texts: [String: PageText] = [:]
     private var pdfCache: [String: Data] = [:]
     private var tasks: [UUID: Task<Void, Never>] = [:]
+    /// Which run owns `tasks[id]`, so a replaced run never clears its successor's entry (#66).
+    private var taskTokens: [UUID: UUID] = [:]
+    /// Scanned piles whose split isn't decided yet: Claude's read waits for it (#54).
+    private var undecided: Set<UUID> = []
     /// "Split into documents" in flight, if any (#19).
     private var proposalTask: Task<Void, Never>?
     private var inserted: Set<UUID> = []
@@ -87,6 +98,9 @@ final class ScanReviewViewModel {
         self.docs = env.docs
         let classify = env.classify
         self.proposeSplit = proposeSplit ?? { try await classify.proposeSplit($0) }
+        if session.kind == .scan {
+            undecided = Set(session.groups.filter { $0.pageIDs.count > 1 && $0.label == nil && !$0.sent }.map(\.id))
+        }
     }
 
     // MARK: - What the screen shows
@@ -140,12 +154,16 @@ final class ScanReviewViewModel {
         case let .reading(page): (group.label ?? "Reading page \(page)", false)
         case let .read(header): (header, true)
         case .failed: ("Couldn't read this one", false)
+        case .held: (group.label ?? Self.heldHeader, false)
         }
     }
 
     private var fileCount: Int {
         Set(session.groups.flatMap(pages(in:)).map { $0.pdf ?? $0.id.uuidString }).count
     }
+
+    /// A scanned pile's header until the split is decided (#54).
+    static let heldHeader = "Reads when you split or send"
 
     static func count(_ n: Int, _ one: String, _ many: String) -> String { "\(n) \(n == 1 ? one : many)" }
 
@@ -155,11 +173,11 @@ final class ScanReviewViewModel {
 
     // MARK: - Lifecycle
 
-    /// Starts reading every group. Call once after the review appears.
+    /// Starts reading every group not already being read. Call once after the review appears.
     func start() {
         persist()
         Task { await loadThumbnails(session.pages) }
-        session.groups.forEach(process)
+        session.groups.filter { tasks[$0.id] == nil && states[$0.id] == nil }.forEach(process)
     }
 
     /// "Split into documents" (#19): asks Claude where each document in every multi-page group
@@ -181,13 +199,25 @@ final class ScanReviewViewModel {
             if self.splitState == .splitting {
                 self.splitState = ok ? .done(documents: self.documentCount) : .failed
             }
+            // Split, one document or failed (kept as it was): the split is decided, so read what's left.
+            self.releaseHeld()
         }
     }
 
-    /// Waits until every group is read. For tests.
+    /// Waits until nothing is running: the split proposal and every group's read. A scanned pile
+    /// held for its split (#54) counts as idle. For tests.
     func waitUntilIdle() async {
-        if let proposalTask { await proposalTask.value }
-        while let task = tasks.values.first { await task.value }
+        while true {
+            if let proposal = proposalTask {
+                await proposal.value
+                if proposalTask == proposal { proposalTask = nil }
+            } else if let (id, task) = tasks.first {
+                await task.value
+                if tasks[id] == task { tasks[id] = nil }
+            } else {
+                return
+            }
+        }
     }
 
     // MARK: - Editing
@@ -227,7 +257,7 @@ final class ScanReviewViewModel {
             session.groups.remove(at: at)
             persist()
         } else {
-            replace(at: at, with: [ReviewGroup(pageIDs: rest)])
+            replace(at: at, with: [ReviewGroup(pageIDs: rest)], keepsHold: true)
         }
     }
 
@@ -249,7 +279,9 @@ final class ScanReviewViewModel {
         switch placement {
         case .appendToLast:
             if let last = session.groups.indices.last {
-                replace(at: last, with: [ReviewGroup(pageIDs: session.groups[last].pageIDs + ids)])
+                // Scan more onto a pile makes it a pile again: hold its read for the split (#54).
+                replace(at: last, with: [ReviewGroup(pageIDs: session.groups[last].pageIDs + ids)],
+                        holds: session.kind == .scan)
             } else {
                 appendGroups([ReviewGroup(pageIDs: ids)])
             }
@@ -278,6 +310,8 @@ final class ScanReviewViewModel {
         }
         session.groups.removeAll(where: \.skipped)
         persist()
+        // Send keeps each pile as one document: read it now (#54).
+        releaseHeld()
         onAdded()
         finishIfDone()
     }
@@ -285,6 +319,8 @@ final class ScanReviewViewModel {
     /// Cancel, then "Discard": nothing reaches the deck and every page is deleted.
     func discard() {
         proposalTask?.cancel()
+        proposalTask = nil
+        undecided.removeAll()
         for group in session.groups {
             tasks[group.id]?.cancel()
             drop(group)
@@ -301,22 +337,51 @@ final class ScanReviewViewModel {
         new.forEach(process)
     }
 
-    private func replace(at index: Int, with new: [ReviewGroup]) {
+    /// `keepsHold`: the new group is still the same undecided pile (a page turned or deleted).
+    /// `holds`: the new groups are undecided piles (pages scanned onto the end). Otherwise the
+    /// person (or Claude's split) decided, and the new groups are read as soon as they're built.
+    private func replace(at index: Int, with new: [ReviewGroup], keepsHold: Bool = false, holds: Bool = false) {
+        let old = session.groups[index].id
+        let pile = holds || (keepsHold && undecided.contains(old))
+        undecided.remove(old)
         drop(session.groups[index])
         session.groups.replaceSubrange(index...index, with: new)
+        if pile { new.filter { $0.pageIDs.count > 1 }.forEach { undecided.insert($0.id) } }
         persist()
         new.forEach(process)
     }
 
     private func refreshGroup(containing pageID: UUID) {
         guard let at = session.groups.firstIndex(where: { $0.pageIDs.contains(pageID) }) else { return }
-        replace(at: at, with: [ReviewGroup(pageIDs: session.groups[at].pageIDs)])
+        replace(at: at, with: [ReviewGroup(pageIDs: session.groups[at].pageIDs)], keepsHold: true)
+    }
+
+    /// The split is decided for every held pile: read them.
+    private func releaseHeld() {
+        let ids = undecided
+        undecided.removeAll()
+        ids.forEach(readHeld)
+    }
+
+    /// One pile's split is decided (#54): read it if it was waiting.
+    private func decide(_ id: UUID) {
+        guard undecided.remove(id) != nil else { return }
+        readHeld(id)
+    }
+
+    /// Starts Claude's read for a group parked at `.held`. A group still in OCR reads on its own
+    /// once it's built, since it's no longer undecided.
+    private func readHeld(_ id: UUID) {
+        guard states[id]?.status == .held, let item = states[id]?.item else { return }
+        states[id]?.status = .reading(page: session.groups.first { $0.id == id }?.pageIDs.count ?? 1)
+        run(id) { [weak self] in await self?.classify(id, item) }
     }
 
     /// Forgets a group's read and deletes its built PDF, unless it already went to the deck.
     private func drop(_ group: ReviewGroup) {
         tasks[group.id]?.cancel()
         tasks[group.id] = nil
+        taskTokens[group.id] = nil
         if !inserted.contains(group.id), let doc = states[group.id]?.document {
             DocumentBuilder.remove(doc, from: files)
         }
@@ -326,11 +391,22 @@ final class ScanReviewViewModel {
     private func isCurrent(_ id: UUID) -> Bool { session.groups.contains { $0.id == id } }
 
     private func process(_ group: ReviewGroup) {
+        tasks[group.id]?.cancel()
         states[group.id] = GroupState()
-        let id = group.id
+        run(group.id) { [weak self] in await self?.read(group) }
+    }
+
+    /// Runs one group's work as its task. A newer run for the same group cancels this one, and
+    /// only the run that owns `tasks[id]` clears it, so `waitUntilIdle` never misses a read (#66).
+    private func run(_ id: UUID, _ work: @escaping @MainActor () async -> Void) {
+        tasks[id]?.cancel()
+        let token = UUID()
+        taskTokens[id] = token
         tasks[id] = Task { [weak self] in
-            await self?.read(group)
-            self?.tasks[id] = nil
+            await work()
+            guard let self, self.taskTokens[id] == token else { return }
+            self.tasks[id] = nil
+            self.taskTokens[id] = nil
         }
     }
 
@@ -353,19 +429,29 @@ final class ScanReviewViewModel {
             states[group.id]?.status = .failed
             return
         }
-        guard isCurrent(group.id) else { return DocumentBuilder.remove(doc, from: files) }
+        guard isCurrent(group.id), !Task.isCancelled else { return DocumentBuilder.remove(doc, from: files) }
         states[group.id]?.document = doc
         let duplicate = await duplicateMatch(for: doc)
-        guard isCurrent(group.id) else { return }
+        guard isCurrent(group.id), !Task.isCancelled else { return }
         let item = CaptureIntake.makeItem(doc)
         states[group.id]?.duplicate = duplicate
         states[group.id]?.item = item
         if isSent { insert(group.id) }
 
+        // A scanned pile waits here, OCR'd and built, until its split is decided (#54).
+        if undecided.contains(group.id), !isSent {
+            states[group.id]?.status = .held
+            return
+        }
+        await classify(group.id, item)
+    }
+
+    /// Claude's read of a built group, then the deck if it was already sent.
+    private func classify(_ id: UUID, _ item: PipelineItem) async {
         await reader.read([item])
-        guard isCurrent(group.id) || inserted.contains(group.id) else { return }
-        states[group.id]?.status = item.card.map { .read(header: Self.header(for: $0)) } ?? .failed
-        if inserted.contains(group.id) {
+        guard !Task.isCancelled, isCurrent(id) || inserted.contains(id) else { return }
+        states[id]?.status = item.card.map { .read(header: Self.header(for: $0)) } ?? .failed
+        if inserted.contains(id) {
             try? context.save()
             onAdded()
             finishIfDone()
@@ -478,9 +564,10 @@ final class ScanReviewViewModel {
         }
         guard let proposal = SplitPayload.groups(from: documents, pageCount: pages.count) else { return false }
         if proposal.count == 1 {
-            // One document: keep its read going, add the label.
+            // One document: add the label and read it as it is (#54).
             session.groups[at].label = proposal[0].label.isEmpty ? nil : proposal[0].label
             persist()
+            decide(group.id)
             return true
         }
         let ids = pages.map(\.id)

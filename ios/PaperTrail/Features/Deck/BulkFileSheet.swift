@@ -43,17 +43,8 @@ struct BulkFileSheet: View {
                 .padding(.top, Space.xxl)
             }
             .safeAreaInset(edge: .bottom) {
-                Button {
-                    confirm(chosen)
-                } label: {
-                    Text("File \(chosen.count)")
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity, minHeight: 52)
-                        .background(Color(.accentFill).opacity(chosen.isEmpty ? 0.4 : 1), in: Capsule())
-                }
-                .buttonStyle(.plain)
-                .disabled(chosen.isEmpty)
+                PrimaryButton("File \(chosen.count)") { confirm(chosen) }
+                    .disabled(chosen.isEmpty)
                 .padding(.horizontal, Space.xl)
                 .padding(.bottom, Space.s)
             }

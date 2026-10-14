@@ -73,17 +73,8 @@ struct ScanReviewScreen: View {
 
     private var sendBar: some View {
         VStack(spacing: 8) {
-            Button {
-                controller.send()
-            } label: {
-                Text(model.sendTitle)
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity, minHeight: 52)
-                    .background(Color(.accentFill).opacity(model.canSend ? 1 : 0.4), in: .capsule)
-            }
-            .buttonStyle(.plain)
-            .disabled(!model.canSend)
+            PrimaryButton(model.sendTitle) { controller.send() }
+                .disabled(!model.canSend)
             .accessibilityIdentifier("review.send")
             Text("Saved on your phone. Nothing is lost if you close the app.")
                 .font(.footnote)
@@ -112,7 +103,7 @@ private struct GroupCard: View {
                     .font(header.isRead ? .headline : .subheadline)
                     .foregroundStyle(header.isRead ? .primary : .secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                if state.status != .failed { ReviewPill(isRead: header.isRead) }
+                if state.status != .failed, state.status != .held { ReviewPill(isRead: header.isRead) }
             }
             .accessibilityElement(children: .combine)
 

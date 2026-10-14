@@ -50,18 +50,9 @@ struct SenderDetailScreen: View {
                 }
                 if let action = primaryAction(sender) {
                     Section {
-                        Button {
-                            Task { await action.run() }
-                        } label: {
-                            Text(action.title)
-                                .font(.headline)
-                                .foregroundStyle(.white)
-                                .frame(maxWidth: .infinity, minHeight: 52)
-                                .background(Color(.accentFill), in: Capsule())
-                        }
-                        .buttonStyle(.plain)
-                        .listRowInsets(EdgeInsets())
-                        .listRowBackground(Color.clear)
+                        PrimaryButton(action.title) { Task { await action.run() } }
+                            .listRowInsets(EdgeInsets())
+                            .listRowBackground(Color.clear)
                     }
                 }
             }

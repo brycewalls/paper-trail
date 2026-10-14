@@ -207,7 +207,7 @@ struct CheckFieldsSheet: View {
     }
 
     private var confirmButton: some View {
-        Button {
+        PrimaryButton(model.confirmTitle, isWorking: isConfirming) {
             guard !isConfirming else { return }
             isConfirming = true
             Task {
@@ -215,16 +215,7 @@ struct CheckFieldsSheet: View {
                 onConfirm(item)
                 dismiss()
             }
-        } label: {
-            Text(model.confirmTitle)
-                .font(.headline)
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity, minHeight: 52)
-                .background(Color(.accentFill), in: .capsule)
-                .contentShape(.capsule)
         }
-        .buttonStyle(.plain)
-        .disabled(isConfirming)
         .accessibilityIdentifier("checkFields.confirm")
         .padding(.top, 20)
     }

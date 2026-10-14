@@ -251,7 +251,114 @@ struct StackSplitTests {
         model.discard()
     }
 
+    // MARK: - Holding the pile's read for the split (#54)
+
+    @Test func aPileWaitsForItsSplitAndThenEachDocumentIsReadOnce() async throws {
+        let env = environment()
+        let fake = try classify(env)
+        let model = try review(env: env, texts: SampleData.stackPageTexts) { FakeClassifyService.split($0.pages.map(\.text)) }
+        model.start()
+        await model.waitUntilIdle()
+        // OCR'd and built, but Claude hasn't read the six-page pile as one card.
+        #expect(fake.requests.isEmpty)
+        #expect(model.state(model.groups[0]).status == .held)
+        #expect(model.state(model.groups[0]).item != nil)
+        #expect(model.header(model.groups[0]).text == ScanReviewViewModel.heldHeader)
+        #expect(!model.header(model.groups[0]).isRead)
+        #expect(model.canSend)
+
+        model.splitIntoDocuments()
+        await model.waitUntilIdle()
+        #expect(model.groups.map(\.pageIDs.count) == [2, 2, 1, 1])
+        #expect(fake.requests.map(\.totalPages).sorted() == [1, 1, 2, 2])
+        #expect(model.groups.allSatisfy { model.header($0).isRead })
+        model.discard()
+    }
+
+    @Test func sendingAHeldPileReadsItAsOneDocumentRightAway() async throws {
+        let env = environment()
+        let fake = try classify(env)
+        let model = try review(env: env, texts: Array(SampleData.stackPageTexts.prefix(3)))
+        model.start()
+        await model.waitUntilIdle()
+        #expect(fake.requests.isEmpty)
+        model.send()
+        // In SwiftData at once, read after.
+        #expect(try env.modelContainer.mainContext.fetch(FetchDescriptor<PipelineItem>()).count == 1)
+        await model.waitUntilIdle()
+        let items = try env.modelContainer.mainContext.fetch(FetchDescriptor<PipelineItem>())
+        #expect(items.map(\.pageCount) == [3])
+        #expect(items.allSatisfy { $0.stage == .ready })
+        #expect(fake.requests.map(\.totalPages) == [3])
+    }
+
+    @Test func cuttingThePileByHandDecidesIt() async throws {
+        let env = environment()
+        let fake = try classify(env)
+        let model = try review(env: env, texts: Array(SampleData.stackPageTexts.prefix(3)))
+        model.start()
+        await model.waitUntilIdle()
+        model.split(model.groups[0].id, after: 1)
+        await model.waitUntilIdle()
+        #expect(fake.requests.map(\.totalPages).sorted() == [1, 2])
+        #expect(model.groups.allSatisfy { model.header($0).isRead })
+        model.discard()
+    }
+
+    @Test func aFailedOrOneDocumentSplitReadsThePileOnce() async throws {
+        let env = environment()
+        let fake = try classify(env)
+        let failing = try review(env: env, texts: Array(SampleData.stackPageTexts.prefix(2))) { _ in
+            throw ClassifyFailure(code: .badRequest, message: "old function")
+        }
+        failing.start()
+        failing.splitIntoDocuments()
+        await failing.waitUntilIdle()
+        #expect(failing.splitState == .failed)
+        #expect(fake.requests.map(\.totalPages) == [2])
+        #expect(failing.header(failing.groups[0]).isRead)
+        failing.discard()
+
+        let one = try review(env: env, texts: Array(SampleData.stackPageTexts.prefix(2))) { _ in
+            [SplitDocument(start: 0, end: 1, label: "Duke Energy bill")]
+        }
+        one.start()
+        one.splitIntoDocuments()
+        await one.waitUntilIdle()
+        #expect(fake.requests.map(\.totalPages) == [2, 2])
+        #expect(one.header(one.groups[0]).isRead)
+        one.discard()
+    }
+
+    @Test func turningAPageKeepsThePileHeldAndImportsAreNotHeld() async throws {
+        let env = environment()
+        let fake = try classify(env)
+        let model = try review(env: env, texts: Array(SampleData.stackPageTexts.prefix(2)))
+        model.start()
+        await model.waitUntilIdle()
+        model.rotate(model.groups[0].pageIDs[0])
+        await model.waitUntilIdle()
+        #expect(model.state(model.groups[0]).status == .held)
+        #expect(fake.requests.isEmpty)
+        model.discard()
+
+        // A multi-page file is most often one document: it reads at once, as before.
+        let id = UUID()
+        let pages = try ReviewStore.addPDF(FakeCaptureService.pdf(fromTexts: ["One", "Two"]), session: id,
+                                           files: env.files, sourceName: "statement.pdf")
+        let session = ReviewSession(id: id, kind: .files, pages: pages, groups: [ReviewGroup(pageIDs: pages.map(\.id))])
+        let imported = ScanReviewViewModel(session: session, env: env)
+        imported.start()
+        await imported.waitUntilIdle()
+        #expect(fake.requests.map(\.totalPages) == [2])
+        imported.discard()
+    }
+
     // MARK: - Helpers
+
+    private func classify(_ env: AppEnvironment) throws -> FakeClassifyService {
+        try #require(env.classify as? FakeClassifyService)
+    }
 
     final class Recorder {
         var requests: [SplitRequest] = []

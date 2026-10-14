@@ -1,5 +1,5 @@
-// Owner: auth. Small views the auth screens share: the Google button, the primary button and the
-// account avatar. Colors come from Core/UI (spec 2.1).
+// Owner: auth. Small views the auth screens share: the Google button and the account avatar (the
+// primary button is Core/UI PrimaryButton). Colors come from Core/UI (spec 2.1).
 import SwiftUI
 import UIKit
 
@@ -35,26 +35,6 @@ struct GoogleSignInButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(isWorking ? Text("Signing in") : Text(title))
-    }
-}
-
-/// The spec's primary button (3.8): full width, AccentFill, white headline, capsule, 52 tall.
-struct AuthPrimaryButton: View {
-    let title: LocalizedStringKey
-    var isWorking = false
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Group {
-                if isWorking { ProgressView().tint(.white) } else { Text(title).font(.headline) }
-            }
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity, minHeight: 52)
-            .background(Capsule().fill(Color(.accentFill)))
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
     }
 }
 

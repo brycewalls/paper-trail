@@ -4,6 +4,8 @@
 #              test, from Web Development Resources/github-template)
 #   deck       sorts a small stack in the real page against tools/fake/fake-backend.js and checks
 #              the original file reaches (fake) Drive byte for byte
+#   scanner    drives Scan document with a fake camera (a generated video of a tilted page): edges
+#              found, the page flattened, Done adds one item that files as one PDF, Cancel adds none
 #   functions  the classify function's unit tests, Claude stood in
 # Pushing a tag like v1.2 publishes a Release with a zip of the site attached.
 name: CI
@@ -32,6 +34,9 @@ jobs:
         run: node tools/smoke_test.mjs
       - name: Sort a stack against the fake backend
         run: node tools/deck_test.mjs
+      - name: Scan a document with a fake camera
+        if: always()
+        run: node tools/scanner_test.mjs
       - name: Keep the screenshots
         if: always()
         uses: actions/upload-artifact@v4

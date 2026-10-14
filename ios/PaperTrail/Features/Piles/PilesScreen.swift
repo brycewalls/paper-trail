@@ -27,7 +27,6 @@ struct PilesScreen: View {
             }
         }
         .listStyle(.insetGrouped)
-        .contentMargins(.bottom, showsMarkButton ? 84 : 0, for: .scrollContent)
         .navigationTitle("Piles")
         .toolbar {
             if model.segment == .all {
@@ -35,7 +34,9 @@ struct PilesScreen: View {
             }
             ToolbarItem(placement: .topBarTrailing) { AvatarButton() }
         }
-        .overlay(alignment: .bottom) { if showsMarkButton { markButton } }
+        // An inset, not an overlay, so the list ends above the button and the last row can
+        // scroll clear of it (A5, #64).
+        .safeAreaInset(edge: .bottom, spacing: 0) { if showsMarkButton { markButton } }
         .navigationDestination(item: $opened) { FiledDocumentView(doc: $0) }
         .alert("Couldn't save", isPresented: Binding(get: { model.writeError != nil }, set: { if !$0 { model.writeError = nil } })) {
             Button("OK", role: .cancel) {}

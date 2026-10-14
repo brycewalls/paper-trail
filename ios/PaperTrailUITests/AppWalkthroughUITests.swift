@@ -155,13 +155,8 @@ final class AppWalkthroughUITests: PaperTrailUITestCase {
         pause(1.5)
         shot("30-search-start")
         let field = app.searchFields.firstMatch
-        guard field.waitForExistence(timeout: 5) else {
-            // Known: #51. Once the field shows, the rest of this test runs and checks A6.
-            XCTExpectFailure("#51: the Search tab shows no search field on iOS 27") {
-                XCTFail("No search field on the Search tab (#51)")
-            }
-            return
-        }
+        // #51 is fixed (#63): the island opens a bottom field, so a missing field is a real failure.
+        waitFor(field, 5, "No search field after tapping Search (#51)")
         field.tap()
         field.typeText("w-2 2023")
         let result = element("search.result")
@@ -258,8 +253,8 @@ final class AppWalkthroughUITests: PaperTrailUITestCase {
         XCTAssertTrue(eventually(15) { send.isEnabled })
         pause(1)
         shot("61-scan-review")
-        // #56: the app traps in CaptureStyle's dynamic color as the review closes. A crash stays a
-        // hard failure on purpose; this test goes green when #56 is fixed.
+        // #56: the app used to trap in CaptureStyle's dynamic color as the review closed. #67 moved
+        // capture onto the asset catalog colors; a crash here stays a hard failure.
         send.tap()
         XCTAssertTrue(eventually { !self.element("review.send").exists }, "Send didn't close the review")
         XCTAssertTrue(card.waitForExistence(timeout: 10) && app.state == .runningForeground,

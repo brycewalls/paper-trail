@@ -7,7 +7,10 @@ import SwiftData
 
 enum PipelineStore {
     static func container(inMemory: Bool) -> ModelContainer {
-        let config = ModelConfiguration("Pipeline", isStoredInMemoryOnly: inMemory)
+        // Each in-memory container gets its own name: SwiftData can back same-named in-memory
+        // stores with one store, which let parallel tests see (and move) each other's items.
+        let name = inMemory ? "Pipeline-\(UUID().uuidString)" : "Pipeline"
+        let config = ModelConfiguration(name, isStoredInMemoryOnly: inMemory)
         do {
             return try ModelContainer(for: PipelineItem.self, configurations: config)
         } catch {

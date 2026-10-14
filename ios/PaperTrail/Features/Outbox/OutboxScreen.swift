@@ -25,6 +25,8 @@ private struct OutboxList: View {
     @State private var model: OutboxViewModel
     @Query private var items: [PipelineItem]
     @State private var now = Date.now
+    /// False for the first pass after the push (#50). See `content`.
+    @State private var showsRows = false
 
     init(model: OutboxViewModel) {
         _model = State(initialValue: model)
@@ -66,7 +68,27 @@ private struct OutboxList: View {
         let uploading = OutboxSummary.uploadingSection(entries)
         let today = OutboxSummary.filedToday(entries, now: now)
         let earlier = OutboxSummary.earlier(entries, now: now)
+        // #50: on iOS 26 and 27, a pushed List that already has rows on its first layout comes up
+        // with the title collapsed whenever there's a subtitle, as if it were scrolled. Rows that
+        // arrive a run loop after the push keep the large title and the full subtitle, as in A4.
         List {
+            if showsRows {
+                rows(model: model, now: now, attention: attention, uploading: uploading, today: today, earlier: earlier)
+            }
+        }
+        .listStyle(.insetGrouped)
+        .onAppear { if !showsRows { Task { showsRows = true } } }
+        .overlay {
+            if entries.isEmpty && !model.needsReconnect {
+                ContentUnavailableView("Nothing in the outbox", systemImage: "tray",
+                                       description: Text("Filed documents upload from here."))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func rows(model: OutboxViewModel, now: Date, attention: [OutboxEntry], uploading: [OutboxEntry],
+                      today: [OutboxEntry], earlier: [(day: Date, entries: [OutboxEntry])]) -> some View {
             if model.needsReconnect {
                 ReconnectBanner(model: model)
             }
@@ -96,19 +118,11 @@ private struct OutboxList: View {
                     NavigationLink("Earlier") { OutboxEarlierScreen(groups: earlier) }
                 }
             }
-        }
-        .listStyle(.insetGrouped)
-        .overlay {
-            if entries.isEmpty && !model.needsReconnect {
-                ContentUnavailableView("Nothing in the outbox", systemImage: "tray",
-                                       description: Text("Filed documents upload from here."))
-            }
-        }
     }
 
     private func attentionRow(_ item: PipelineItem, entry: OutboxEntry, model: OutboxViewModel, now: Date) -> some View {
         HStack(spacing: 12) {
-            OutboxThumbnail(fileURL: model.fileURL(item), thumbnailURL: model.thumbnailURL(item))
+            OutboxRowThumbnail(fileURL: model.fileURL(item), thumbnailURL: model.thumbnailURL(item))
             VStack(alignment: .leading, spacing: 2) {
                 Text(OutboxSummary.rowTitle(title: entry.title, issuer: entry.issuer)).font(.body)
                 Text(OutboxSummary.failedSubtitle(entry, now: now))
@@ -119,12 +133,12 @@ private struct OutboxList: View {
                 .buttonStyle(.bordered)
                 .buttonBorderShape(.capsule)
                 .controlSize(.small)
-                .tint(OutboxPalette.accent)
+                .tint(Color(.accent))
         }
         .accessibilityElement(children: .combine)
         .accessibilityAction(named: "Retry") { Task { await model.retry(item) } }
         .swipeActions(edge: .trailing) {
-            Button("Retry") { Task { await model.retry(item) } }.tint(OutboxPalette.accent)
+            Button("Retry") { Task { await model.retry(item) } }.tint(Color(.accent))
         }
         .contextMenu {
             Button("Retry", systemImage: "arrow.clockwise") { Task { await model.retry(item) } }
@@ -134,13 +148,13 @@ private struct OutboxList: View {
 
     private func uploadingRow(_ item: PipelineItem, entry: OutboxEntry, model: OutboxViewModel) -> some View {
         HStack(spacing: 12) {
-            OutboxThumbnail(fileURL: model.fileURL(item), thumbnailURL: model.thumbnailURL(item))
+            OutboxRowThumbnail(fileURL: model.fileURL(item), thumbnailURL: model.thumbnailURL(item))
             VStack(alignment: .leading, spacing: 6) {
                 Text(OutboxSummary.rowTitle(title: entry.title, issuer: entry.issuer)).font(.body)
                 if entry.stage == .uploading {
                     ProgressView(value: entry.progress)
                         .progressViewStyle(.linear)
-                        .tint(OutboxPalette.accent)
+                        .tint(Color(.accent))
                         .scaleEffect(x: 1, y: 1.25, anchor: .center)
                 } else {
                     Text(OutboxSummary.waitingSubtitle(entry, isOnline: model.status.isOnline))
@@ -170,7 +184,7 @@ private struct FiledRow: View {
         HStack(spacing: 12) {
             Image(systemName: entry.decision == .shredOnly ? "xmark" : "checkmark")
                 .font(.body.weight(.semibold))
-                .foregroundStyle(entry.decision == .shredOnly ? AnyShapeStyle(.secondary) : AnyShapeStyle(OutboxPalette.file))
+                .foregroundStyle(entry.decision == .shredOnly ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color(.file)))
                 .frame(width: 20)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
@@ -196,7 +210,7 @@ private struct ReconnectBanner: View {
         Section {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Image(systemName: "exclamationmark.icloud.fill").foregroundStyle(OutboxPalette.danger)
+                    Image(systemName: "exclamationmark.icloud.fill").foregroundStyle(Palette.danger)
                     Text("\(Text("Drive needs reconnecting.").bold()) Your scans are safe on this phone and upload once it's back.")
                         .font(.subheadline)
                 }
@@ -207,14 +221,14 @@ private struct ReconnectBanner: View {
                 }
                 .buttonStyle(.bordered)
                 .buttonBorderShape(.capsule)
-                .tint(OutboxPalette.danger)
+                .tint(Palette.danger)
                 .disabled(model.isReconnecting)
                 if let error = model.reconnectError {
                     Text(error).font(.footnote).foregroundStyle(.secondary)
                 }
             }
             .padding(.vertical, 4)
-            .listRowBackground(OutboxPalette.dangerSoft)
+            .listRowBackground(Palette.dangerSoft)
         }
     }
 }

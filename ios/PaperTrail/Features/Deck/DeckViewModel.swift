@@ -16,7 +16,7 @@ final class DeckViewModel {
 
     init(env: AppEnvironment) {
         self.env = env
-        self.reader = ReadingQueue(classify: env.classify, files: env.files)
+        self.reader = ReadingQueue(env: env)   // classify: sends and applies sender rules (#21)
     }
 
     var isSample: Bool { env.isSample }

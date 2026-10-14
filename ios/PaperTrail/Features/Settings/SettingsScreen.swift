@@ -16,6 +16,9 @@ struct SettingsScreen: View {
                     }
                     LabeledContent("Google Drive", value: env.auth.drive == .connected ? "Connected" : "Needs reconnecting")
                 }
+                Section("Sorting") {
+                    SenderRulesSettingsRow(docs: env.docs)   // classify (#21)
+                }
                 if env.isSample {
                     Section {
                         Text("This build runs on sample data. Nothing is sent to Claude, Drive or Firestore.")

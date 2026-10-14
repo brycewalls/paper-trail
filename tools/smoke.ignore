@@ -1,2 +1,4 @@
 # Pages the smoke test should skip: one path or folder prefix per line, relative to the repo root.
 # Example: build/template.html
+# design/ holds sketch boards (wide on purpose), not app pages (#40).
+design/

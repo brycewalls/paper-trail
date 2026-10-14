@@ -317,3 +317,26 @@ struct ClassifyTests {
         #expect(SenderRulesViewModel.preview(pattern: " ", rule: Self.rule, docType: "") == "")
     }
 }
+
+@Suite struct ReadingQueueOverlapTests {
+    /// Two overlapping read calls share one queue (the scan review reads each document as it
+    /// forms). Each call must return only once its own items are read, even when the other
+    /// call's worker picked them up.
+    @MainActor @Test func overlappingReadsEachWaitForTheirOwnItems() async throws {
+        let env = AppEnvironment.sample()
+        let classify = FakeClassifyService()
+        classify.delay = .milliseconds(50)
+        let queue = ReadingQueue(classify: classify, files: env.files, docs: env.docs, backoff: [])
+        func captured() throws -> PipelineItem {
+            let doc = try env.files.write(FakeCaptureService.pdf(fromTexts: ["Duke Energy electric bill"]), id: UUID(), ext: "pdf")
+            return PipelineItem(fileName: doc, pageCount: 1, sizeBytes: 100, origin: "scan")
+        }
+        let first = try captured(), second = try captured()
+        let a = Task { await queue.read([first]) }
+        let b = Task { await queue.read([second]) }
+        await b.value
+        #expect(second.stage == .ready)
+        await a.value
+        #expect(first.stage == .ready)
+    }
+}

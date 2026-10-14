@@ -26,6 +26,8 @@ final class ReadingQueue {
     private var pending: [PipelineItem] = []
     /// Items sent to Claude right now, for "3 reading" counts.
     private(set) var inFlight = 0
+    /// Callers waiting on an item another call's drainer picked up.
+    @ObservationIgnored private var waiters: [UUID: [CheckedContinuation<Void, Never>]] = [:]
 
     /// `docs` supplies the sender rules; without it no hints are sent and no rules applied.
     init(classify: any ClassifyService, files: FileStore, docs: (any DocStore)? = nil,
@@ -53,6 +55,11 @@ final class ReadingQueue {
                 group.addTask { await self.drain(rules: rules) }
             }
         }
+        // Two overlapping calls share `pending`, so another call's drainer may still be reading
+        // one of these items. Wait for it, so "returns when all are .ready or .failed" holds.
+        for item in fresh where item.stage == .reading {
+            await withCheckedContinuation { waiters[item.id, default: []].append($0) }
+        }
     }
 
     /// "Try again" on a failed card: back to .captured and read again.
@@ -71,6 +78,7 @@ final class ReadingQueue {
             inFlight += 1
             await readOne(item, rules: rules)
             inFlight -= 1
+            waiters.removeValue(forKey: item.id)?.forEach { $0.resume() }
         }
     }
 

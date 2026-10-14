@@ -7,9 +7,12 @@
 // Optional extras for the iPhone app (every one is opt-in, so the web app's requests and replies are
 // exactly what they were):
 //   ocrText         on-device OCR text, added to the user turn as a hint (#22)
-//   wantConfidence  ask Claude for a 0 to 1 confidence per field plus up to two other guesses for the
-//                   unsure ones; the reply gains result.confidence {overall, fields} and
-//                   result.alternatives (#20)
+//   ocrPrimary      the OCR text is the main source and the images are only a downscaled first page
+//                   (#75). Only honored with kind "images" and non-empty ocrText
+//   wantConfidence  ask Claude which fields it isn't sure of, with a 0 to 1 score and up to two other
+//                   guesses each; the reply gains result.confidence {overall, fields, sparse} and
+//                   result.alternatives (#20). Since #75 the list is sparse: a field missing from
+//                   confidence.fields is one Claude was sure of
 //   senderHints     the user's sender rules (users/{uid}/senders). Claude sees the known sender names
 //                   so it spells them the same way, then applySenderRule() applies the matching rule
 //                   to the card deterministically and sets result.appliedRule (#21)
@@ -54,6 +57,8 @@ const CONFIDENCE_FIELDS = ["issuer", "docDate", "folder", "title", "filename", "
 // Fields that can carry other guesses. The verdict is a three-way choice the app shows in full.
 const ALTERNATIVE_FIELDS = ["issuer", "docDate", "folder", "title", "filename"];
 const MAX_ALTERNATIVES = 2;
+// Claude lists a field only below this confidence (#75). A field it leaves out counts as sure.
+const SURE_ABOVE = 0.9;
 
 // Models that take the server-side refusal fallback (fallbacks: "default").
 const FALLBACK_MODELS = new Set(["claude-opus-5-5", "claude-opus-5", "claude-fable-5-1", "claude-sonnet-5-5"]);
@@ -88,12 +93,16 @@ paperless.possible is true when the sender is a company that sends this kind of 
 Never write a full SSN or full account number in any field. If the pages are unreadable, set title to "Unreadable scan", verdict to "scan_shred", and use verdictReason to ask for a clearer scan.`;
 
 // Appended to the system prompt only when the request asks for confidence, so the web app's prompt
-// (and its cache) is untouched.
+// (and its cache) is untouched. Both are constants: nothing per request (dates, names, page counts)
+// ever goes in the system prompt, so every iPhone read shares one cached prefix (#75).
+// Since #75 Claude lists only the fields it is not sure of. Most documents list none, so the answer
+// is about 100 tokens shorter than six scores and six lists of guesses.
 const CONFIDENCE_PROMPT = `
 
-Also add these two fields to the JSON object:
- "confidence": a number from 0 to 1 for each of ${CONFIDENCE_FIELDS.join(", ")}: how sure you are that the value is right. 0.95 or more means it is printed plainly on the page. Below 0.75 means a person should check it (a sender name that is only a logo, two dates that could be the document date, a folder that could go two ways).
- "alternatives": for each of ${ALTERNATIVE_FIELDS.join(", ")}, up to ${MAX_ALTERNATIVES} other plausible values, best first, in the same format as the field (docDate as YYYY-MM-DD, folder from the same list). Use an empty list when you are sure or have no other candidate.`;
+Also add an "unsure" list to the JSON object, for the fields a person should look at. Consider only ${CONFIDENCE_FIELDS.join(", ")}. List a field only when you are less than ${SURE_ABOVE} sure its value is right (a sender name that is only a logo, two dates that could be the document date, a folder that could go two ways). Leave out every field you are sure of; an empty list means you are sure of all of them. Each entry has:
+ "field": the field's name.
+ "confidence": a number from 0 to 1, how sure you are. Below 0.75 means a person should check it.
+ "alternatives": up to ${MAX_ALTERNATIVES} other plausible values, best first, in the same format as the field (docDate as YYYY-MM-DD, folder from the same list). An empty list when there is no other candidate.`;
 
 // Structured outputs hold the reply to this shape; normalize() still cleans it afterwards.
 const str = { type: "string" };
@@ -117,24 +126,37 @@ const RESULT_SCHEMA = {
   additionalProperties: false,
 };
 
-// The schema for a request: the web app's shape, plus confidence and alternatives when asked.
+// The schema for a request: the web app's shape, plus the sparse "unsure" list when asked (#75).
+// Built once, so every request with confidence carries the identical schema (part of the prefix).
+const UNSURE_SCHEMA = {
+  type: "array",
+  items: {
+    type: "object",
+    properties: {
+      field: { type: "string", enum: CONFIDENCE_FIELDS },
+      confidence: { type: "number" },
+      alternatives: { type: "array", items: str },
+    },
+    required: ["field", "confidence", "alternatives"],
+    additionalProperties: false,
+  },
+};
+const CONFIDENCE_SCHEMA = {
+  ...RESULT_SCHEMA,
+  properties: { ...RESULT_SCHEMA.properties, unsure: UNSURE_SCHEMA },
+  required: [...RESULT_SCHEMA.required, "unsure"],
+};
 function schemaFor(wantConfidence) {
-  if (!wantConfidence) return RESULT_SCHEMA;
-  const num = { type: "number" };
-  const listOf = (item) => ({ type: "array", items: item });
-  const obj = (props) => ({ type: "object", properties: props, required: Object.keys(props), additionalProperties: false });
-  const confidence = obj(Object.fromEntries(CONFIDENCE_FIELDS.map((f) => [f, num])));
-  const alternatives = obj(Object.fromEntries(ALTERNATIVE_FIELDS.map((f) => [f, listOf(f === "folder" ? { type: "string", enum: FOLDER_NAMES } : str)])));
-  return {
-    ...RESULT_SCHEMA,
-    properties: { ...RESULT_SCHEMA.properties, confidence, alternatives },
-    required: [...RESULT_SCHEMA.required, "confidence", "alternatives"],
-  };
+  return wantConfidence ? CONFIDENCE_SCHEMA : RESULT_SCHEMA;
 }
 
-function userText({ kind, totalPages, sentPages }, today) {
+function userText({ kind, totalPages, sentPages, ocrPrimary }, today) {
   const total = Math.max(1, totalPages | 0), sent = Math.max(1, sentPages | 0);
   const pages = `${total} page${total > 1 ? "s" : ""}`;
+  if (ocrPrimary && kind === "images") {
+    const shown = sent > 1 ? `first ${sent} pages` : "first page";
+    return `The attached image is a scaled-down picture of the ${shown} of ONE document (${pages} in all). The text of the pages, read on the phone, is below. Today is ${today}.`;
+  }
   const source = kind === "pdf"
     ? `The attached PDF is ONE document (${pages} in all).`
     : `The ${sent} attached image(s) are the page(s) of ONE document, in order${total > sent ? ` (the first ${sent} of ${total})` : ""}.`;
@@ -142,13 +164,14 @@ function userText({ kind, totalPages, sentPages }, today) {
 }
 
 // The per-request extras for the user turn: known senders and the OCR text. Empty for the web app.
-function extrasText({ senderHints, ocrText }) {
+function extrasText({ senderHints, ocrText, ocrPrimary }) {
   const parts = [];
   if (senderHints && senderHints.length) {
     const names = senderHints.map((h) => h.issuer).filter(Boolean);
     if (names.length) parts.push(`Senders this person has filed before. If the document is from one of them, write the issuer exactly as listed: ${JSON.stringify(names)}.`);
   }
-  if (ocrText) parts.push(`Text read from the pages on the phone (OCR, may have errors; the pages themselves win):\n<ocr>\n${ocrText}\n</ocr>`);
+  if (ocrText && ocrPrimary) parts.push(`Text of the pages, read on the phone (OCR, may have small errors; the picture shows the layout, logos and handwriting):\n<ocr>\n${ocrText}\n</ocr>`);
+  else if (ocrText) parts.push(`Text read from the pages on the phone (OCR, may have errors; the pages themselves win):\n<ocr>\n${ocrText}\n</ocr>`);
   return parts.join("\n\n");
 }
 
@@ -177,16 +200,24 @@ function normalize(r) {
 const clamp01 = (n) => (typeof n === "number" && Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0);
 const round2 = (n) => Math.round(n * 100) / 100;
 
-// Cleans Claude's confidence and alternatives against the normalized card (#20). Every field gets a
-// score (a missing one counts as 0, so it shows up as unsure rather than slipping through). The
-// overall score is the lowest field score: a card is only as sure as its least sure field.
-// Alternatives are cleaned like the field itself, never repeat the chosen value, and keep at most two.
+// Turns Claude's sparse "unsure" list into the card's confidence and alternatives (#20, #75).
+// Only listed fields get a score; a field Claude left out was sure, and the app reads a missing
+// score as sure (CardConfidence.score). A listed field with a missing or bad score counts as 0, so it
+// shows up as unsure rather than slipping through. A field listed twice keeps its lowest score.
+// The overall score is the lowest field score, 1 when nothing is listed. Alternatives exist only
+// for listed fields, are cleaned like the field itself, never repeat the chosen value, and keep at
+// most two. confidence.sparse tells readers that missing means sure.
 function normalizeConfidence(raw, card) {
   const r = raw && typeof raw === "object" ? raw : {};
-  const c = r.confidence && typeof r.confidence === "object" ? r.confidence : {};
+  const list = Array.isArray(r.unsure) ? r.unsure : [];
   const fields = {};
-  for (const f of CONFIDENCE_FIELDS) fields[f] = round2(clamp01(c[f]));
-  const a = r.alternatives && typeof r.alternatives === "object" ? r.alternatives : {};
+  const a = {};
+  for (const entry of list) {
+    if (!entry || typeof entry !== "object" || !CONFIDENCE_FIELDS.includes(entry.field)) continue;
+    const score = round2(clamp01(entry.confidence));
+    fields[entry.field] = entry.field in fields ? Math.min(fields[entry.field], score) : score;
+    if (ALTERNATIVE_FIELDS.includes(entry.field)) a[entry.field] = [...(a[entry.field] || []), ...(Array.isArray(entry.alternatives) ? entry.alternatives : [])];
+  }
   const clean = {
     issuer: (v) => String(v || "").trim().slice(0, 100),
     title: (v) => String(v || "").trim().slice(0, 140),
@@ -196,9 +227,10 @@ function normalizeConfidence(raw, card) {
   };
   const alternatives = {};
   for (const f of ALTERNATIVE_FIELDS) {
+    if (!(f in a)) continue;
     const seen = new Set([card[f]]);
     const list = [];
-    for (const v of Array.isArray(a[f]) ? a[f] : []) {
+    for (const v of a[f]) {
       const x = clean[f](v);
       if (!x || seen.has(x)) continue;
       seen.add(x); list.push(x);
@@ -206,9 +238,10 @@ function normalizeConfidence(raw, card) {
     }
     alternatives[f] = list;
   }
-  return { confidence: { overall: overallOf(fields), fields }, alternatives };
+  return { confidence: { overall: overallOf(fields), fields, sparse: true }, alternatives };
 }
-const overallOf = (fields) => round2(Math.min(...CONFIDENCE_FIELDS.map((f) => (f in fields ? fields[f] : 0))));
+// A field without a score is one Claude was sure of (#75), so it counts as 1.
+const overallOf = (fields) => round2(Math.min(...CONFIDENCE_FIELDS.map((f) => (f in fields ? fields[f] : 1))));
 
 // Sender hints from the app (#21): users/{uid}/senders documents. Anything malformed is dropped, not
 // refused, so a bad rule never stops a read.
@@ -263,7 +296,7 @@ function applySenderRule(card, hints) {
   if (out.confidence) {
     const fields = { ...out.confidence.fields };
     for (const f of set) fields[f] = 1;
-    out.confidence = { overall: overallOf(fields), fields };
+    out.confidence = { ...out.confidence, overall: overallOf(fields), fields };
   }
   if (out.alternatives) {
     out.alternatives = { ...out.alternatives };
@@ -289,7 +322,8 @@ const B64 = /^[A-Za-z0-9+/]+={0,2}$/;
 // The optional extras. Lenient on purpose: a bad extra is ignored, never a reason to refuse the read.
 function extras(d) {
   const ocrText = typeof d.ocrText === "string" ? d.ocrText.trim().slice(0, MAX_OCR_CHARS) : "";
-  return { ocrText, senderHints: cleanSenderHints(d.senderHints), wantConfidence: d.wantConfidence === true };
+  const ocrPrimary = d.ocrPrimary === true && d.kind === "images" && ocrText.length > 0;
+  return { ocrText, ocrPrimary, senderHints: cleanSenderHints(d.senderHints), wantConfidence: d.wantConfidence === true };
 }
 
 function validate(data) {
@@ -452,10 +486,11 @@ function normalizeSplit(raw, pageCount) {
 }
 
 // The split call, after the same sign-in and allowlist checks as a read.
-async function splitStack(data, deps) {
+async function splitStack(data, deps, started = nowMs(deps)) {
   const input = validateSplit(data);
   const model = deps.model(), effort = deps.effort();
   let res;
+  const callStarted = nowMs(deps);
   try {
     res = await deps.client().beta.messages.create(buildSplitRequest(input, { model, effort, today: deps.today() }));
   } catch (e) {
@@ -470,23 +505,30 @@ async function splitStack(data, deps) {
   try { parsed = JSON.parse(text); } catch { throw new ClassifyError("internal", "invalid_json", "Claude's answer was not valid JSON."); }
   const split = normalizeSplit(parsed, input.pages.length);
   const u = res.usage || {};
-  deps.log && deps.log("split: done", { model: res.model, pages: input.pages.length, documents: split.documents.length, input_tokens: u.input_tokens, output_tokens: u.output_tokens });
+  deps.log && deps.log("split: done", { model: res.model, pages: input.pages.length, documents: split.documents.length, input_tokens: u.input_tokens, output_tokens: u.output_tokens, cache_write: u.cache_creation_input_tokens || 0, cache_read: u.cache_read_input_tokens || 0, total_ms: nowMs(deps) - started, claude_ms: nowMs(deps) - callStarted });
   return { split, model: res.model || model };
 }
 
 // The whole callable: auth and allowlist first, then validate, call Claude, parse, normalize.
 // deps: { client(), allowlist(), model(), effort(), today(), Anthropic, log }
+// Wall-clock milliseconds. deps.now lets the tests drive the clock.
+const nowMs = (deps) => (deps && deps.now ? deps.now() : Date.now());
+
 async function classify(request, deps) {
+  const started = nowMs(deps);
   if (!request || !request.auth) throw new ClassifyError("unauthenticated", "signed_out", "Sign in first.");
   if (!isAllowed(request.auth.token, deps.allowlist())) throw new ClassifyError("permission-denied", "not_allowed", "This app is private.");
-  if (request.data && request.data.mode === "split") return splitStack(request.data, deps);
+  if (request.data && request.data.mode === "split") return splitStack(request.data, deps, started);
   const input = validate(request.data);
   const model = deps.model(), effort = deps.effort();
-  let res;
+  let res, callStarted = nowMs(deps);
   try {
     const client = deps.client();
-    res = await client.beta.messages.create(buildRequest(input, { model, effort, today: deps.today() }));
+    const req = buildRequest(input, { model, effort, today: deps.today() });
+    callStarted = nowMs(deps);
+    res = await client.beta.messages.create(req);
   } catch (e) {
+    deps.log && deps.log("classify: timing", { total_ms: nowMs(deps) - started, claude_ms: nowMs(deps) - callStarted, failed: true });
     const mapped = mapApiError(e, deps.Anthropic);
     if (mapped.code === "unknown" || mapped.code === "bad_request") deps.log && deps.log("classify: Claude call failed", { status: e && e.status, message: e && e.message });
     throw mapped;
@@ -496,17 +538,30 @@ async function classify(request, deps) {
   const text = (res.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
   let parsed;
   try { parsed = JSON.parse(text); } catch { throw new ClassifyError("internal", "invalid_json", "Claude's answer was not valid JSON."); }
-  const u = res.usage || {};
-  deps.log && deps.log("classify: done", { model: res.model, kind: input.kind, pages: input.sentPages, input_tokens: u.input_tokens, output_tokens: u.output_tokens, cache_read: u.cache_read_input_tokens });
+  const claudeMs = nowMs(deps) - callStarted;
   let result = normalize(parsed);
   if (input.wantConfidence) result = { ...result, ...normalizeConfidence(parsed, result) };
   result = applySenderRule(result, input.senderHints);
+  deps.log && deps.log("classify: done", usageLog(res, input, model, { total_ms: nowMs(deps) - started, claude_ms: claudeMs }));
   return { result, model: res.model || model };
+}
+
+// One log line per read with what it cost and how long it took (#75). cache_write and cache_read
+// together say whether the system prompt cache hit: a write with no read is a cold or missed cache.
+function usageLog(res, input, model, timing) {
+  const u = res.usage || {};
+  return {
+    model: res.model || model, kind: input.kind, pages: input.totalPages, sent: input.sentPages,
+    ocr_primary: !!input.ocrPrimary, ocr_chars: (input.ocrText || "").length,
+    input_tokens: u.input_tokens, output_tokens: u.output_tokens,
+    cache_write: u.cache_creation_input_tokens || 0, cache_read: u.cache_read_input_tokens || 0,
+    ...timing,
+  };
 }
 
 module.exports = {
   FOLDER_NAMES, VERDICTS, SYSTEM_PROMPT, CONFIDENCE_PROMPT, RESULT_SCHEMA, MAX_BASE64_CHARS, MAX_IMAGES, MAX_OCR_CHARS,
-  CONFIDENCE_FIELDS, ALTERNATIVE_FIELDS,
+  CONFIDENCE_FIELDS, ALTERNATIVE_FIELDS, SURE_ABOVE, CONFIDENCE_SCHEMA, UNSURE_SCHEMA, usageLog,
   userText, extrasText, schemaFor, normalize, normalizeConfidence, cleanSenderHints, renderFilename, applySenderRule,
   parseAllowlist, isAllowed, validate, buildRequest, mapApiError, classify, ClassifyError, slug, cleanName,
   SPLIT_PROMPT, SPLIT_SCHEMA, MAX_SPLIT_PAGES, MAX_SPLIT_IMAGES, MAX_SPLIT_PAGE_CHARS,

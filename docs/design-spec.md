@@ -425,7 +425,7 @@ Navigation: on success, cross-fade to `RootView` on the Sort tab, which shows th
 
 `NavigationStack`, large title "Sort".
 
-1. Nav bar: large title "Sort". Subtitle (`.navigationSubtitle`): "{n} to go · {m} ready to file" (`n` = cards on the deck, `m` = confident cards). With cards still being read: "{n} to go · {m} ready to file · 3 reading". Trailing toolbar: `ScanMenuButton` (`doc.viewfinder`, `Menu` with `primaryAction` = scan; long press shows "Scan pages", "Choose from Files", "Choose from Photos"), then the avatar button (initials on `AccentSoft`, `AccentColor` text, 36 pt) which opens Settings (4.9).
+1. Nav bar: large title "Sort". Subtitle (`.navigationSubtitle`): "{n} to go · {m} ready to file" (`n` = cards on the deck, `m` = confident cards). With cards still being read: "{n} to go · {m} ready to file · 3 reading". Trailing toolbar: `ScanMenuButton` (`doc.viewfinder`, a `Menu` with no `primaryAction`: a tap opens "Scan document", "Import from Files", "Import from Photos", per decision 1 and #74), then the avatar button (initials on `AccentSoft`, `AccentColor` text, 36 pt) which opens Settings (4.9).
 2. Bulk file prompt (3.9), only when the setting is on and at least two confident cards remain: "File the other 7 confident cards" (counts every confident card except the one on top when the top is confident; otherwise all of them, "File the 7 confident cards").
 3. Deck: `DeckCard` with two peeks.
 4. `ActionRow`.

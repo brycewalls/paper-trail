@@ -19,7 +19,8 @@ extension View {
     }
 }
 
-/// The Scan button: tap scans (spec 4.2, `primaryAction`); long press offers all three sources.
+/// The Scan button (decision 1, #74): a tap opens the menu with all three sources. No `primaryAction`,
+/// because that made a tap scan at once and hid both imports behind a long press nobody found.
 struct ScanMenuButton: View {
     @Environment(CaptureController.self) private var capture: CaptureController?
 
@@ -30,12 +31,10 @@ struct ScanMenuButton: View {
             Button("Import from Photos", systemImage: "photo.on.rectangle") { capture?.importFromPhotos() }
         } label: {
             Label("Scan", systemImage: "doc.viewfinder")
-        } primaryAction: {
-            Task { await capture?.scan() }
         }
         .disabled(capture == nil)
         .accessibilityLabel("Scan")
-        .accessibilityHint("Double tap to scan. Long press to import from Files or Photos.")
+        .accessibilityHint("Scan a document, or import from Files or Photos.")
         .accessibilityInputLabels(["Scan", "Scan document"])
         .accessibilityIdentifier("sort.scan")
     }

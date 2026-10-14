@@ -90,7 +90,8 @@ final class DeckViewModel {
         guard let docs = try? await env.capture.sampleDocuments() else { return }
         let items = CaptureIntake.add(docs, to: context)
         refresh()
-        await reader.read(items)
+        // Each card shows as soon as it's read, not after the whole set (#75).
+        await reader.read(items) { [weak self] _ in self?.refresh() }
         try? context.save()
         refresh()
     }

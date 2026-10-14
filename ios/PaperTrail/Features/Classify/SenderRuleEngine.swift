@@ -38,7 +38,7 @@ nonisolated enum SenderRuleEngine {
         if slug(out.paperless.issuer) == rule.key { out.paperless.issuer = rule.issuer }
         if var confidence = out.confidence {
             for field in set { confidence.fields[field] = 1 }
-            confidence.overall = CardConfidence.fieldOrder.map { confidence.fields[$0] ?? 0 }.min() ?? 0
+            confidence.overall = confidence.lowestScore
             out.confidence = confidence
         }
         if var alternatives = out.alternatives {

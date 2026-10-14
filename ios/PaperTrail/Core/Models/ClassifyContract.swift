@@ -30,6 +30,9 @@ nonisolated struct ClassifyRequest: Codable, Sendable, Hashable {
     var senderHints: [SenderRule]?
     /// Ask for per-field confidence (#20).
     var wantConfidence: Bool?
+    /// New (#75): `ocrText` is the main source and `images` is only a downscaled first page. A
+    /// function deployed before #75 ignores it and still reads the picture plus the text hint.
+    var ocrPrimary: Bool? = nil
 }
 
 nonisolated struct ClassifyResponse: Codable, Sendable, Hashable {

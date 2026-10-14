@@ -25,7 +25,7 @@ struct SignInScreen: View {
             }
             .scrollBounceBehavior(.basedOnSize)
         }
-        .background(AuthPalette.background.ignoresSafeArea())
+        .background(Palette.background.ignoresSafeArea())
     }
 
     private var header: some View {
@@ -42,7 +42,7 @@ struct SignInScreen: View {
             if case .notAllowed = model.step {
                 Text("This account isn't on the list.")
                     .font(.subheadline)
-                    .foregroundStyle(AuthPalette.danger)
+                    .foregroundStyle(Palette.danger)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 320)
             }
@@ -71,12 +71,12 @@ struct SignInScreen: View {
                         if model.isWorking { ProgressView() } else { Text("Use another account").font(.headline) }
                     }
                     .frame(maxWidth: .infinity, minHeight: 52)
-                    .background(Capsule().fill(Color(.secondarySystemGroupedBackground)))
-                    .overlay(Capsule().strokeBorder(Color(.separator), lineWidth: 1))
+                    .background(Capsule().fill(Palette.surface))
+                    .overlay(Capsule().strokeBorder(Palette.separator, lineWidth: 1))
                     .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(AuthPalette.accent)
+                .foregroundStyle(Color(.accent))
                 .disabled(model.isWorking)
                 failure
             }
@@ -88,7 +88,7 @@ struct SignInScreen: View {
         if let message = model.message {
             Text(message)
                 .font(.footnote)
-                .foregroundStyle(AuthPalette.danger)
+                .foregroundStyle(Palette.danger)
                 .multilineTextAlignment(.center)
         }
     }

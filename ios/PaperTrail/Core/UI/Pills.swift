@@ -58,19 +58,23 @@ struct UnsurePill: View {
 /// Search filters (3.5). 34 tall visually, padded to a 44 pt tap target.
 struct FilterChip: View {
     let title: String
+    var systemImage: String? = nil
     let isOn: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Text(title)
+            HStack(spacing: Space.xs) {
+                if let systemImage { Image(systemName: systemImage).imageScale(.small).accessibilityHidden(true) }
+                Text(title)
+            }
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(isOn ? Color(.accent) : .primary)
                 .padding(.horizontal, 14)
                 .frame(minHeight: 34)
                 .background(isOn ? Color(.accentSoft) : Palette.surface, in: Capsule())
                 .overlay {
-                    if !isOn { Capsule().strokeBorder(Palette.separator) }
+                    if !isOn { Capsule().strokeBorder(Palette.separator, lineWidth: 0.5) }
                 }
                 .frame(minHeight: 44)
                 .contentShape(Rectangle())
@@ -83,15 +87,38 @@ struct FilterChip: View {
 /// Single-select chip, e.g. a date choice in the check-fields sheet. Same look as FilterChip.
 struct ChoiceChip: View {
     let title: String
+    var systemImage: String? = nil
     let isSelected: Bool
     let action: () -> Void
 
     var body: some View {
-        FilterChip(title: title, isOn: isSelected, action: action)
+        FilterChip(title: title, systemImage: systemImage, isOn: isSelected, action: action)
     }
 }
 
-/// One status pill for Piles and Paperless (3.6).
+/// The action chips inside a banner (3.9: "Open their steps", "Wait a cycle"). Solid surface
+/// capsules with a hairline so they read on a soft banner fill. Padded to a 44 pt tap target.
+struct BannerChip: View {
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.primary)
+                .padding(.horizontal, Space.m)
+                .frame(minHeight: 32)
+                .background(Palette.surface, in: Capsule())
+                .overlay { Capsule().strokeBorder(Palette.separator, lineWidth: 0.5) }
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// One status pill for Piles, Paperless and scan review (3.6).
 struct StatusPill: View {
     enum Kind: Hashable {
         case safe
@@ -100,6 +127,9 @@ struct StatusPill: View {
         /// While the Drive check runs.
         case checking
         case paperless(PaperlessStatus)
+        /// Scan review (A3): Claude has read a proposed document, or is still reading it.
+        case read
+        case reading
     }
 
     let kind: Kind
@@ -125,6 +155,8 @@ struct StatusPill: View {
         case .waiting(let days): days <= 0 ? "Today" : days == 1 ? "1 day" : "\(days) days"
         case .checking: "Checking"
         case .paperless(let status): status.label
+        case .read: "Read"
+        case .reading: "Reading"
         }
     }
 
@@ -137,7 +169,7 @@ struct StatusPill: View {
 
     private var ink: Color {
         switch kind {
-        case .safe, .paperless(.confirmed): Color(.file)
+        case .safe, .paperless(.confirmed), .read: Color(.file)
         case .paperless(.requested): Color(.unsure)
         case .paperless(.waitingCycle): Color(.accent)
         default: .secondary
@@ -146,7 +178,7 @@ struct StatusPill: View {
 
     private var fill: Color {
         switch kind {
-        case .safe, .paperless(.confirmed): Color(.fileSoft)
+        case .safe, .paperless(.confirmed), .read: Color(.fileSoft)
         case .paperless(.requested): Color(.unsureSoft)
         case .paperless(.waitingCycle): Color(.accentSoft)
         default: Color(.cardWell)

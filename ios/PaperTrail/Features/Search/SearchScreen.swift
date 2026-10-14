@@ -61,7 +61,7 @@ private struct SearchContent: View {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 8) {
                                 ForEach(model.suggestedSenders, id: \.self) { sender in
-                                    PileKit.FilterChip(title: sender, isOn: false) { model.use(sender) }
+                                    FilterChip(title: sender, isOn: false) { model.use(sender) }
                                 }
                             }
                         }
@@ -90,7 +90,7 @@ private struct SearchContent: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(model.chips, id: \.self) { filter in
-                        PileKit.FilterChip(title: filter.title, isOn: model.isOn(filter)) {
+                        FilterChip(title: filter.title, isOn: model.isOn(filter)) {
                             withAnimation(.smooth(duration: 0.2)) { model.toggle(filter) }
                         }
                     }
@@ -110,7 +110,7 @@ private struct SearchContent: View {
             opened = doc
         } label: {
             HStack(alignment: .top, spacing: 12) {
-                PileKit.DocThumbnail(doc: doc)
+                DocThumbnail(label: doc.thumbnailLabel)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(highlighted(doc.title)).font(.body).foregroundStyle(.primary)
                     Text("\(doc.issuer) · \(PileFormat.breadcrumb(for: doc))")
@@ -141,11 +141,7 @@ private struct SearchContent: View {
             if let url = URL(string: file.webViewLink) { openURL(url) }
         } label: {
             HStack(spacing: 12) {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(PileKit.Palette.cardWell)
-                    .frame(width: 36, height: 46)
-                    .overlay { Image(systemName: "doc").foregroundStyle(.secondary) }
-                    .accessibilityHidden(true)
+                DocThumbnail()
                 VStack(alignment: .leading, spacing: 2) {
                     Text(highlighted(file.name)).font(.body).foregroundStyle(.primary)
                     Text("In Drive").font(.footnote).foregroundStyle(.secondary)

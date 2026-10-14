@@ -504,6 +504,10 @@ struct OutboxSummaryTests {
         #expect(OutboxSummary.filedSubtitle(first, isFirst: true).hasPrefix("1 of 1 pages confirmed in Drive · "))
         #expect(OutboxSummary.filedSubtitle(first, isFirst: false).hasPrefix("1 of 1 pages confirmed · "))
         #expect(OutboxSummary.filedSubtitle(entry(.filed, decision: .shredOnly, filedMinutesAgo: 1), isFirst: true).hasPrefix("Logged as shredded · "))
+        // #59: shred-only rows on top don't take the "in Drive" wording from the first filed row.
+        let shred = entry(.filed, decision: .shredOnly, filedMinutesAgo: 0)
+        #expect(OutboxSummary.firstConfirmedID([shred, first]) == first.id)
+        #expect(OutboxSummary.firstConfirmedID([shred]) == nil)
         let old = entry(.verified, filedMinutesAgo: 60 * 24 * 3)
         let ancient = entry(.verified, filedMinutesAgo: 60 * 24 * 40)
         #expect(OutboxSummary.earlier([first, old, ancient], now: now).flatMap(\.entries).map(\.id) == [old.id])

@@ -108,8 +108,9 @@ private struct OutboxList: View {
             }
             if !today.isEmpty {
                 Section(caps: "Filed today") {
-                    ForEach(Array(today.enumerated()), id: \.element.id) { index, entry in
-                        FiledRow(entry: entry, isFirst: index == 0)
+                    let firstConfirmed = OutboxSummary.firstConfirmedID(today)
+                    ForEach(today) { entry in
+                        FiledRow(entry: entry, isFirst: entry.id == firstConfirmed)
                     }
                 }
             }

@@ -37,12 +37,14 @@ struct DeckScreen: View {
             }
             .navigationTitle("Sort")
             .toolbar {
+                ToolbarItem(placement: .topBarTrailing) { ScanMenuButton() }  // capture
                 if model.isSample {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button("Add samples") { Task { await model.loadSample() } }
                     }
                 }
             }
+            .captureFlow { model.refresh() }  // capture: scanner, imports, review
         }
         .task { await model.load() }
     }

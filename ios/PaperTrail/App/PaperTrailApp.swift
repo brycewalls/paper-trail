@@ -8,7 +8,7 @@ struct PaperTrailApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
+            AuthGate { RootView() }
                 .environment(env)
                 .modelContainer(env.modelContainer)
                 .task { await env.outbox.resumePending() }

@@ -10,6 +10,9 @@ import UIKit
 final class FakeAuthService: AuthService {
     var state: AuthState
     var drive: DriveLink = .connected
+    var driveConsentPending = false
+    /// Set to make signIn and reconnectDrive fail with this.
+    var failure: AuthFailure?
 
     init(signedIn: Bool = true) {
         let bryce = Account(uid: "fake-uid", email: "bryce.evan.walls@gmail.com", displayName: "Bryce Walls")
@@ -17,10 +20,16 @@ final class FakeAuthService: AuthService {
     }
 
     func signIn() async throws {
+        if let failure { throw failure }
         state = .signedIn(Account(uid: "fake-uid", email: "bryce.evan.walls@gmail.com", displayName: "Bryce Walls"))
         drive = .connected
+        driveConsentPending = false
     }
-    func reconnectDrive() async throws { drive = .connected }
+    func reconnectDrive() async throws {
+        if let failure { throw failure }
+        drive = .connected
+        driveConsentPending = false
+    }
     func signOut() throws { state = .signedOut }
     func driveAccessToken() async throws -> String {
         if drive != .connected { throw DriveError.unauthorized }
@@ -38,7 +47,9 @@ final class FakeClassifyService: ClassifyService {
         requests.append(request)
         try? await Task.sleep(for: delay)
         if let failure { throw ClassifyFailure(code: failure, message: "Fake failure") }
-        return ClassifyResponse(result: SampleData.card(forText: request.ocrText), model: "fake")
+        // Like the function: apply the matching sender rule and say which (#21).
+        let card = SenderRuleEngine.apply(request.senderHints ?? [], to: SampleData.card(forText: request.ocrText))
+        return ClassifyResponse(result: card, model: "fake")
     }
 }
 
@@ -82,7 +93,10 @@ final class FakeDocStore: DocStore {
     private var docWatchers: [UUID: AsyncStream<[FiledDoc]>.Continuation] = [:]
     private var paperlessWatchers: [UUID: AsyncStream<[PaperlessSender]>.Continuation] = [:]
 
-    init(seed: [FiledDoc] = SampleData.filedDocs()) { docList = seed }
+    init(seed: [FiledDoc] = SampleData.filedDocs(), rules: [SenderRule] = SampleData.senderRules) {
+        docList = seed
+        self.rules = Dictionary(uniqueKeysWithValues: rules.map { ($0.key, $0) })
+    }
 
     func docs() -> AsyncStream<[FiledDoc]> {
         let (stream, continuation) = AsyncStream<[FiledDoc]>.makeStream()

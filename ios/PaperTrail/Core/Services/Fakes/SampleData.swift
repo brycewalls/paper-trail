@@ -30,7 +30,8 @@ enum SampleData {
             sensitive: true,
             paperless: PaperlessHint(possible: true, issuer: "Blue Cross", how: "Choose electronic EOBs in the member portal."),
             confidence: CardConfidence(overall: 0.62, fields: ["title": 0.9, "folder": 0.88, "verdict": 0.55, "docDate": 0.6]),
-            appliedRule: nil),
+            appliedRule: nil,
+            alternatives: ["docDate": ["2024-01-15"]]),
         DocumentCard(
             title: "Honda Civic title", docType: "Vehicle title", issuer: "NC DMV",
             docDate: "2019-06-03", summary: "Certificate of title for a 2019 Honda Civic.",
@@ -49,6 +50,28 @@ enum SampleData {
             paperless: PaperlessHint(possible: false, issuer: "Big Box Furniture", how: ""),
             confidence: CardConfidence(overall: 0.99, fields: [:]),
             appliedRule: nil),
+    ]
+
+    /// The design spec's A2 card (classify): sender and statement date unsure, with Claude's other
+    /// guesses. Not on the sample deck, so the deck's counts stay the same.
+    static let cascadeBill = DocumentCard(
+        title: "Electric bill, September", docType: "Utility bill", issuer: "Cascade Power & Light",
+        docDate: "2026-09-28", summary: "Electric bill, $96.40 due Oct 18 on account ending 0412.",
+        folder: "06 Home", filename: "2026-09-28_cascade-power-electric-bill", verdict: .scanShred,
+        verdictReason: "Routine bill worth a record for a year.", retention: "Keep 1 year", sensitive: false,
+        paperless: PaperlessHint(possible: true, issuer: "Cascade Power & Light", how: "Account settings, then Billing, then Paper bill off."),
+        confidence: CardConfidence(overall: 0.58, fields: ["issuer": 0.62, "docDate": 0.58, "folder": 0.9, "title": 0.95, "filename": 0.88, "verdict": 0.93]),
+        appliedRule: nil,
+        alternatives: ["issuer": ["Cascade Natural Gas"], "docDate": ["2026-10-03"], "folder": ["03 Money & Banking"], "title": [], "filename": []])
+
+    /// Sender rules for previews and the sample Settings list (classify).
+    static let senderRules: [SenderRule] = [
+        SenderRule(key: "duke-energy", issuer: "Duke Energy", folder: "06 Home", filenamePattern: "{date}_duke-energy-electric-bill",
+                   verdict: .scanShred, docType: "Utility bill", updatedAt: "2026-10-09T15:04:00.000Z"),
+        SenderRule(key: "harbor-federal-cu", issuer: "Harbor Federal CU", folder: "02 Taxes", filenamePattern: "{yyyy}_harbor-federal-1099-int",
+                   verdict: .scanShred, docType: "1099-INT", updatedAt: "2026-10-02T10:00:00.000Z"),
+        SenderRule(key: "big-box-furniture", issuer: "Big Box Furniture", folder: "11 Other", filenamePattern: nil,
+                   verdict: .shred, docType: "Advertisement", updatedAt: "2026-09-21T18:30:00.000Z"),
     ]
 
     /// A card for an OCR text, matched by the first line, or the first sample.

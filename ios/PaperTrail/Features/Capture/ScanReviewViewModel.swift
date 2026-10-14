@@ -52,6 +52,9 @@ final class ScanReviewViewModel {
 
     private let files: FileStore
     private let context: ModelContext
+    /// Held so the context's container outlives any read still running (a mainContext doesn't
+    /// keep its container alive, and fetching after it's gone traps).
+    private let container: ModelContainer
     private let reader: ReadingQueue
     private let docs: any DocStore
     private let proposeSplit: SplitProposer?
@@ -66,6 +69,7 @@ final class ScanReviewViewModel {
     init(session: ReviewSession, env: AppEnvironment, proposeSplit: SplitProposer? = nil) {
         self.session = session
         self.files = env.files
+        self.container = env.modelContainer
         self.context = env.modelContainer.mainContext
         self.reader = ReadingQueue(classify: env.classify, files: env.files)
         self.docs = env.docs

@@ -37,10 +37,13 @@ struct ShredHoldPicker: View {
                             Text(ShredHoldModel.label(days)).foregroundStyle(.primary)
                             Spacer()
                             if model.days == days {
-                                Image(systemName: "checkmark").foregroundStyle(.tint).fontWeight(.semibold)
+                                Image(systemName: "checkmark").foregroundStyle(Color(.accent)).fontWeight(.semibold)
                             }
                         }
+                        .contentShape(.rect)
                     }
+                    // A Form tints a Button's whole label (#60); the choices read as plain rows.
+                    .tint(.primary)
                     .accessibilityAddTraits(model.days == days ? .isSelected : [])
                 }
             } footer: {

@@ -1,0 +1,1041 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paper Trail iOS Directions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Caveat:wght@500;700&display=swap">
+<style>
+/* ===== Board ===== */
+:root { --board: #e4e7ec; --board-ink: #16202b; --board-muted: #5a6673; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--board); color: var(--board-ink); font: 15px/1.4 "Public Sans", system-ui, sans-serif; }
+.board-head { padding: 48px 56px 0; max-width: 1400px; }
+.board-head h1 { font: 800 44px/1 "Archivo", sans-serif; font-stretch: 80%; margin: 0 0 10px; letter-spacing: -0.01em; }
+.board-head p { margin: 0; color: var(--board-muted); max-width: 900px; }
+.row { padding: 40px 56px 64px; }
+.row + .row { border-top: 1px solid #cfd5dc; }
+.row-head { display: flex; gap: 22px; align-items: baseline; margin-bottom: 28px; flex-wrap: wrap; }
+.row-head .letter { font: 800 64px/0.9 "Archivo", sans-serif; font-stretch: 75%; }
+.row-head h2 { font: 700 28px/1.1 "Archivo", sans-serif; font-stretch: 85%; margin: 0; }
+.row-head p { margin: 4px 0 0; color: var(--board-muted); max-width: 980px; }
+.frames { display: grid; grid-template-columns: repeat(9, 417px); gap: 52px 40px; }
+figure { margin: 0; }
+figcaption { font: 600 13px "IBM Plex Mono", monospace; margin: 0 0 18px 12px; color: var(--board-muted); }
+figcaption b { color: var(--board-ink); }
+.frame-wrap { padding: 12px; }
+/* direction-only view, for direction-X.png */
+body { width: max-content; }
+body.solo .row { display: none; }
+body.solo .row.on { display: block; border: 0; }
+body.solo .board-head { display: none; }
+body.solo .frames { grid-template-columns: repeat(3, 417px); }
+
+/* ===== Phone shell ===== */
+.phone { width: 393px; height: 852px; border-radius: 56px; position: relative; overflow: hidden; background: var(--bg); color: var(--ink);
+  box-shadow: 0 0 0 11px #14171b, 0 0 0 12px #40464e, 0 30px 60px rgba(10, 20, 30, 0.28); isolation: isolate; }
+.sb { position: absolute; top: 0; left: 0; right: 0; height: 54px; z-index: 50; display: flex; align-items: center; justify-content: space-between; padding: 6px 34px 0 50px; font: 600 16px -apple-system, "SF Pro Text", system-ui, sans-serif; color: var(--ink); pointer-events: none; }
+.sb .island { position: absolute; left: 50%; top: 11px; width: 124px; height: 36px; margin-left: -62px; background: #000; border-radius: 20px; }
+.sb .r { display: flex; gap: 6px; align-items: center; }
+.sb .bars { display: flex; gap: 2px; align-items: flex-end; height: 11px; }
+.sb .bars i { width: 3px; background: currentColor; border-radius: 1px; }
+.sb .batt { width: 25px; height: 12px; border: 1.5px solid currentColor; border-radius: 4px; opacity: 0.9; position: relative; }
+.sb .batt::after { content: ""; position: absolute; inset: 1.5px; right: 5px; background: currentColor; border-radius: 1.5px; }
+.home { position: absolute; bottom: 8px; left: 50%; width: 134px; height: 5px; margin-left: -67px; border-radius: 3px; background: var(--ink); opacity: 0.85; z-index: 60; }
+.scr { position: absolute; inset: 0; }
+.ic { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: 0 0 auto; }
+.ic.s { width: 16px; height: 16px; }
+.ic.xs { width: 13px; height: 13px; }
+.ic.l { width: 26px; height: 26px; }
+.abs { position: absolute; }
+.mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+.row-x { display: flex; align-items: center; gap: 8px; }
+.grow { flex: 1; min-width: 0; }
+.ell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ===== Mini documents (fake scans) ===== */
+.doc { background: #fff; color: #333; border-radius: 3px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18); position: relative; overflow: hidden; font-family: Arial, sans-serif; }
+.doc .pad { position: absolute; inset: 7%; display: flex; flex-direction: column; gap: 4%; }
+.doc .ln { height: 3.2%; min-height: 3px; background: #d3d8de; border-radius: 2px; }
+.doc .ln.dk { background: #8d96a0; }
+.doc .hd { font-weight: 700; color: #222; letter-spacing: 0.02em; }
+.doc .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3%; flex: 1; }
+.doc .grid i { border: 1px solid #c4cad1; border-radius: 1px; position: relative; }
+.doc .grid i::after { content: ""; position: absolute; left: 8%; right: 30%; bottom: 22%; height: 2px; background: #b8bfc7; }
+.doc .logo { display: flex; gap: 6%; align-items: center; }
+.doc .logo b { width: 16%; aspect-ratio: 1; border-radius: 50%; background: #2f7d6d; }
+.doc .amt { margin-left: auto; border: 1.5px solid #555; padding: 2% 4%; font-weight: 700; color: #222; }
+.doc.title-doc { border: 0; }
+.doc.title-doc .pad { border: 3px double #9a8a5b; inset: 5%; padding: 6%; }
+.doc .seal { width: 26%; aspect-ratio: 1; border-radius: 50%; border: 2px solid #9a8a5b; align-self: flex-end; margin-top: auto; }
+
+/* ================================================================
+   DIRECTION A: Glass. Native, calm, system materials.
+   ================================================================ */
+.A { --bg: #f2f2f7; --surface: #ffffff; --sunk: #eceef2; --ink: #111827; --muted: #6b7380; --line: #e3e6eb; --accent: #2346b8; --accent-bg: #e8edfb;
+  --shred: #c4271b; --shred-bg: #fdecea; --file: #1a7f4b; --file-bg: #e3f4ea; --keep: #8a5a00; --keep-bg: #fbf1dc; --warn: #a15c00; --warn-bg: #fff3d6;
+  --glass: rgba(255, 255, 255, 0.62); --glass-edge: rgba(255, 255, 255, 0.85); --glass-shadow: 0 8px 28px rgba(17, 24, 39, 0.14);
+  font-family: -apple-system, "SF Pro Text", system-ui, sans-serif; }
+.A.dark { --bg: #000; --surface: #1c1c1e; --sunk: #2a2a2e; --ink: #f3f4f6; --muted: #9aa1ab; --line: #2e2e33; --accent: #8ea7ff; --accent-bg: #1b2547;
+  --shred: #ff8a7f; --shred-bg: #3a1a18; --file: #5fd393; --file-bg: #15301f; --keep: #f2c05a; --keep-bg: #33280f; --warn: #f2c05a; --warn-bg: #33280f;
+  --glass: rgba(44, 44, 48, 0.62); --glass-edge: rgba(255, 255, 255, 0.12); --glass-shadow: 0 8px 28px rgba(0, 0, 0, 0.5); }
+.A .glass { background: var(--glass); backdrop-filter: blur(22px) saturate(180%); -webkit-backdrop-filter: blur(22px) saturate(180%); border: 1px solid var(--glass-edge); box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-edge); }
+.A .lt { position: absolute; left: 20px; right: 20px; top: 60px; }
+.A .lt h1 { font-size: 34px; font-weight: 700; letter-spacing: 0.01em; margin: 0; }
+.A .lt .sub { color: var(--muted); font-size: 15px; margin-top: 2px; }
+.A .avatar { position: absolute; right: 0; top: 4px; width: 36px; height: 36px; border-radius: 50%; background: var(--accent-bg); color: var(--accent); display: grid; place-items: center; font-weight: 600; font-size: 14px; }
+.A .navbtn { position: absolute; top: 58px; height: 40px; border-radius: 20px; padding: 0 14px; display: flex; align-items: center; gap: 6px; font-size: 16px; font-weight: 500; color: var(--ink); z-index: 5; }
+.A .tabbar { position: absolute; left: 21px; right: 93px; bottom: 21px; height: 62px; border-radius: 31px; display: flex; align-items: center; justify-content: space-around; padding: 0 6px; z-index: 20; }
+.A .tab { display: grid; justify-items: center; gap: 2px; font-size: 10px; font-weight: 600; color: var(--ink); width: 78px; padding: 6px 0; border-radius: 26px; }
+.A .tab.on { color: var(--accent); background: rgba(35, 70, 184, 0.10); }
+.A.dark .tab.on { background: rgba(142, 167, 255, 0.16); }
+.A .tab .ic { width: 22px; height: 22px; }
+.A .island-btn { position: absolute; right: 21px; bottom: 21px; width: 62px; height: 62px; border-radius: 50%; display: grid; place-items: center; z-index: 20; color: var(--ink); }
+.A .accessory { position: absolute; left: 21px; right: 21px; bottom: 93px; height: 48px; border-radius: 24px; display: flex; align-items: center; gap: 10px; padding: 0 8px 0 10px; z-index: 20; font-size: 14px; }
+.A .ring { width: 30px; height: 30px; border-radius: 50%; background: conic-gradient(var(--accent) 0 62%, var(--line) 62% 100%); display: grid; place-items: center; }
+.A .ring::after { content: ""; width: 22px; height: 22px; border-radius: 50%; background: var(--surface); }
+.A .pill { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; border-radius: 99px; padding: 4px 10px; }
+.A .pill.shred { color: var(--shred); background: var(--shred-bg); }
+.A .pill.scan { color: var(--accent); background: var(--accent-bg); }
+.A .pill.keep { color: var(--keep); background: var(--keep-bg); }
+.A .pill.file { color: var(--file); background: var(--file-bg); }
+.A .pill.warn { color: var(--warn); background: var(--warn-bg); }
+.A .pill.gray { color: var(--muted); background: var(--sunk); }
+.A .card { position: absolute; left: 20px; right: 20px; background: var(--surface); border-radius: 30px; box-shadow: 0 14px 34px rgba(17, 24, 39, 0.12); overflow: hidden; }
+.A.dark .card { box-shadow: 0 14px 34px rgba(0, 0, 0, 0.6); }
+.A .card .img { height: 236px; background: var(--sunk); position: relative; display: grid; place-items: center; }
+.A .card .img .pill { position: absolute; top: 14px; right: 14px; }
+.A .card .img .pg { position: absolute; left: 14px; bottom: 12px; font-size: 12px; color: var(--muted); }
+.A .card .body { padding: 16px 18px; display: grid; gap: 9px; }
+.A .card h3 { margin: 0; font-size: 22px; font-weight: 700; }
+.A .meta { color: var(--muted); font-size: 15px; }
+.A .kv { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.A .kv .ic { color: var(--muted); }
+.A .fname { font: 12px "IBM Plex Mono", monospace; color: var(--muted); }
+.A .peek { position: absolute; left: 20px; right: 20px; background: var(--surface); border-radius: 30px; box-shadow: 0 6px 18px rgba(17, 24, 39, 0.08); }
+.A .actbar { position: absolute; left: 20px; right: 20px; display: flex; align-items: center; justify-content: space-between; z-index: 10; }
+.A .bigbtn { height: 54px; border-radius: 27px; padding: 0 22px; display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 600; }
+.A .circ { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; color: var(--muted); }
+.A .group { background: var(--surface); border-radius: 26px; overflow: hidden; }
+.A .gh { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 18px 18px 6px; }
+.A .li { display: flex; align-items: center; gap: 12px; padding: 12px 16px; min-height: 52px; font-size: 16px; }
+.A .li + .li { border-top: 1px solid var(--line); margin-left: 0; }
+.A .li .t { font-weight: 500; }
+.A .li .s { font-size: 13px; color: var(--muted); margin-top: 1px; }
+.A .li .chev { color: var(--muted); opacity: 0.6; }
+.A .thumb { width: 36px; height: 46px; border-radius: 6px; background: var(--sunk); display: grid; place-items: center; flex: 0 0 auto; }
+.A .bar { height: 5px; border-radius: 3px; background: var(--line); overflow: hidden; margin-top: 7px; }
+.A .bar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.A .seg { display: flex; background: var(--sunk); border-radius: 22px; padding: 3px; }
+.A .seg span { flex: 1; text-align: center; font-size: 14px; font-weight: 600; padding: 8px 0; border-radius: 19px; color: var(--ink); }
+.A .seg span.on { background: var(--surface); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1); }
+.A .seg small { color: var(--muted); font-weight: 500; margin-left: 4px; }
+.A .toggle { width: 51px; height: 31px; border-radius: 16px; background: #34c759; position: relative; flex: 0 0 auto; }
+.A .toggle::after { content: ""; position: absolute; right: 2px; top: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2); }
+.A .toggle.off { background: var(--line); }
+.A .toggle.off::after { right: auto; left: 2px; }
+.A .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--file); flex: 0 0 auto; }
+.A .unsure { background: var(--warn-bg); border-radius: 10px; margin: 0 -8px; padding: 6px 8px; }
+.A .unsure .q { color: var(--warn); font-weight: 600; font-size: 13px; margin-left: auto; }
+.A .sheet { position: absolute; left: 8px; right: 8px; bottom: 8px; border-radius: 38px; padding: 10px 20px 20px; z-index: 30; }
+.A .grabber { width: 36px; height: 5px; border-radius: 3px; background: var(--muted); opacity: 0.4; margin: 0 auto 12px; }
+.A .opt { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-radius: 16px; background: var(--surface); font-size: 16px; }
+.A .opt + .opt { margin-top: 6px; }
+.A .opt.sel { outline: 2px solid var(--accent); }
+.A .radio { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line); flex: 0 0 auto; }
+.A .opt.sel .radio { border: 7px solid var(--accent); }
+.A .conf { font-size: 12px; color: var(--muted); margin-left: auto; }
+.A .primary { background: var(--accent); color: #fff; border-radius: 26px; height: 52px; display: grid; place-items: center; font-size: 17px; font-weight: 600; }
+.A.dark .primary { color: #0b1020; }
+.A .chip { display: inline-flex; align-items: center; gap: 4px; height: 34px; padding: 0 14px; border-radius: 17px; font-size: 14px; font-weight: 500; background: var(--surface); border: 1px solid var(--line); }
+.A .chip.on { background: var(--accent-bg); color: var(--accent); border-color: transparent; }
+.A mark { background: rgba(255, 204, 0, 0.35); color: inherit; border-radius: 3px; padding: 0 1px; }
+.A .dimmed { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.18); z-index: 25; }
+
+/* ================================================================
+   DIRECTION B: Desk. Tactile, paper, stamps and real stacks.
+   ================================================================ */
+.B { --bg: #ebe3d4; --paper: #fbf8f1; --ink: #1f2a36; --muted: #6f6656; --line: #d6cab5; --manila: #e2c88e; --manila-dk: #c9ab68;
+  --shred: #b42318; --scan: #2346b8; --keep: #8a5a00; --file: #1a7f4b; --sticky: #fde68a;
+  font-family: "Public Sans", system-ui, sans-serif;
+  background-image: radial-gradient(circle at 20% 10%, rgba(255, 255, 255, 0.5), transparent 45%), radial-gradient(circle at 90% 80%, rgba(120, 90, 40, 0.08), transparent 50%), repeating-linear-gradient(0deg, rgba(120, 100, 60, 0.035) 0 1px, transparent 1px 3px); }
+.B.dark { --bg: #161c24; --paper: #e9e3d6; --ink: #ece6da; --muted: #a59c8b; --line: #3a4350; --manila: #8c7543; --manila-dk: #6c5a33; --shred: #ff8a7f; --scan: #8fa8ff; --keep: #f2c05a; --file: #5fd393;
+  background-image: radial-gradient(ellipse at 50% 32%, rgba(255, 214, 140, 0.16), transparent 58%), repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.02) 0 1px, transparent 1px 3px); }
+.B .disp { font-family: "Archivo", sans-serif; font-stretch: 75%; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; }
+.B .hdr { position: absolute; top: 58px; left: 22px; right: 22px; display: flex; align-items: center; justify-content: space-between; }
+.B .hdr .wm { font-size: 26px; }
+.B .hdr .count { font: 500 13px "IBM Plex Mono", monospace; color: var(--muted); }
+.B .gear { width: 40px; height: 40px; border-radius: 50%; border: 1.5px solid var(--line); display: grid; place-items: center; color: var(--ink); background: var(--paper); }
+.B.dark .gear { background: #222a35; }
+.B .tabs { position: absolute; left: 0; right: 0; bottom: 0; height: 92px; background: var(--manila-dk); display: flex; gap: 4px; padding: 0 12px; align-items: flex-start; z-index: 20; box-shadow: inset 0 3px 0 rgba(0, 0, 0, 0.06); }
+.B .ftab { flex: 1; height: 54px; margin-top: -14px; background: var(--manila); border-radius: 12px 12px 0 0; display: grid; justify-items: center; align-content: center; gap: 2px; font: 800 12px "Archivo", sans-serif; font-stretch: 75%; letter-spacing: 0.08em; text-transform: uppercase; color: #3d3220; box-shadow: 0 -2px 4px rgba(60, 40, 10, 0.12); }
+.B .ftab.on { background: #f0dca8; margin-top: -24px; height: 64px; color: #1f2a36; }
+.B.dark .ftab { color: #f1e6cc; }
+.B.dark .ftab.on { background: #b39657; color: #1a1408; }
+.B .ftab .ic { width: 20px; height: 20px; }
+.B .stamp { display: inline-block; font-family: "Archivo", sans-serif; font-stretch: 75%; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; border: 3px double currentColor; border-radius: 6px; padding: 4px 10px; transform: rotate(-6deg); background: rgba(255, 255, 255, 0.55); }
+.B .stamp.sm { font-size: 11px; padding: 2px 6px; border-width: 2.5px; transform: rotate(-3deg); }
+.B .stamp.shred { color: var(--shred); } .B .stamp.scan { color: var(--scan); } .B .stamp.keep { color: var(--keep); } .B .stamp.file { color: var(--file); } .B .stamp.gray { color: var(--muted); }
+.B .sheetp { position: absolute; background: var(--paper); border-radius: 4px; box-shadow: 0 2px 0 #e0d6c3, 0 12px 26px rgba(0, 0, 0, 0.14); }
+.B.dark .sheetp { box-shadow: 0 2px 0 #b7ae9c, 0 14px 30px rgba(0, 0, 0, 0.55); }
+.B .tag { position: absolute; background: var(--manila); color: #2a2214; border-radius: 6px 6px 6px 6px; padding: 12px 14px 12px 30px; font: 13px/1.5 "IBM Plex Mono", monospace; box-shadow: 0 6px 14px rgba(60, 40, 10, 0.2); }
+.B .tag::before { content: ""; position: absolute; left: 10px; top: 50%; width: 10px; height: 10px; margin-top: -5px; border-radius: 50%; background: var(--bg); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3); }
+.B .tag b { font-weight: 600; font-size: 15px; }
+.B .tray { position: absolute; bottom: 104px; height: 96px; width: 150px; border-radius: 10px; display: grid; justify-items: center; align-content: end; padding-bottom: 10px; gap: 4px; font-size: 13px; }
+.B .tray .lbl { font-size: 14px; }
+.B .shredder { left: 20px; border: 2px dashed var(--line); color: var(--shred); }
+.B .shredder .slot { width: 100px; height: 10px; border-radius: 5px; background: #2a2a2a; margin-bottom: 4px; box-shadow: 0 2px 0 rgba(0, 0, 0, 0.15); }
+.B .strips { display: flex; gap: 3px; height: 16px; margin-top: -6px; margin-bottom: 4px; }
+.B .strips i { width: 4px; background: var(--line); }
+.B .drive { right: 20px; border: 2.5px solid var(--file); color: var(--file); background: rgba(26, 127, 75, 0.08); }
+.B .drive .lip { width: 110px; height: 22px; border: 2.5px solid currentColor; border-top: 0; border-radius: 0 0 8px 8px; margin-bottom: 4px; }
+.B .sticky { position: absolute; background: var(--sticky); color: #3a2f0a; font: 700 24px/1.05 "Caveat", cursive; padding: 14px 14px 18px; box-shadow: 0 8px 16px rgba(60, 40, 10, 0.22); transform: rotate(3deg); z-index: 6; }
+.B .circled { outline: 2px dashed #c27a00; outline-offset: 2px; border-radius: 12px; }
+.B .torn { display: inline-flex; align-items: center; gap: 6px; background: var(--paper); border: 1.5px solid var(--line); padding: 9px 14px; font-size: 15px; font-weight: 600; border-radius: 3px; box-shadow: 0 2px 4px rgba(60, 40, 10, 0.1); clip-path: polygon(0 0, 100% 0, 100% 86%, 96% 100%, 90% 88%, 84% 100%, 78% 88%, 72% 100%, 66% 88%, 60% 100%, 54% 88%, 48% 100%, 42% 88%, 36% 100%, 30% 88%, 24% 100%, 18% 88%, 12% 100%, 6% 88%, 0 100%); padding-bottom: 14px; }
+.B .torn.on { background: #fff6d0; border-color: #c27a00; }
+.B .box { width: 18px; height: 18px; border: 2px solid var(--ink); border-radius: 3px; display: grid; place-items: center; flex: 0 0 auto; }
+.B .box.x::after { content: "\2713"; font-weight: 800; font-size: 14px; line-height: 1; }
+.B .ruled { background: var(--paper); background-image: repeating-linear-gradient(0deg, transparent 0 43px, #d9e2ef 43px 44px); border-radius: 4px; box-shadow: 0 10px 24px rgba(60, 40, 10, 0.14); }
+.B.dark .ruled { color: #1f2a36; }
+.B .rl { height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 14px; font-size: 14px; }
+.B .rl .mono { font-size: 12px; color: #6f6656; }
+.B .env { position: relative; background: var(--paper); height: 74px; border-radius: 4px; box-shadow: 0 4px 10px rgba(60, 40, 10, 0.12); display: flex; align-items: center; gap: 12px; padding: 0 14px; overflow: hidden; color: #1f2a36; }
+.B .env::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 30px; background: linear-gradient(to bottom right, transparent 49.5%, #e3d8c4 50%, transparent 51%), linear-gradient(to bottom left, transparent 49.5%, #e3d8c4 50%, transparent 51%); background-size: 50% 100%; background-repeat: no-repeat; background-position: left top, right top; }
+.B .postmark { width: 66px; height: 66px; border-radius: 50%; border: 3px double currentColor; display: grid; place-items: center; text-align: center; font: 800 10px/1.1 "Archivo", sans-serif; font-stretch: 75%; letter-spacing: 0.06em; text-transform: uppercase; transform: rotate(-12deg); flex: 0 0 auto; margin-left: auto; }
+.B .btn-stamp { display: grid; place-items: center; height: 54px; border: 3px double var(--ink); border-radius: 8px; font-family: "Archivo", sans-serif; font-stretch: 75%; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; font-size: 18px; background: var(--paper); color: #1f2a36; }
+.B .idx { background: #fff; border-radius: 3px; box-shadow: 0 3px 8px rgba(60, 40, 10, 0.14); padding: 12px 14px; position: relative; color: #1f2a36; background-image: linear-gradient(#e7a0a0, #e7a0a0), repeating-linear-gradient(0deg, transparent 0 21px, #d9e2ef 21px 22px); background-size: 100% 2px, 100% 100%; background-position: 0 30px, 0 30px; background-repeat: no-repeat, repeat; }
+.B .idx .tabk { position: absolute; top: -12px; right: 18px; background: #fff; padding: 2px 10px; border-radius: 6px 6px 0 0; font: 600 11px "IBM Plex Mono", monospace; }
+.B mark { background: #fde68a; color: inherit; }
+
+/* ================================================================
+   DIRECTION C: Console. Dense, fast, split inbox, power triage.
+   ================================================================ */
+.C { --bg: #f5f6f8; --surface: #ffffff; --sunk: #eef0f3; --ink: #121a23; --muted: #67727e; --line: #e0e4e9; --accent: #2346b8; --accent-bg: #e8edfb;
+  --shred: #c4271b; --shred-bg: #fdecea; --file: #1a7f4b; --file-bg: #e3f4ea; --keep: #8a5a00; --keep-bg: #fbf1dc; --warn: #a15c00; --warn-bg: #fff3d6;
+  font: 13px/1.35 "Public Sans", system-ui, sans-serif; }
+.C.dark { --bg: #0d1117; --surface: #161b22; --sunk: #1f262f; --ink: #e6ebf0; --muted: #8b96a3; --line: #262e38; --accent: #7d9bff; --accent-bg: #1b2547;
+  --shred: #ff8a7f; --shred-bg: #3a1a18; --file: #5fd393; --file-bg: #15301f; --keep: #f2c05a; --keep-bg: #33280f; --warn: #f2c05a; --warn-bg: #33280f; }
+.C .top { position: absolute; top: 54px; left: 0; right: 0; padding: 6px 14px 0; }
+.C .tl { display: flex; align-items: center; gap: 8px; height: 38px; }
+.C .tl h1 { font: 700 20px "Public Sans", sans-serif; margin: 0; }
+.C .tl .n { font: 500 12px "IBM Plex Mono", monospace; color: var(--muted); }
+.C .av { width: 30px; height: 30px; border-radius: 50%; background: var(--accent-bg); color: var(--accent); font-weight: 700; font-size: 11px; display: grid; place-items: center; margin-left: auto; }
+.C .iconbtn { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; color: var(--ink); }
+.C .splits { display: flex; gap: 6px; margin-top: 6px; }
+.C .split { font-weight: 600; font-size: 12.5px; padding: 6px 10px; border-radius: 8px; color: var(--muted); background: var(--sunk); display: flex; gap: 6px; align-items: center; }
+.C .split.on { background: var(--ink); color: var(--bg); }
+.C .split .k { font: 500 11px "IBM Plex Mono", monospace; opacity: 0.8; }
+.C .tabbar { position: absolute; left: 0; right: 0; bottom: 0; height: 84px; background: color-mix(in srgb, var(--surface) 88%, transparent); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-top: 1px solid var(--line); display: flex; justify-content: space-around; padding-top: 8px; z-index: 20; }
+.C .tab { display: grid; justify-items: center; gap: 2px; font-size: 10px; font-weight: 600; color: var(--muted); width: 66px; position: relative; }
+.C .tab.on { color: var(--accent); }
+.C .tab .badge { position: absolute; top: -4px; right: 14px; background: var(--shred); color: #fff; font: 700 10px "IBM Plex Mono", monospace; border-radius: 8px; padding: 0 5px; }
+.C .banner { border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; background: var(--accent-bg); color: var(--ink); }
+.C .banner .btn { margin-left: auto; }
+.C .btn { height: 32px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; background: var(--surface); border: 1px solid var(--line); color: var(--ink); white-space: nowrap; }
+.C .btn.pri { background: var(--accent); color: #fff; border-color: transparent; }
+.C.dark .btn.pri { color: #0b1020; }
+.C .btn.ghost { background: transparent; }
+.C .fcard { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px; box-shadow: 0 6px 18px rgba(18, 26, 35, 0.07); }
+.C .fhead { display: flex; gap: 12px; }
+.C .fhead h3 { margin: 0 0 2px; font-size: 16px; }
+.C .ftable { margin-top: 10px; border-top: 1px solid var(--line); }
+.C .fr { display: grid; grid-template-columns: 74px 1fr 46px; align-items: center; gap: 8px; height: 29px; border-bottom: 1px solid var(--line); }
+.C .fr .k { color: var(--muted); font-size: 12px; }
+.C .fr .v { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.C .fr .v.mono { font-size: 11.5px; }
+.C .cb { display: flex; gap: 2px; justify-content: flex-end; }
+.C .cb i { width: 7px; height: 9px; border-radius: 1.5px; background: var(--file); }
+.C .cb i.o { background: var(--line); }
+.C .fr.u { background: var(--warn-bg); margin: 0 -12px; padding: 0 12px; height: auto; min-height: 29px; }
+.C .fr.u .cb i { background: var(--warn); }
+.C .fr.u .cb i.o { background: color-mix(in srgb, var(--warn) 25%, transparent); }
+.C .alts { grid-column: 2 / 4; display: flex; gap: 6px; flex-wrap: wrap; padding: 2px 0 8px; }
+.C .alt { font-size: 12px; font-weight: 600; padding: 4px 9px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface); }
+.C .alt.on { border-color: var(--warn); color: var(--warn); }
+.C .vseg { display: flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; margin-top: 10px; }
+.C .vseg span { flex: 1; text-align: center; font-weight: 600; font-size: 12px; padding: 7px 0; color: var(--muted); }
+.C .vseg span + span { border-left: 1px solid var(--line); }
+.C .vseg span.on.shred { background: var(--shred-bg); color: var(--shred); }
+.C .vseg span.on.scan { background: var(--accent-bg); color: var(--accent); }
+.C .vseg span.on.keep { background: var(--keep-bg); color: var(--keep); }
+.C .vb { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; font: 700 10px "IBM Plex Mono", monospace; flex: 0 0 auto; }
+.C .vb.shred { background: var(--shred-bg); color: var(--shred); }
+.C .vb.scan { background: var(--accent-bg); color: var(--accent); }
+.C .vb.keep { background: var(--keep-bg); color: var(--keep); }
+.C .rowi { display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 14px; border-bottom: 1px solid var(--line); background: var(--surface); position: relative; }
+.C .rowi .t { font-weight: 600; font-size: 13px; }
+.C .rowi .s { font-size: 11.5px; color: var(--muted); }
+.C .rowi .r { margin-left: auto; text-align: right; font: 11px "IBM Plex Mono", monospace; color: var(--muted); }
+.C .cdot { width: 7px; height: 7px; border-radius: 50%; background: var(--file); display: inline-block; }
+.C .cdot.w { background: var(--warn); }
+.C .swipe { position: relative; height: 46px; border-bottom: 1px solid var(--line); overflow: hidden; }
+.C .swipe .under { position: absolute; inset: 0; background: var(--file); color: #fff; display: flex; align-items: center; gap: 6px; padding-left: 16px; font-weight: 700; }
+.C .swipe .rowi { position: absolute; inset: 0; left: 132px; border-left: 1px solid var(--line); }
+.C .triage { position: absolute; left: 10px; right: 10px; bottom: 92px; display: grid; grid-template-columns: 1fr 1fr 1fr 1.3fr; gap: 6px; z-index: 15; }
+.C .tb { height: 50px; border-radius: 11px; display: grid; place-items: center; align-content: center; gap: 0; font-weight: 700; font-size: 13px; border: 1px solid var(--line); background: var(--surface); }
+.C .tb small { font: 500 10px "IBM Plex Mono", monospace; color: var(--muted); }
+.C .tb.shred { color: var(--shred); }
+.C .tb.keep { color: var(--keep); }
+.C .tb.file { background: var(--file); color: #fff; border-color: transparent; }
+.C .tb.file small { color: rgba(255, 255, 255, 0.8); }
+.C.dark .tb.file { color: #07140c; }
+.C.dark .tb.file small { color: rgba(0, 0, 0, 0.6); }
+.C .tb.off { background: var(--sunk); color: var(--muted); }
+.C .sec { font: 600 11px "Public Sans", sans-serif; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); padding: 10px 14px 6px; display: flex; justify-content: space-between; }
+.C table { width: 100%; border-collapse: collapse; }
+.C td, .C th { text-align: left; padding: 0 8px; height: 40px; border-bottom: 1px solid var(--line); font-size: 12.5px; white-space: nowrap; }
+.C th { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; height: 28px; font-weight: 600; }
+.C .st { font: 600 10.5px "IBM Plex Mono", monospace; padding: 2px 6px; border-radius: 5px; }
+.C .st.ok { background: var(--file-bg); color: var(--file); }
+.C .st.up { background: var(--accent-bg); color: var(--accent); }
+.C .st.bad { background: var(--shred-bg); color: var(--shred); }
+.C .st.wait { background: var(--sunk); color: var(--muted); }
+.C .st.warn { background: var(--warn-bg); color: var(--warn); }
+.C .chk { width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid var(--line); flex: 0 0 auto; }
+.C .chk.on { background: var(--accent); border-color: var(--accent); position: relative; }
+.C .chk.on::after { content: ""; position: absolute; left: 5px; top: 1.5px; width: 5px; height: 9px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.C .field { height: 38px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); display: flex; align-items: center; gap: 8px; padding: 0 10px; }
+.C .facet { font-size: 12px; font-weight: 600; padding: 5px 9px; border-radius: 7px; background: var(--surface); border: 1px solid var(--line); white-space: nowrap; }
+.C .facet.on { background: var(--accent-bg); color: var(--accent); border-color: transparent; }
+.C .facet span { color: var(--muted); font-weight: 500; margin-left: 3px; }
+.C mark { background: rgba(255, 204, 0, 0.35); color: inherit; }
+.C .kvrow { display: flex; align-items: center; height: 40px; padding: 0 14px; background: var(--surface); border-bottom: 1px solid var(--line); gap: 10px; font-size: 13px; }
+.C .kvrow .v { margin-left: auto; color: var(--muted); font-size: 12.5px; }
+.C .sw { width: 38px; height: 22px; border-radius: 11px; background: var(--file); position: relative; margin-left: auto; }
+.C .sw::after { content: ""; position: absolute; right: 2px; top: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; }
+.C .slider { height: 4px; border-radius: 2px; background: var(--line); position: relative; width: 120px; margin-left: auto; }
+.C .slider i { position: absolute; left: 0; top: 0; bottom: 0; width: 75%; background: var(--accent); border-radius: 2px; }
+.C .slider b { position: absolute; left: 75%; top: -7px; width: 18px; height: 18px; margin-left: -9px; border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M7 3h7l5 5v12a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></symbol>
+  <symbol id="i-tray" viewBox="0 0 24 24"><path d="M3 13l3-8h12l3 8v6a1 1 0 01-1 1H4a1 1 0 01-1-1z"/><path d="M3 13h5l1.5 3h5L16 13h5"/></symbol>
+  <symbol id="i-stack" viewBox="0 0 24 24"><rect x="4" y="13" width="7" height="8" rx="1"/><rect x="13" y="9" width="7" height="12" rx="1"/><path d="M4 10.5l7-1M13 6.5l7-.5"/></symbol>
+  <symbol id="i-leaf" viewBox="0 0 24 24"><path d="M5 19c0-8 5-13 15-14-1 10-6 15-14 15"/><path d="M5 19l8-8"/></symbol>
+  <symbol id="i-cards" viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="16" rx="2"/><path d="M4 7v12a2 2 0 002 2h10"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+  <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 18a4 4 0 010-8 6 6 0 0111.5 1.5A3.5 3.5 0 0118 18z"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17v.5"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+  <symbol id="i-filter" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></symbol>
+  <symbol id="i-retry" viewBox="0 0 24 24"><path d="M20 12a8 8 0 11-2.3-5.7"/><path d="M20 4v5h-5"/></symbol>
+  <symbol id="i-person" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3L5 14h6l-1 7 8-11h-6z"/></symbol>
+  <symbol id="i-split" viewBox="0 0 24 24"><path d="M4 12h16M8 8l-4 4 4 4M16 8l4 4-4 4"/></symbol>
+</svg>
+
+<header class="board-head">
+  <h1>Paper Trail for iPhone: three directions</h1>
+  <p>Low-fi sketches at iPhone 15 Pro Max proportions (393 x 852 pt). Same app, same data, three different answers to how sorting a box of paperwork should feel. All names, senders and amounts are made up.</p>
+</header>
+
+<!-- ===================================================================
+     ROW A: GLASS
+     =================================================================== -->
+<section class="row" id="row-A">
+  <div class="row-head">
+    <span class="letter">A</span>
+    <div>
+      <h2>Glass: native and calm</h2>
+      <p>Feels like an Apple app. System grouped backgrounds, a floating Liquid Glass tab bar with a search island, the outbox as a tab bar accessory (like the Music mini player), sheets with detents for anything that needs a decision. One big card at a time, medium detail.</p>
+    </div>
+  </div>
+  <div class="frames">
+
+    <!-- A1 Sort deck -->
+    <figure><figcaption><b>A1</b> Sort deck, card mid-swipe to File</figcaption><div class="frame-wrap">
+    <div class="phone A"><div class="scr">
+      <div class="lt"><h1>Sort</h1><div class="sub">12 to go · 8 ready to file</div><div class="avatar">BW</div></div>
+      <div class="peek" style="top:186px;height:440px;transform:scale(.92);opacity:.6"></div>
+      <div class="peek" style="top:172px;height:450px;transform:scale(.96)"></div>
+      <div class="card" style="top:150px;height:470px;transform:translateX(14px) rotate(2.5deg);transform-origin:50% 120%">
+        <div class="img"><div class="doc" data-doc="w2" style="width:150px;height:196px"></div><span class="pill scan">Scan + shred</span><span class="pg">1 page</span>
+          <div class="glass" style="position:absolute;left:14px;top:14px;border-radius:99px;padding:6px 12px;color:var(--file);font-weight:700;font-size:15px;display:flex;gap:4px;align-items:center"><svg class="ic s"><use href="#i-check"/></svg>File</div>
+        </div>
+        <div class="body">
+          <h3>2025 W-2</h3>
+          <div class="meta">Northwind Logistics · Jan 30, 2026</div>
+          <div class="kv"><svg class="ic s"><use href="#i-folder"/></svg>Taxes › 2025</div>
+          <div class="row-x"><span class="pill warn"><svg class="ic xs"><use href="#i-lock"/></svg>Sensitive</span><span class="pill gray">Keep 7 years</span></div>
+          <div class="fname">2026-01-30_W-2_Northwind-Logistics.pdf</div>
+        </div>
+      </div>
+      <div class="actbar" style="top:640px">
+        <div class="bigbtn glass" style="color:var(--shred)"><svg class="ic"><use href="#i-x"/></svg>Shred</div>
+        <div class="circ glass"><svg class="ic"><use href="#i-undo"/></svg></div>
+        <div class="bigbtn glass" style="color:var(--file)"><svg class="ic"><use href="#i-check"/></svg>File</div>
+      </div>
+      <div class="accessory glass"><div class="ring"></div><div class="grow"><div style="font-weight:600">Uploading 2 of 5</div></div><span style="color:var(--muted);font-size:13px">Outbox</span><svg class="ic s" style="color:var(--muted)"><use href="#i-chev"/></svg></div>
+      <div class="tabbar glass"><div class="tab on"><svg class="ic"><use href="#i-cards"/></svg>Sort</div><div class="tab"><svg class="ic"><use href="#i-stack"/></svg>Piles</div><div class="tab"><svg class="ic"><use href="#i-leaf"/></svg>Paperless</div></div>
+      <div class="island-btn glass"><svg class="ic"><use href="#i-search"/></svg></div>
+    </div></div></div></figure>
+
+    <!-- A2 Low confidence -->
+    <figure><figcaption><b>A2</b> Low-confidence card, sheet at medium detent</figcaption><div class="frame-wrap">
+    <div class="phone A"><div class="scr">
+      <div class="lt"><h1>Sort</h1><div class="sub">11 to go · 8 ready to file</div><div class="avatar">BW</div></div>
+      <div class="card" style="top:140px;height:470px">
+        <div class="img" style="height:96px"><div class="doc" data-doc="bill" style="width:58px;height:76px"></div><span class="pill warn" style="position:absolute;top:14px;right:14px">2 to check</span></div>
+        <div class="body">
+          <h3>Electric bill, September</h3>
+          <div class="kv unsure">Cascade Power &amp; Light<span class="q">Not sure</span></div>
+          <div class="kv unsure">Sep 28, 2026<span class="q">Not sure</span></div>
+          <div class="kv"><svg class="ic s"><use href="#i-folder"/></svg>Home › Utilities</div>
+        </div>
+      </div>
+      <div class="dimmed"></div>
+      <div class="sheet glass" style="top:392px">
+        <div class="grabber"></div>
+        <div style="font-size:20px;font-weight:700">Check 2 fields</div>
+        <div style="color:var(--muted);font-size:14px;margin:2px 0 10px">Everything else looks right.</div>
+        <div style="font-size:13px;font-weight:600;color:var(--muted);margin:0 4px 6px">SENDER</div>
+        <div class="opt sel"><span class="radio"></span>Cascade Power &amp; Light<span class="conf">likely</span></div>
+        <div class="opt"><span class="radio"></span>Cascade Natural Gas<span class="conf">possible</span></div>
+        <div style="font-size:13px;font-weight:600;color:var(--muted);margin:14px 4px 6px">STATEMENT DATE</div>
+        <div class="row-x"><span class="chip on">Sep 28, 2026</span><span class="chip">Oct 3 (due date)</span></div>
+        <div class="row-x" style="margin:12px 4px 12px;font-size:15px"><span class="grow">Remember for this sender</span><span class="toggle"></span></div>
+        <div class="primary">Confirm and file</div>
+      </div>
+    </div></div></div></figure>
+
+    <!-- A3 Scan handoff -->
+    <figure><figcaption><b>A3</b> Scan handoff: scanner closes, Claude splits pages</figcaption><div class="frame-wrap">
+    <div class="phone A"><div class="scr">
+      <div class="navbtn glass" style="left:16px">Cancel</div>
+      <div class="navbtn glass" style="right:16px;color:var(--accent);font-weight:600">Scan more</div>
+      <div class="lt" style="top:110px"><h1 style="font-size:28px">4 pages, 3 documents</h1><div class="sub">Tap between pages to split or join</div></div>
+      <div class="abs" style="left:16px;right:16px;top:200px;display:grid;gap:12px">
+        <div class="group" style="padding:12px 14px">
+          <div class="row-x" style="margin-bottom:10px"><span class="grow" style="font-weight:600">Electric bill · Cascade Power &amp; Light</span><span class="pill file">Read</span></div>
+          <div class="row-x" style="gap:10px"><div class="doc" data-doc="bill" style="width:66px;height:86px"></div><svg class="ic s" style="color:var(--muted)"><use href="#i-split"/></svg><div class="doc" data-doc="lines" style="width:66px;height:86px"></div></div>
+        </div>
+        <div class="group" style="padding:12px 14px">
+          <div class="row-x" style="margin-bottom:10px"><span class="grow" style="font-weight:600">1099-INT · Harbor Federal CU</span><span class="pill file">Read</span></div>
+          <div class="doc" data-doc="1099" style="width:66px;height:86px"></div>
+        </div>
+        <div class="group" style="padding:12px 14px">
+          <div class="row-x" style="margin-bottom:10px"><span class="grow" style="font-weight:600;color:var(--muted)">Reading page 4</span><span class="pill gray">Reading</span></div>
+          <div class="doc" data-doc="receipt" style="width:48px;height:86px;opacity:.6"></div>
+        </div>
+      </div>
+      <div class="abs" style="left:20px;right:20px;bottom:44px"><div class="primary">Send 3 to the deck</div><div style="text-align:center;color:var(--muted);font-size:13px;margin-top:10px">Saved on your phone. Nothing is lost if you close the app.</div></div>
+    </div></div></div></figure>
+
+    <!-- A4 Outbox -->
+    <figure><figcaption><b>A4</b> Outbox, opened from the accessory</figcaption><div class="frame-wrap">
+    <div class="phone A"><div class="scr">
+      <div class="navbtn glass" style="left:16px"><svg class="ic s"><use href="#i-back"/></svg>Sort</div>
+      <div class="lt" style="top:110px"><h1>Outbox</h1><div class="sub">2 uploading · 1 needs a retry · 14 filed today</div></div>
+      <div class="abs" style="left:16px;right:16px;top:186px">
+        <div class="gh" style="margin-top:6px">Needs attention</div>
+        <div class="group"><div class="li"><div class="thumb"><div class="doc" data-doc="1099" style="width:26px;height:34px"></div></div><div class="grow"><div class="t">1099-INT · Harbor Federal</div><div class="s">Drive didn't answer. Trying again in 2 min.</div></div><span class="pill scan">Retry</span></div></div>
+        <div class="gh">Uploading</div>
+        <div class="group">
+          <div class="li"><div class="thumb"><div class="doc" data-doc="bill" style="width:26px;height:34px"></div></div><div class="grow"><div class="t">Electric bill · Cascade</div><div class="bar"><i style="width:62%"></i></div></div><span class="s" style="font-size:13px;color:var(--muted)">62%</span></div>
+          <div class="li"><div class="thumb"><div class="doc" data-doc="w2" style="width:26px;height:34px"></div></div><div class="grow"><div class="t">2025 W-2 · Northwind</div><div class="s">Next in line</div></div></div>
+        </div>
+        <div class="gh">Filed today</div>
+        <div class="group">
+          <div class="li"><svg class="ic" style="color:var(--file)"><use href="#i-check"/></svg><div class="grow"><div class="t">Pharmacy receipt · Elm Street</div><div class="s">1 of 1 pages confirmed in Drive · 10:12 AM</div></div></div>
+          <div class="li"><svg class="ic" style="color:var(--file)"><use href="#i-check"/></svg><div class="grow"><div class="t">Vehicle title · DMV</div><div class="s">2 of 2 pages confirmed · 10:09 AM</div></div></div>
+          <div class="li"><svg class="ic" style="color:var(--file)"><use href="#i-check"/></svg><div class="grow"><div class="t">Brightline Wireless bill</div><div class="s">3 of 3 pages confirmed · 9:58 AM</div></div></div>
+        </div>
+      </div>
+      <div class="tabbar glass"><div class="tab on"><svg class="ic"><use href="#i-cards"/></svg>Sort</div><div class="tab"><svg class="ic"><use href="#i-stack"/></svg>Piles</div><div class="tab"><svg class="ic"><use href="#i-leaf"/></svg>Paperless</div></div>
+      <div class="island-btn glass"><svg class="ic"><use href="#i-search"/></svg></div>
+    </div></div></div></figure>
+
+    <!-- A5 Piles -->
+    <figure><figcaption><b>A5</b> Piles: shred pile with the safe-to-shred check</figcaption><div class="frame-wrap">
+    <div class="phone A"><div class="scr">
+      <div class="lt"><h1>Piles</h1><div class="avatar">BW</div></div>
+      <div class="abs" style="left:16px;right:16px;top:116px">
+        <div class="seg"><span class="on">Shred<small>9</small></span><span>Keep<small>3</small></span><span>All filed<small>64</small></span></div>
+        <div class="group" style="margin-top:14px;padding:12px 16px;display:flex;gap:10px;align-items:flex-start;background:var(--file-bg)"><svg class="ic" style="color:var(--file)"><use href="#i-check"/></svg><div style="font-size:14px"><b>6 are safe to shred.</b> The Drive copy is confirmed and the 3-day hold is over.</div></div>
+        <div class="gh">Safe to shred</div>
+        <div class="group">
+          <div class="li"><div class="thumb"><div class="doc" data-doc="receipt" style="width:18px;height:34px"></div></div><div class="grow"><div class="t">Pharmacy receipt</div><div class="s">Elm Street Pharmacy · Cross-cut</div></div><span class="pill file">Safe</span></div>
+          <div class="li"><div class="thumb"><div class="doc" data-doc="1099" style="width:26px;height:34px"></div></div><div class="grow"><div class="t">2024 1099-INT</div><div class="s">Harbor Federal · Cross-cut</div></div><span class="pill file">Safe</span></div>
+          <div class="li"><div class="thumb"><div class="doc" data-doc="bill" style="width:26px;height:34px"></div></div><div class="grow"><div class="t">Electric bill, August</div><div class="s">Cascade Power &amp; Light</div></div><span class="pill file">Safe</span></div>
+          <div class="li" style="color:var(--muted)"><span class="grow" style="font-size:14px">3 more</span><svg class="ic s chev"><use href="#i-chev"/></svg></div>
+        </div>
+        <div class="gh">Waiting</div>
+        <div class="group">
+          <div class="li"><div class="thumb"><div class="doc" data-doc="w2" style="width:26px;height:34px"></div></div><div class="grow"><div class="t">2025 W-2</div><div class="s">Northwind Logistics</div></div><span class="pill gray"><svg class="ic xs"><use href="#i-clock"/></svg>2 days</span></div>
+        </div>
+      </div>
+      <div class="bigbtn glass" style="position:absolute;left:60px;right:60px;bottom:100px;justify-content:center;color:var(--accent)">Mark 6 as shredded</div>
+      <div class="tabbar glass"><div class="tab"><svg class="ic"><use href="#i-cards"/></svg>Sort</div><div class="tab on"><svg class="ic"><use href="#i-stack"/></svg>Piles</div><div class="tab"><svg class="ic"><use href="#i-leaf"/></svg>Paperless</div></div>
+      <div class="island-btn glass"><svg class="ic"><use href="#i-search"/></svg></div>
+    </div></div></div></figure>
+
+    <!-- A6 Search -->
+    <figure><figcaption><b>A6</b> Search: the island opens into a bottom field</figcaption><div class="frame-wrap">
+    <div class="phone A"><div class="scr">
+      <div class="lt"><h1>Search</h1></div>
+      <div class="abs" style="left:16px;right:16px;top:116px">
+        <div class="row-x" style="flex-wrap:wrap"><span class="chip on">Tax forms</span><span class="chip on">2023</span><span class="chip">Sensitive</span><span class="chip">Keep originals</span></div>
+        <div class="gh">3 results</div>
+        <div class="group">
+          <div class="li" style="align-items:flex-start"><div class="thumb"><div class="doc" data-doc="w2" style="width:26px;height:34px"></div></div><div class="grow"><div class="t">2023 <mark>W-2</mark></div><div class="s">Northwind Logistics · Taxes › 2023</div><div class="s" style="margin-top:4px">"...Form <mark>W-2</mark> Wage and Tax Statement <mark>2023</mark>, box 1 wages..."</div></div></div>
+          <div class="li" style="align-items:flex-start"><div class="thumb"><div class="doc" data-doc="w2" style="width:26px;height:34px"></div></div><div class="grow"><div class="t">2023 <mark>W-2</mark>, corrected</div><div class="s">Northwind Logistics · Taxes › 2023</div></div></div>
+          <div class="li" style="align-items:flex-start"><div class="thumb"><div class="doc" data-doc="1099" style="width:26px;height:34px"></div></div><div class="grow"><div class="t"><mark>2023</mark> 1099-INT</div><div class="s">Harbor Federal CU · Taxes › 2023</div></div></div>
+        </div>
+        <div class="gh">Recent</div>
+        <div class="group"><div class="li"><svg class="ic s" style="color:var(--muted)"><use href="#i-clock"/></svg><span class="grow">car title</span></div><div class="li"><svg class="ic s" style="color:var(--muted)"><use href="#i-clock"/></svg><span class="grow">pharmacy 2026</span></div></div>
+      </div>
+      <div class="glass" style="position:absolute;left:21px;bottom:21px;width:62px;height:62px;border-radius:50%;display:grid;place-items:center;z-index:20"><svg class="ic"><use href="#i-cards"/></svg></div>
+      <div class="glass" style="position:absolute;left:93px;right:21px;bottom:21px;height:62px;border-radius:31px;display:flex;align-items:center;gap:10px;padding:0 18px;z-index:20;font-size:17px"><svg class="ic" style="color:var(--muted)"><use href="#i-search"/></svg>w-2 2023<span style="width:2px;height:22px;background:var(--accent)"></span></div>
+    </div></div></div></figure>
+
+    <!-- A7 Paperless -->
+    <figure><figcaption><b>A7</b> Paperless tracker, with a "still mailing?" flag</figcaption><div class="frame-wrap">
+    <div class="phone A"><div class="scr">
+      <div class="lt"><h1>Paperless</h1><div class="sub">2 of 7 senders confirmed</div><div class="avatar">BW</div></div>
+      <div class="abs" style="left:16px;right:16px;top:150px">
+        <div class="group" style="padding:14px 16px;background:var(--warn-bg)">
+          <div class="row-x" style="color:var(--warn);font-weight:700"><svg class="ic s"><use href="#i-warn"/></svg>Still mailing?</div>
+          <div style="font-size:14px;margin:4px 0 10px">Cascade Power &amp; Light sent a paper bill on Oct 9, after you requested paperless.</div>
+          <div class="row-x"><span class="chip">Open their steps</span><span class="chip">Wait a cycle</span></div>
+        </div>
+        <div class="gh">Check back soon</div>
+        <div class="group">
+          <div class="li"><div class="grow"><div class="t">Summit Health Plan</div><div class="s">Check back Oct 28</div></div><span class="pill scan">Waiting a cycle</span></div>
+          <div class="li"><div class="grow"><div class="t">Cascade Power &amp; Light</div><div class="s">Check back Nov 15</div></div><span class="pill warn">Requested</span></div>
+        </div>
+        <div class="gh">To do</div>
+        <div class="group">
+          <div class="li"><div class="grow"><div class="t">Brightline Wireless</div><div class="s">Account settings, then Billing, then Paper bill off</div></div><span class="pill gray">To do</span></div>
+                  </div>
+        <div class="gh">Done</div>
+        <div class="group">
+          <div class="li"><div class="grow"><div class="t">Harbor Federal, Northwind</div><div class="s">1 more can't stop (DMV)</div></div><span class="pill file">Confirmed</span></div>
+        </div>
+      </div>
+      <div class="tabbar glass"><div class="tab"><svg class="ic"><use href="#i-cards"/></svg>Sort</div><div class="tab"><svg class="ic"><use href="#i-stack"/></svg>Piles</div><div class="tab on"><svg class="ic"><use href="#i-leaf"/></svg>Paperless</div></div>
+      <div class="island-btn glass"><svg class="ic"><use href="#i-search"/></svg></div>
+    </div></div></div></figure>
+
+    <!-- A8 Settings -->
+    <figure><figcaption><b>A8</b> Settings with Drive status (from the avatar)</figcaption><div class="frame-wrap">
+    <div class="phone A"><div class="scr">
+      <div class="navbtn glass" style="right:16px;color:var(--accent);font-weight:600">Done</div>
+      <div class="lt" style="top:110px"><h1>Settings</h1></div>
+      <div class="abs" style="left:16px;right:16px;top:166px">
+        <div class="group"><div class="li"><div style="width:48px;height:48px;border-radius:50%;background:var(--accent-bg);color:var(--accent);display:grid;place-items:center;font-weight:700">BW</div><div class="grow"><div class="t" style="font-size:18px">Bryce W.</div><div class="s">you@example.com</div></div><svg class="ic s chev"><use href="#i-chev"/></svg></div></div>
+        <div class="gh">Google Drive</div>
+        <div class="group">
+          <div class="li"><span class="dot"></span><div class="grow"><div class="t">Connected</div><div class="s">Stays connected on the server. No sign-in prompts.</div></div></div>
+          <div class="li"><span class="grow">Folder</span><span style="color:var(--muted)">Paper Trail</span><svg class="ic s chev"><use href="#i-chev"/></svg></div>
+          <div class="li"><span class="grow">Last upload</span><span style="color:var(--muted)">2 min ago</span></div>
+        </div>
+        <div class="gh">Sorting</div>
+        <div class="group">
+          <div class="li"><span class="grow">Sender rules</span><span style="color:var(--muted)">14</span><svg class="ic s chev"><use href="#i-chev"/></svg></div>
+          <div class="li"><span class="grow">Shred hold</span><span style="color:var(--muted)">3 days</span><svg class="ic s chev"><use href="#i-chev"/></svg></div>
+          <div class="li"><span class="grow">Offer to file confident cards together</span><span class="toggle"></span></div>
+        </div>
+        <div class="gh">Scanning and privacy</div>
+        <div class="group">
+          <div class="li"><span class="grow">Shutter</span><span style="color:var(--muted)">Manual</span><svg class="ic s chev"><use href="#i-chev"/></svg></div>
+          <div class="li"><span class="grow">Lock with Face ID</span><span class="toggle off"></span></div>
+        </div>
+      </div>
+    </div></div></div></figure>
+
+    <!-- A9 Dark -->
+    <figure><figcaption><b>A9</b> Dark: Sort deck, next card is a Shred</figcaption><div class="frame-wrap">
+    <div class="phone A dark"><div class="scr">
+      <div class="lt"><h1>Sort</h1><div class="sub">11 to go · 8 ready to file</div><div class="avatar">BW</div></div>
+      <div class="peek" style="top:172px;height:450px;transform:scale(.96)"></div>
+      <div class="card" style="top:150px;height:470px">
+        <div class="img"><div class="doc" data-doc="receipt" style="width:96px;height:200px"></div><span class="pill shred">Shred</span><span class="pg">1 page</span></div>
+        <div class="body">
+          <h3>Pharmacy receipt</h3>
+          <div class="meta">Elm Street Pharmacy · Aug 12, 2026</div>
+          <div class="kv"><svg class="ic s"><use href="#i-folder"/></svg>Health › Receipts</div>
+          <div class="row-x"><span class="pill warn"><svg class="ic xs"><use href="#i-lock"/></svg>Sensitive</span><span class="pill gray">Keep for HSA, 3 years</span></div>
+          <div class="fname">2026-08-12_Receipt_Elm-Street-Pharmacy.pdf</div>
+        </div>
+      </div>
+      <div class="actbar" style="top:640px">
+        <div class="bigbtn glass" style="color:var(--shred)"><svg class="ic"><use href="#i-x"/></svg>Shred</div>
+        <div class="circ glass"><svg class="ic"><use href="#i-undo"/></svg></div>
+        <div class="bigbtn glass" style="color:var(--file)"><svg class="ic"><use href="#i-check"/></svg>File</div>
+      </div>
+      <div class="accessory glass"><div class="ring"></div><div class="grow"><div style="font-weight:600">Uploading 3 of 5</div></div><span style="color:var(--muted);font-size:13px">Outbox</span><svg class="ic s" style="color:var(--muted)"><use href="#i-chev"/></svg></div>
+      <div class="tabbar glass"><div class="tab on"><svg class="ic"><use href="#i-cards"/></svg>Sort</div><div class="tab"><svg class="ic"><use href="#i-stack"/></svg>Piles</div><div class="tab"><svg class="ic"><use href="#i-leaf"/></svg>Paperless</div></div>
+      <div class="island-btn glass"><svg class="ic"><use href="#i-search"/></svg></div>
+    </div></div></div></figure>
+  </div>
+</section>
+
+<!-- ===================================================================
+     ROW B: DESK
+     =================================================================== -->
+<section class="row" id="row-B">
+  <div class="row-head">
+    <span class="letter">B</span>
+    <div>
+      <h2>Desk: tactile and paper-like</h2>
+      <p>The web app's rubber stamps, grown into a whole world. The scan itself is the card, with a manila tag clipped on. You drag it into a shredder slot or a Drive tray. Piles are real stacks like the app icon, the outbox is an out tray of envelopes, the tracker is a ledger. Folder tabs instead of a tab bar. Least on the card at once.</p>
+    </div>
+  </div>
+  <div class="frames">
+
+    <!-- B1 Sort -->
+    <figure><figcaption><b>B1</b> Desk: drag the paper to the Drive tray</figcaption><div class="frame-wrap">
+    <div class="phone B"><div class="scr">
+      <div class="hdr"><div><div class="disp wm">Paper Trail</div><div class="count">12 ON THE DESK</div></div><div class="gear"><svg class="ic"><use href="#i-gear"/></svg></div></div>
+      <div class="sheetp" style="left:46px;top:150px;width:300px;height:390px;transform:rotate(-4deg)"></div>
+      <div class="sheetp" style="left:46px;top:150px;width:300px;height:390px;transform:rotate(2.5deg)"></div>
+      <div style="position:absolute;left:46px;top:146px;width:300px;height:390px;transform:translate(14px,6px) rotate(4deg);z-index:4">
+        <div class="sheetp" style="inset:0"><div class="doc" data-doc="w2" style="position:absolute;inset:0;box-shadow:none"></div></div>
+        <span class="stamp scan" style="position:absolute;right:16px;top:30px;font-size:22px;transform:rotate(-9deg)">Scan + shred</span>
+        <div class="tag" style="left:-24px;bottom:-34px;width:270px;transform:rotate(-5deg)"><b>2025 W-2</b><br>Northwind Logistics<br>Jan 30, 2026<br>→ Taxes/2025 <span class="stamp sm shred" style="margin-left:6px">Cross-cut</span></div>
+      </div>
+      <div class="tray shredder"><div class="slot"></div><div class="strips"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><span class="disp lbl">Shred</span></div>
+      <div class="tray drive"><div class="lip"></div><span class="disp lbl">File to Drive</span></div>
+      <div class="abs" style="left:0;right:0;bottom:208px;text-align:center;font:500 12px 'IBM Plex Mono',monospace;color:var(--muted)">↶ UNDO</div>
+      <div class="tabs"><div class="ftab on"><svg class="ic"><use href="#i-cards"/></svg>Desk</div><div class="ftab"><svg class="ic"><use href="#i-stack"/></svg>Piles</div><div class="ftab"><svg class="ic"><use href="#i-leaf"/></svg>Paperless</div><div class="ftab"><svg class="ic"><use href="#i-search"/></svg>Find</div></div>
+    </div></div></div></figure>
+
+    <!-- B2 Low confidence -->
+    <figure><figcaption><b>B2</b> Unsure: a sticky note and pencil circles</figcaption><div class="frame-wrap">
+    <div class="phone B"><div class="scr">
+      <div class="hdr"><div><div class="disp wm">Paper Trail</div><div class="count">11 ON THE DESK</div></div><div class="gear"><svg class="ic"><use href="#i-gear"/></svg></div></div>
+      <div class="sheetp" style="left:46px;top:140px;width:300px;height:330px;transform:rotate(-2deg)"><div class="doc" data-doc="bill" style="position:absolute;inset:0;box-shadow:none"></div></div>
+      <span class="stamp shred" style="position:absolute;right:58px;top:170px;font-size:22px;z-index:5">Shred</span>
+      <div class="sticky" style="left:26px;top:150px;width:150px">Not sure who sent this, or which date</div>
+      <div class="tag" style="left:40px;top:410px;width:290px;transform:rotate(-2deg);z-index:6"><b>Electric bill, September</b><br><span class="circled">Cascade Power &amp; Light ?</span><br><span class="circled">Sep 28, 2026 ?</span><br>→ Home/Utilities</div>
+      <div class="abs" style="left:20px;right:20px;top:568px">
+        <div class="disp" style="font-size:14px;margin-bottom:8px">Who sent it?</div>
+        <div class="row-x" style="flex-wrap:wrap;gap:8px"><span class="torn on">Cascade Power &amp; Light</span><span class="torn">Cascade Natural Gas</span><span class="torn">Someone else</span></div>
+        <div class="row-x" style="margin-top:12px;font-size:14px"><span class="box x"></span>Same answer next time for this sender</div>
+      </div>
+      <div class="tabs"><div class="ftab on"><svg class="ic"><use href="#i-cards"/></svg>Desk</div><div class="ftab"><svg class="ic"><use href="#i-stack"/></svg>Piles</div><div class="ftab"><svg class="ic"><use href="#i-leaf"/></svg>Paperless</div><div class="ftab"><svg class="ic"><use href="#i-search"/></svg>Find</div></div>
+    </div></div></div></figure>
+
+    <!-- B3 Scan handoff -->
+    <figure><figcaption><b>B3</b> Scan handoff: pages land, clipped into documents</figcaption><div class="frame-wrap">
+    <div class="phone B"><div class="scr">
+      <div class="hdr"><div><div class="disp wm" style="font-size:24px">4 pages, 3 documents</div><div class="count">TAP A CLIP TO SPLIT OR JOIN</div></div></div>
+      <div class="abs" style="left:28px;top:150px;width:190px;height:220px">
+        <div class="sheetp" style="inset:0;transform:rotate(-5deg)"><div class="doc" data-doc="lines" style="position:absolute;inset:0;box-shadow:none"></div></div>
+        <div class="sheetp" style="inset:0;transform:rotate(2deg) translate(8px,6px)"><div class="doc" data-doc="bill" style="position:absolute;inset:0;box-shadow:none"></div></div>
+        <div style="position:absolute;left:70px;top:-14px;width:22px;height:46px;border:3px solid #8b9198;border-radius:11px;z-index:3"></div>
+      </div>
+      <div class="tag" style="left:34px;top:388px;transform:rotate(3deg);z-index:5"><b>Electric bill</b><br>2 pages</div>
+      <div class="abs" style="left:234px;top:170px;width:130px;height:168px">
+        <div class="sheetp" style="inset:0;transform:rotate(6deg)"><div class="doc" data-doc="1099" style="position:absolute;inset:0;box-shadow:none"></div></div>
+      </div>
+      <div class="tag" style="left:236px;top:356px;transform:rotate(-4deg);z-index:5;padding-right:10px"><b>1099-INT</b><br>1 page</div>
+      <div class="abs" style="left:150px;top:470px;width:100px;height:180px">
+        <div class="sheetp" style="inset:0;transform:rotate(-3deg);opacity:.7"><div class="doc" data-doc="receipt" style="position:absolute;inset:0;box-shadow:none"></div></div>
+      </div>
+      <div class="sticky" style="left:262px;top:520px;width:110px;font-size:22px;transform:rotate(-3deg)">Still reading this one...</div>
+      <div class="abs" style="left:20px;right:20px;bottom:116px"><div class="btn-stamp">Put 3 on the desk</div></div>
+      <div class="tabs"><div class="ftab on"><svg class="ic"><use href="#i-cards"/></svg>Desk</div><div class="ftab"><svg class="ic"><use href="#i-stack"/></svg>Piles</div><div class="ftab"><svg class="ic"><use href="#i-leaf"/></svg>Paperless</div><div class="ftab"><svg class="ic"><use href="#i-search"/></svg>Find</div></div>
+    </div></div></div></figure>
+
+    <!-- B4 Outbox -->
+    <figure><figcaption><b>B4</b> Out tray: envelopes with postmarks</figcaption><div class="frame-wrap">
+    <div class="phone B"><div class="scr">
+      <div class="hdr"><div><div class="disp wm">Out tray</div><div class="count">2 GOING · 1 CAME BACK · 14 DELIVERED TODAY</div></div><div class="gear"><svg class="ic"><use href="#i-back"/></svg></div></div>
+      <div class="abs" style="left:18px;right:18px;top:138px;display:grid;gap:12px">
+        <div class="env" style="transform:rotate(-1deg)"><div class="grow" style="padding-top:14px"><div style="font-weight:700">1099-INT · Harbor Federal</div><div class="mono" style="font-size:12px;color:var(--shred)">Drive didn't answer. Try again.</div></div><div class="postmark" style="color:var(--shred)">Came<br>back</div></div>
+        <div class="env" style="transform:rotate(.6deg)"><div class="grow" style="padding-top:14px"><div style="font-weight:700">Electric bill · Cascade</div><div class="mono" style="font-size:12px;color:#6f6656">62% sent</div></div><div class="postmark" style="color:var(--scan)">Going<br>62%</div></div>
+        <div class="env" style="transform:rotate(-.4deg)"><div class="grow" style="padding-top:14px"><div style="font-weight:700">2025 W-2 · Northwind</div><div class="mono" style="font-size:12px;color:#6f6656">Next in line</div></div><div class="postmark" style="color:#6f6656">Waiting</div></div>
+        <div class="disp" style="font-size:13px;margin:8px 0 0;color:var(--muted)">Delivered today</div>
+        <div class="env" style="transform:rotate(.8deg)"><div class="grow" style="padding-top:14px"><div style="font-weight:700">Pharmacy receipt</div><div class="mono" style="font-size:12px;color:#6f6656">1 of 1 pages in Drive</div></div><div class="postmark" style="color:var(--file)">Filed<br>10:12</div></div>
+        <div class="env" style="transform:rotate(-.6deg)"><div class="grow" style="padding-top:14px"><div style="font-weight:700">Vehicle title · DMV</div><div class="mono" style="font-size:12px;color:#6f6656">2 of 2 pages in Drive</div></div><div class="postmark" style="color:var(--file)">Filed<br>10:09</div></div>
+      </div>
+      <div class="tabs"><div class="ftab on"><svg class="ic"><use href="#i-cards"/></svg>Desk</div><div class="ftab"><svg class="ic"><use href="#i-stack"/></svg>Piles</div><div class="ftab"><svg class="ic"><use href="#i-leaf"/></svg>Paperless</div><div class="ftab"><svg class="ic"><use href="#i-search"/></svg>Find</div></div>
+    </div></div></div></figure>
+
+    <!-- B5 Piles -->
+    <figure><figcaption><b>B5</b> Piles: three real stacks, like the icon</figcaption><div class="frame-wrap">
+    <div class="phone B"><div class="scr">
+      <div class="hdr"><div><div class="disp wm">Piles</div></div><div class="gear"><svg class="ic"><use href="#i-gear"/></svg></div></div>
+      <div class="abs" style="left:24px;right:24px;top:112px;height:180px;display:flex;align-items:flex-end;justify-content:space-around">
+        <div style="display:grid;justify-items:center;gap:6px"><div style="width:84px;height:26px;background:#f08a80;border-radius:5px;transform:rotate(-4deg);margin-bottom:-6px;z-index:2;box-shadow:0 2px 0 rgba(0,0,0,.1)"></div><div style="width:76px;height:84px;background:repeating-linear-gradient(0deg,#f6f1e6 0 9px,#1f2a36 9px 12px);border-radius:4px;outline:3px solid var(--shred);outline-offset:4px"></div><div class="disp" style="font-size:15px;margin-top:8px">Shred <span class="mono" style="font-weight:500">9</span></div></div>
+        <div style="display:grid;justify-items:center;gap:6px"><div style="width:84px;height:26px;background:#8fa6ff;border-radius:5px;transform:rotate(3deg);margin-bottom:-6px;z-index:2"></div><div style="width:76px;height:120px;background:repeating-linear-gradient(0deg,#f6f1e6 0 9px,#1f2a36 9px 12px);border-radius:4px"></div><div class="disp" style="font-size:15px;margin-top:8px">Filed <span class="mono" style="font-weight:500">64</span></div></div>
+        <div style="display:grid;justify-items:center;gap:6px"><div style="width:84px;height:26px;background:#f2c05a;border-radius:5px;transform:rotate(-2deg);margin-bottom:-6px;z-index:2"></div><div style="width:76px;height:60px;background:repeating-linear-gradient(0deg,#f6f1e6 0 9px,#1f2a36 9px 12px);border-radius:4px"></div><div class="disp" style="font-size:15px;margin-top:8px">Keep <span class="mono" style="font-weight:500">3</span></div></div>
+      </div>
+      <div class="ruled abs" style="left:16px;right:16px;top:318px;padding-top:4px">
+        <div class="rl"><span class="box x"></span><span class="grow"><b>Pharmacy receipt</b> <span class="mono">Elm Street</span></span><span class="stamp sm file">Safe</span></div>
+        <div class="rl"><span class="box x"></span><span class="grow"><b>2024 1099-INT</b> <span class="mono">Harbor Fed</span></span><span class="stamp sm file">Safe</span></div>
+        <div class="rl"><span class="box x"></span><span class="grow"><b>Electric bill, Aug</b> <span class="mono">Cascade</span></span><span class="stamp sm file">Safe</span></div>
+        <div class="rl"><span class="box x"></span><span class="grow"><b>3 more safe</b></span></div>
+        <div class="rl" style="opacity:.7"><span class="box"></span><span class="grow"><b>2025 W-2</b> <span class="mono">in Drive, hold 2 days</span></span><span class="stamp sm gray">Hold</span></div>
+      </div>
+      <div class="abs" style="left:20px;right:20px;bottom:116px"><div class="btn-stamp" style="color:var(--shred);border-color:var(--shred)">I shredded these 6</div></div>
+      <div class="tabs"><div class="ftab"><svg class="ic"><use href="#i-cards"/></svg>Desk</div><div class="ftab on"><svg class="ic"><use href="#i-stack"/></svg>Piles</div><div class="ftab"><svg class="ic"><use href="#i-leaf"/></svg>Paperless</div><div class="ftab"><svg class="ic"><use href="#i-search"/></svg>Find</div></div>
+    </div></div></div></figure>
+
+    <!-- B6 Find -->
+    <figure><figcaption><b>B6</b> Find: results as index cards</figcaption><div class="frame-wrap">
+    <div class="phone B"><div class="scr">
+      <div class="hdr"><div><div class="disp wm">Find</div></div><div class="gear"><svg class="ic"><use href="#i-gear"/></svg></div></div>
+      <div class="abs" style="left:18px;right:18px;top:112px">
+        <div style="background:var(--paper);border:2px solid var(--ink);border-radius:6px;height:50px;display:flex;align-items:center;gap:10px;padding:0 14px;font:500 17px 'IBM Plex Mono',monospace;color:#1f2a36"><svg class="ic"><use href="#i-search"/></svg>w-2 2023<span style="width:2px;height:22px;background:var(--ink)"></span></div>
+        <div class="row-x" style="margin:12px 0 26px;gap:8px"><span class="stamp sm scan" style="transform:none">Taxes</span><span class="stamp sm scan" style="transform:none">2023</span><span class="stamp sm gray" style="transform:none">+ Filter</span></div>
+        <div style="display:grid;gap:24px">
+          <div class="idx"><span class="tabk">2023</span><div style="font-weight:700;font-size:16px;height:24px">2023 <mark>W-2</mark></div><div class="mono" style="font-size:12px;line-height:22px">Northwind Logistics<br>Taxes/2023 · in Drive · paper shredded<br>"Form <mark>W-2</mark> Wage and Tax Statement..."</div></div>
+          <div class="idx" style="transform:rotate(-1deg)"><span class="tabk">2023</span><div style="font-weight:700;font-size:16px;height:24px">2023 <mark>W-2</mark>, corrected</div><div class="mono" style="font-size:12px;line-height:22px">Northwind Logistics<br>Taxes/2023 · in Drive</div></div>
+          <div class="idx" style="transform:rotate(.8deg)"><span class="tabk">2023</span><div style="font-weight:700;font-size:16px;height:24px"><mark>2023</mark> 1099-INT</div><div class="mono" style="font-size:12px;line-height:22px">Harbor Federal CU<br>Taxes/2023 · in Drive</div></div>
+        </div>
+      </div>
+      <div class="tabs"><div class="ftab"><svg class="ic"><use href="#i-cards"/></svg>Desk</div><div class="ftab"><svg class="ic"><use href="#i-stack"/></svg>Piles</div><div class="ftab"><svg class="ic"><use href="#i-leaf"/></svg>Paperless</div><div class="ftab on"><svg class="ic"><use href="#i-search"/></svg>Find</div></div>
+    </div></div></div></figure>
+
+    <!-- B7 Paperless -->
+    <figure><figcaption><b>B7</b> Paperless ledger with status stamps</figcaption><div class="frame-wrap">
+    <div class="phone B"><div class="scr">
+      <div class="hdr"><div><div class="disp wm">Paperless ledger</div><div class="count">2 OF 7 STOPPED</div></div><div class="gear"><svg class="ic"><use href="#i-gear"/></svg></div></div>
+      <div class="abs" style="left:28px;right:28px;top:128px;background:#fbd5cf;color:#5a1610;padding:12px 14px;border-radius:3px;transform:rotate(-1.5deg);box-shadow:0 6px 14px rgba(60,40,10,.18);z-index:3">
+        <div class="disp" style="font-size:15px">Still mailing?</div>
+        <div style="font-size:13.5px">Cascade Power &amp; Light mailed paper on Oct 9, after you asked them to stop.</div>
+      </div>
+      <div class="ruled abs" style="left:14px;right:14px;top:226px">
+        <div class="rl" style="font:800 11px 'Archivo',sans-serif;font-stretch:75%;letter-spacing:.1em;color:#6f6656"><span class="grow">SENDER</span><span style="width:100px">STATUS</span><span style="width:56px;text-align:right">CHECK</span></div>
+        <div class="rl"><span class="grow"><b>Cascade Power</b></span><span style="width:100px"><span class="stamp sm keep">Requested</span></span><span class="mono" style="width:56px;text-align:right">Nov 15</span></div>
+        <div class="rl"><span class="grow"><b>Summit Health</b></span><span style="width:100px"><span class="stamp sm scan">Waiting</span></span><span class="mono" style="width:56px;text-align:right">Oct 28</span></div>
+        <div class="rl"><span class="grow"><b>Brightline</b></span><span style="width:100px"><span class="stamp sm gray">To do</span></span><span class="mono" style="width:56px;text-align:right"></span></div>
+        <div class="rl"><span class="grow"><b>Elm Street Rx</b></span><span style="width:100px"><span class="stamp sm gray">To do</span></span><span class="mono" style="width:56px;text-align:right"></span></div>
+        <div class="rl"><span class="grow"><b>Harbor Federal</b></span><span style="width:100px"><span class="stamp sm file">Stopped</span></span><span class="mono" style="width:56px;text-align:right">Sep 2</span></div>
+        <div class="rl"><span class="grow"><b>Northwind payroll</b></span><span style="width:100px"><span class="stamp sm file">Stopped</span></span><span class="mono" style="width:56px;text-align:right">Aug 20</span></div>
+        <div class="rl"><span class="grow"><b>DMV</b></span><span style="width:100px"><span class="stamp sm shred">Can't stop</span></span><span class="mono" style="width:56px;text-align:right"></span></div>
+        <div class="rl"></div>
+      </div>
+      <div class="tabs"><div class="ftab"><svg class="ic"><use href="#i-cards"/></svg>Desk</div><div class="ftab"><svg class="ic"><use href="#i-stack"/></svg>Piles</div><div class="ftab on"><svg class="ic"><use href="#i-leaf"/></svg>Paperless</div><div class="ftab"><svg class="ic"><use href="#i-search"/></svg>Find</div></div>
+    </div></div></div></figure>
+
+    <!-- B8 Settings -->
+    <figure><figcaption><b>B8</b> Settings as a filled-in form</figcaption><div class="frame-wrap">
+    <div class="phone B"><div class="scr">
+      <div class="hdr"><div><div class="disp wm">Settings</div></div><div class="gear"><svg class="ic"><use href="#i-x"/></svg></div></div>
+      <div class="ruled abs" style="left:14px;right:14px;top:112px;padding:6px 0">
+        <div class="rl" style="font:800 12px 'Archivo',sans-serif;font-stretch:75%;letter-spacing:.1em;color:#6f6656">ACCOUNT</div>
+        <div class="rl"><span class="grow"><b>Bryce W.</b> <span class="mono">you@example.com</span></span></div>
+        <div class="rl" style="font:800 12px 'Archivo',sans-serif;font-stretch:75%;letter-spacing:.1em;color:#6f6656">GOOGLE DRIVE</div>
+        <div class="rl"><span class="grow">Status</span><span class="stamp sm file">Connected</span></div>
+        <div class="rl"><span class="grow">Folder</span><span class="mono">Paper Trail/</span></div>
+        <div class="rl"><span class="grow">Last delivery</span><span class="mono">2 min ago</span></div>
+        <div class="rl" style="font:800 12px 'Archivo',sans-serif;font-stretch:75%;letter-spacing:.1em;color:#6f6656">SORTING</div>
+        <div class="rl"><span class="grow">Sender rules</span><span class="mono">14 ›</span></div>
+        <div class="rl"><span class="box x"></span><span class="grow">Hold shred pile 3 days after filing</span></div>
+        <div class="rl"><span class="box x"></span><span class="grow">Number the originals I keep</span></div>
+        <div class="rl" style="font:800 12px 'Archivo',sans-serif;font-stretch:75%;letter-spacing:.1em;color:#6f6656">SCANNING</div>
+        <div class="rl"><span class="box x"></span><span class="grow">Manual shutter by default</span></div>
+        <div class="rl"><span class="box"></span><span class="grow">Lock with Face ID</span></div>
+      </div>
+      <div class="tabs"><div class="ftab on"><svg class="ic"><use href="#i-cards"/></svg>Desk</div><div class="ftab"><svg class="ic"><use href="#i-stack"/></svg>Piles</div><div class="ftab"><svg class="ic"><use href="#i-leaf"/></svg>Paperless</div><div class="ftab"><svg class="ic"><use href="#i-search"/></svg>Find</div></div>
+    </div></div></div></figure>
+
+    <!-- B9 Dark -->
+    <figure><figcaption><b>B9</b> Dark: the desk under a lamp, Keep original</figcaption><div class="frame-wrap">
+    <div class="phone B dark"><div class="scr">
+      <div class="hdr"><div><div class="disp wm">Paper Trail</div><div class="count">10 ON THE DESK</div></div><div class="gear"><svg class="ic"><use href="#i-gear"/></svg></div></div>
+      <div class="sheetp" style="left:46px;top:150px;width:300px;height:390px;transform:rotate(-3deg)"></div>
+      <div style="position:absolute;left:46px;top:146px;width:300px;height:390px;transform:translate(-30px,8px) rotate(-6deg);z-index:4">
+        <div class="sheetp" style="inset:0"><div class="doc title-doc" data-doc="title" style="position:absolute;inset:0;box-shadow:none;background:#f3eee2"></div></div>
+        <span class="stamp keep" style="position:absolute;right:20px;top:150px;font-size:22px;transform:rotate(-8deg)">Keep original</span>
+        <div class="tag" style="left:-6px;bottom:-34px;width:270px;transform:rotate(3deg)"><b>Vehicle title</b><br>Dept. of Motor Vehicles<br>Issued Mar 4, 2021<br>→ Vehicles · binder #014</div>
+      </div>
+      <div class="tray shredder" style="border-color:var(--shred);background:rgba(255,138,127,.08)"><div class="slot"></div><div class="strips"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><span class="disp lbl">Shred</span></div>
+      <div class="tray drive" style="border-style:dashed;background:none;border-color:var(--line)"><div class="lip"></div><span class="disp lbl">File to Drive</span></div>
+      <div class="abs" style="left:0;right:0;bottom:208px;text-align:center;font:500 12px 'IBM Plex Mono',monospace;color:var(--shred)">SHREDDING A KEEP-ORIGINAL ASKS FIRST</div>
+      <div class="tabs"><div class="ftab on"><svg class="ic"><use href="#i-cards"/></svg>Desk</div><div class="ftab"><svg class="ic"><use href="#i-stack"/></svg>Piles</div><div class="ftab"><svg class="ic"><use href="#i-leaf"/></svg>Paperless</div><div class="ftab"><svg class="ic"><use href="#i-search"/></svg>Find</div></div>
+    </div></div></div></figure>
+  </div>
+</section>
+
+<!-- ===================================================================
+     ROW C: CONSOLE
+     =================================================================== -->
+<section class="row" id="row-C">
+  <div class="row-head">
+    <span class="letter">C</span>
+    <div>
+      <h2>Console: dense and fast</h2>
+      <p>Built for clearing a whole box in one sitting. A split inbox (Check / Confident / Waiting) with one-tap bulk filing for confident cards, a compact card with every field and a confidence meter, a four-button triage bar, and short and long swipes on list rows. Tables over illustrations. Most on screen at once.</p>
+    </div>
+  </div>
+  <div class="frames">
+
+    <!-- C1 Triage -->
+    <figure><figcaption><b>C1</b> Triage: bulk-file banner, focused card, queue</figcaption><div class="frame-wrap">
+    <div class="phone C"><div class="scr">
+      <div class="top">
+        <div class="tl"><h1>Triage</h1><span class="n">22 in box 3</span><div class="av">BW</div></div>
+        <div class="splits"><span class="split">Check <span class="k">4</span></span><span class="split on">Confident <span class="k">18</span></span><span class="split">Reading <span class="k">2</span></span></div>
+      </div>
+      <div class="abs" style="left:10px;right:10px;top:150px">
+        <div class="banner"><svg class="ic s" style="color:var(--accent)"><use href="#i-bolt"/></svg><div><b>18 confident.</b> Every field 90% or higher.</div><span class="btn pri">File all 18</span></div>
+        <div class="fcard" style="margin-top:8px">
+          <div class="fhead"><div class="doc" data-doc="w2" style="width:62px;height:80px;flex:0 0 auto"></div><div class="grow"><h3>2025 W-2</h3><div style="color:var(--muted)">Northwind Logistics · Jan 30, 2026</div><div class="row-x" style="margin-top:6px"><span class="st warn">SENSITIVE</span><span class="st wait">1 PG</span><span class="st wait">1 / 18</span></div></div></div>
+          <div class="ftable">
+            <div class="fr"><span class="k">Type</span><span class="v">Tax form, W-2</span><span class="cb"><i></i><i></i><i></i><i></i><i></i></span></div>
+            <div class="fr"><span class="k">Folder</span><span class="v">Taxes/2025</span><span class="cb"><i></i><i></i><i></i><i></i><i></i></span></div>
+            <div class="fr"><span class="k">File name</span><span class="v mono">2026-01-30_W-2_Northwind...pdf</span><span class="cb"><i></i><i></i><i></i><i></i><i class="o"></i></span></div>
+            <div class="fr"><span class="k">Retention</span><span class="v">7 years, digital is fine</span><span class="cb"><i></i><i></i><i></i><i></i><i class="o"></i></span></div>
+            <div class="fr" style="border:0"><span class="k">Paperless</span><span class="v">Payroll portal has e-W-2</span><span class="cb"><i></i><i></i><i></i><i class="o"></i><i class="o"></i></span></div>
+          </div>
+          <div class="vseg"><span>Shred</span><span class="on scan">Scan + shred</span><span>Keep original</span></div>
+        </div>
+      </div>
+      <div class="abs" style="left:0;right:0;top:530px">
+        <div class="sec"><span>Up next</span><span>Short → File · Long → File + paperless</span></div>
+        <div class="swipe"><div class="under"><svg class="ic s"><use href="#i-check"/></svg>File</div><div class="rowi"><span class="vb scan">S+</span><div class="grow ell"><div class="t">2025 1099-INT</div><div class="s">Harbor Federal</div></div></div></div>
+        <div class="rowi"><span class="vb shred">SH</span><div class="grow ell"><div class="t">Pharmacy receipt</div><div class="s">Elm Street · Health/Receipts</div></div><span class="r"><span class="cdot"></span> 96</span></div>
+      </div>
+      <div class="triage"><div class="tb shred">Shred<small>← short</small></div><div class="tb keep">Keep<small>← long</small></div><div class="tb">Skip<small>↑</small></div><div class="tb file">File<small>short →</small></div></div>
+      <div class="tabbar"><div class="tab on"><svg class="ic"><use href="#i-cards"/></svg>Triage</div><div class="tab"><span class="badge">1</span><svg class="ic"><use href="#i-tray"/></svg>Outbox</div><div class="tab"><svg class="ic"><use href="#i-stack"/></svg>Piles</div><div class="tab"><svg class="ic"><use href="#i-leaf"/></svg>Paperless</div><div class="tab"><svg class="ic"><use href="#i-search"/></svg>Search</div></div>
+    </div></div></div></figure>
+
+    <!-- C2 Low confidence -->
+    <figure><figcaption><b>C2</b> Check split: unsure fields inline, alternatives as chips</figcaption><div class="frame-wrap">
+    <div class="phone C"><div class="scr">
+      <div class="top">
+        <div class="tl"><h1>Triage</h1><span class="n">22 in box 3</span><div class="av">BW</div></div>
+        <div class="splits"><span class="split on">Check <span class="k">4</span></span><span class="split">Confident <span class="k">18</span></span><span class="split">Reading <span class="k">2</span></span></div>
+      </div>
+      <div class="abs" style="left:10px;right:10px;top:150px">
+        <div class="fcard">
+          <div class="fhead"><div class="doc" data-doc="bill" style="width:62px;height:80px;flex:0 0 auto"></div><div class="grow"><h3>Electric bill, September</h3><div style="color:var(--muted)">2 fields to check · 1 of 4</div><div class="row-x" style="margin-top:6px"><span class="st wait">2 PG</span><span class="st wait">$84.12</span></div></div></div>
+          <div class="ftable">
+            <div class="fr"><span class="k">Type</span><span class="v">Utility bill</span><span class="cb"><i></i><i></i><i></i><i></i><i></i></span></div>
+            <div class="fr u"><span class="k">Sender</span><span class="v">Cascade Power &amp; Light</span><span class="cb"><i></i><i></i><i></i><i class="o"></i><i class="o"></i></span>
+              <div class="alts"><span class="alt on">Cascade Power &amp; Light</span><span class="alt">Cascade Natural Gas</span><span class="alt">Edit</span></div></div>
+            <div class="fr u"><span class="k">Date</span><span class="v">Sep 28, 2026</span><span class="cb"><i></i><i></i><i class="o"></i><i class="o"></i><i class="o"></i></span>
+              <div class="alts"><span class="alt on">Sep 28 (statement)</span><span class="alt">Oct 3 (due)</span></div></div>
+            <div class="fr"><span class="k">Folder</span><span class="v">Home/Utilities</span><span class="cb"><i></i><i></i><i></i><i></i><i class="o"></i></span></div>
+            <div class="fr"><span class="k">File name</span><span class="v mono">2026-09-28_Electric_Cascade...</span><span class="cb"><i></i><i></i><i></i><i class="o"></i><i class="o"></i></span></div>
+            <div class="fr" style="border:0"><span class="k">Rule</span><span class="v" style="display:flex;align-items:center;gap:6px"><span class="chk on"></span>Remember for this sender</span><span></span></div>
+          </div>
+          <div class="vseg"><span class="on shred">Shred</span><span>Scan + shred</span><span>Keep original</span></div>
+        </div>
+      </div>
+      <div class="triage"><div class="tb shred">Shred<small>← short</small></div><div class="tb keep">Keep<small>← long</small></div><div class="tb">Skip<small>↑</small></div><div class="tb file">Confirm, file<small>→</small></div></div>
+      <div class="tabbar"><div class="tab on"><svg class="ic"><use href="#i-cards"/></svg>Triage</div><div class="tab"><span class="badge">1</span><svg class="ic"><use href="#i-tray"/></svg>Outbox</div><div class="tab"><svg class="ic"><use href="#i-stack"/></svg>Piles</div><div class="tab"><svg class="ic"><use href="#i-leaf"/></svg>Paperless</div><div class="tab"><svg class="ic"><use href="#i-search"/></svg>Search</div></div>
+    </div></div></div></figure>
+
+    <!-- C3 Scan handoff (stack mode) -->
+    <figure><figcaption><b>C3</b> Stack mode: live split, Done goes straight to Triage</figcaption><div class="frame-wrap">
+    <div class="phone C dark" style="--bg:#000"><div class="scr" style="background:#0b0d10">
+      <div class="abs" style="left:12px;right:12px;top:58px;display:flex;gap:6px;align-items:center;font:600 11px 'IBM Plex Mono',monospace;color:#e6ebf0">
+        <span class="st up">STACK MODE</span><span class="st ok">AUTO SHUTTER</span><span style="margin-left:auto">PAGE 14</span>
+      </div>
+      <div class="abs" style="left:26px;right:26px;top:100px;height:430px;background:linear-gradient(160deg,#3b3f45,#22262b);border-radius:6px"></div>
+      <div class="abs" style="left:58px;top:136px;width:270px;height:352px;transform:rotate(-2deg);background:#f1f1ee;box-shadow:0 0 0 3px #5fd393;border-radius:2px"><div class="doc" data-doc="lines" style="position:absolute;inset:0;box-shadow:none;background:transparent"></div></div>
+      <div class="abs" style="left:0;right:0;top:500px;text-align:center"><span class="st ok" style="font-size:12px">HOLD STILL · CAPTURING</span></div>
+      <div class="abs" style="left:10px;right:10px;top:548px">
+        <div style="display:flex;justify-content:space-between;font:600 11px 'IBM Plex Mono',monospace;color:#8b96a3;margin-bottom:6px"><span>5 DOCS SO FAR</span><span>TAP A GAP TO SPLIT</span></div>
+        <div style="display:flex;gap:4px;align-items:flex-end;overflow:hidden">
+          <div class="doc" data-doc="bill" style="width:30px;height:40px;flex:0 0 auto"></div><div class="doc" data-doc="lines" style="width:30px;height:40px;flex:0 0 auto"></div>
+          <i style="width:3px;height:48px;background:#7d9bff;border-radius:2px;flex:0 0 auto"></i>
+          <div class="doc" data-doc="1099" style="width:30px;height:40px;flex:0 0 auto"></div>
+          <i style="width:3px;height:48px;background:#7d9bff;border-radius:2px;flex:0 0 auto"></i>
+          <div class="doc" data-doc="w2" style="width:30px;height:40px;flex:0 0 auto"></div><div class="doc" data-doc="lines" style="width:30px;height:40px;flex:0 0 auto"></div><div class="doc" data-doc="lines" style="width:30px;height:40px;flex:0 0 auto"></div>
+          <i style="width:3px;height:48px;background:#7d9bff;border-radius:2px;flex:0 0 auto"></i>
+          <div class="doc" data-doc="receipt" style="width:18px;height:40px;flex:0 0 auto"></div>
+          <i style="width:3px;height:48px;background:#f2c05a;border-radius:2px;flex:0 0 auto"></i>
+          <div class="doc" data-doc="lines" style="width:30px;height:40px;flex:0 0 auto"></div><div class="doc" data-doc="lines" style="width:30px;height:40px;flex:0 0 auto;opacity:.5"></div>
+        </div>
+        <div style="font:500 11px 'IBM Plex Mono',monospace;color:#f2c05a;margin-top:6px">Yellow gap: Claude thinks a new document starts here</div>
+      </div>
+      <div class="abs" style="left:0;right:0;bottom:40px;display:flex;align-items:center;justify-content:space-between;padding:0 26px">
+        <span class="btn ghost" style="color:#e6ebf0;border-color:#333">Import</span>
+        <div style="width:76px;height:76px;border-radius:50%;border:4px solid #fff;display:grid;place-items:center"><div style="width:62px;height:62px;border-radius:50%;background:#fff"></div></div>
+        <span class="btn pri">Done · 5 docs</span>
+      </div>
+    </div></div></div></figure>
+
+    <!-- C4 Outbox -->
+    <figure><figcaption><b>C4</b> Outbox as a table with retry-all</figcaption><div class="frame-wrap">
+    <div class="phone C"><div class="scr">
+      <div class="top"><div class="tl"><h1>Outbox</h1><span class="n">3 queued · 118 MB</span><div class="av">BW</div></div>
+        <div class="row-x" style="margin-top:6px"><span class="st up">2 UPLOADING</span><span class="st bad">1 FAILED</span><span class="st ok">41 TODAY</span><span class="btn" style="margin-left:auto;height:28px">Retry all</span><span class="btn" style="height:28px">Pause</span></div>
+      </div>
+      <div class="abs" style="left:0;right:0;top:140px;background:var(--surface);border-top:1px solid var(--line)">
+        <table>
+          <tr><th>Document</th><th>Pg</th><th>Status</th><th>Time</th></tr>
+          <tr><td><b>1099-INT</b> Harbor Fed</td><td class="mono">1</td><td><span class="st bad">503 · RETRY 2m</span></td><td class="mono">10:14</td></tr>
+          <tr><td><b>Electric bill</b> Cascade</td><td class="mono">2</td><td><span class="st up">62%</span></td><td class="mono">10:14</td></tr>
+          <tr><td><b>2025 W-2</b> Northwind</td><td class="mono">1</td><td><span class="st wait">QUEUED</span></td><td class="mono">10:13</td></tr>
+          <tr><td><b>Pharmacy rcpt</b> Elm St</td><td class="mono">1</td><td><span class="st ok">✓ 1/1 VERIFIED</span></td><td class="mono">10:12</td></tr>
+          <tr><td><b>Vehicle title</b> DMV</td><td class="mono">2</td><td><span class="st ok">✓ 2/2 VERIFIED</span></td><td class="mono">10:09</td></tr>
+          <tr><td><b>Phone bill</b> Brightline</td><td class="mono">3</td><td><span class="st ok">✓ 3/3 VERIFIED</span></td><td class="mono">09:58</td></tr>
+          <tr><td><b>EOB</b> Summit Health</td><td class="mono">2</td><td><span class="st ok">✓ 2/2 VERIFIED</span></td><td class="mono">09:57</td></tr>
+          <tr><td><b>Statement</b> Harbor Fed</td><td class="mono">4</td><td><span class="st ok">✓ 4/4 VERIFIED</span></td><td class="mono">09:55</td></tr>
+          <tr><td><b>Card stmt</b> Cedar Card</td><td class="mono">3</td><td><span class="st ok">✓ 3/3 VERIFIED</span></td><td class="mono">09:51</td></tr>
+          <tr><td><b>2024 1099-INT</b> Harbor</td><td class="mono">1</td><td><span class="st ok">✓ 1/1 VERIFIED</span></td><td class="mono">09:50</td></tr>
+          <tr><td style="color:var(--muted)">32 more today</td><td></td><td></td><td></td></tr>
+        </table>
+        <div style="padding:10px 12px;font-size:12px;color:var(--muted)">Verified means Drive has the file and the page count matches. Only verified documents count as safe to shred.</div>
+      </div>
+      <div class="tabbar"><div class="tab"><svg class="ic"><use href="#i-cards"/></svg>Triage</div><div class="tab on"><span class="badge">1</span><svg class="ic"><use href="#i-tray"/></svg>Outbox</div><div class="tab"><svg class="ic"><use href="#i-stack"/></svg>Piles</div><div class="tab"><svg class="ic"><use href="#i-leaf"/></svg>Paperless</div><div class="tab"><svg class="ic"><use href="#i-search"/></svg>Search</div></div>
+    </div></div></div></figure>
+
+    <!-- C5 Piles -->
+    <figure><figcaption><b>C5</b> Piles: multi-select and a bulk bar</figcaption><div class="frame-wrap">
+    <div class="phone C"><div class="scr">
+      <div class="top"><div class="tl"><h1>Piles</h1><div class="av">BW</div></div>
+        <div class="splits"><span class="split on">Shred <span class="k">9</span></span><span class="split">Keep <span class="k">3</span></span><span class="split">All filed <span class="k">64</span></span></div>
+        <div class="row-x" style="margin-top:8px"><span class="facet on">Safe only<span>6</span></span><span class="facet">Sensitive<span>4</span></span><span class="facet">Box 3</span></div>
+      </div>
+      <div class="abs" style="left:0;right:0;top:182px">
+        <div class="sec"><span>Safe to shred · Drive verified, hold over</span><span>6</span></div>
+        <div class="rowi"><span class="chk on"></span><span class="vb shred">SH</span><div class="grow ell"><div class="t">Pharmacy receipt</div><div class="s">Elm Street · cross-cut</div></div><span class="r">Oct 13</span></div>
+        <div class="rowi"><span class="chk on"></span><span class="vb scan">S+</span><div class="grow ell"><div class="t">2024 1099-INT</div><div class="s">Harbor Federal · cross-cut</div></div><span class="r">Oct 10</span></div>
+        <div class="rowi"><span class="chk on"></span><span class="vb shred">SH</span><div class="grow ell"><div class="t">Electric bill, Aug</div><div class="s">Cascade Power &amp; Light</div></div><span class="r">Oct 10</span></div>
+        <div class="rowi"><span class="chk on"></span><span class="vb shred">SH</span><div class="grow ell"><div class="t">Phone bill, Aug</div><div class="s">Brightline Wireless</div></div><span class="r">Oct 9</span></div>
+        <div class="rowi"><span class="chk on"></span><span class="vb scan">S+</span><div class="grow ell"><div class="t">EOB, July visit</div><div class="s">Summit Health Plan · cross-cut</div></div><span class="r">Oct 9</span></div>
+        <div class="rowi"><span class="chk on"></span><span class="vb shred">SH</span><div class="grow ell"><div class="t">Card statement, Jul</div><div class="s">Cedar Card</div></div><span class="r">Oct 9</span></div>
+        <div class="sec"><span>On hold</span><span>3</span></div>
+        <div class="rowi" style="opacity:.6"><span class="chk"></span><span class="vb scan">S+</span><div class="grow ell"><div class="t">2025 W-2</div><div class="s">Northwind · hold ends Oct 15</div></div><span class="r">2d</span></div>
+      </div>
+      <div class="abs" style="left:10px;right:10px;bottom:94px;background:var(--ink);color:var(--bg);border-radius:12px;height:50px;display:flex;align-items:center;gap:10px;padding:0 8px 0 14px;z-index:15"><b>6 selected</b><span class="btn pri" style="margin-left:auto">Mark shredded</span><span class="btn" style="background:transparent;color:var(--bg);border-color:#444">Export list</span></div>
+      <div class="tabbar"><div class="tab"><svg class="ic"><use href="#i-cards"/></svg>Triage</div><div class="tab"><span class="badge">1</span><svg class="ic"><use href="#i-tray"/></svg>Outbox</div><div class="tab on"><svg class="ic"><use href="#i-stack"/></svg>Piles</div><div class="tab"><svg class="ic"><use href="#i-leaf"/></svg>Paperless</div><div class="tab"><svg class="ic"><use href="#i-search"/></svg>Search</div></div>
+    </div></div></div></figure>
+
+    <!-- C6 Search -->
+    <figure><figcaption><b>C6</b> Search with field filters and facet counts</figcaption><div class="frame-wrap">
+    <div class="phone C"><div class="scr">
+      <div class="top"><div class="tl"><h1>Search</h1><div class="av">BW</div></div>
+        <div class="field" style="margin-top:4px"><svg class="ic s" style="color:var(--muted)"><use href="#i-search"/></svg><span class="mono" style="font-size:13px"><span style="color:var(--accent)">type:</span>tax <span style="color:var(--accent)">year:</span>2023 w-2</span></div>
+        <div class="row-x" style="margin-top:8px;overflow:hidden"><span class="facet on">Tax form<span>3</span></span><span class="facet on">2023<span>3</span></span><span class="facet">Northwind<span>2</span></span><span class="facet">Harbor<span>1</span></span></div>
+      </div>
+      <div class="abs" style="left:0;right:0;top:186px">
+        <div class="sec"><span>3 results · text and fields</span><span>Newest</span></div>
+        <div class="rowi" style="height:auto;padding:9px 14px;align-items:flex-start"><span class="vb scan">S+</span><div class="grow"><div class="t">2023 <mark>W-2</mark></div><div class="s">Northwind Logistics · Taxes/2023 · paper shredded</div><div class="s" style="margin-top:3px">"...Form <mark>W-2</mark> Wage and Tax Statement <mark>2023</mark>..."</div></div><span class="r">Jan 31 '24</span></div>
+        <div class="rowi" style="height:auto;padding:9px 14px;align-items:flex-start"><span class="vb scan">S+</span><div class="grow"><div class="t">2023 <mark>W-2</mark>, corrected</div><div class="s">Northwind Logistics · Taxes/2023</div></div><span class="r">Mar 2 '24</span></div>
+        <div class="rowi" style="height:auto;padding:9px 14px;align-items:flex-start"><span class="vb scan">S+</span><div class="grow"><div class="t"><mark>2023</mark> 1099-INT</div><div class="s">Harbor Federal CU · Taxes/2023</div></div><span class="r">Jan 28 '24</span></div>
+        <div class="sec" style="margin-top:8px"><span>Saved searches</span><span>Edit</span></div>
+        <div class="rowi"><svg class="ic s" style="color:var(--muted)"><use href="#i-filter"/></svg><div class="grow"><div class="t">Tax year 2025</div></div><span class="r">12</span></div>
+        <div class="rowi"><svg class="ic s" style="color:var(--muted)"><use href="#i-filter"/></svg><div class="grow"><div class="t">Kept originals</div></div><span class="r">3</span></div>
+        <div class="rowi"><svg class="ic s" style="color:var(--muted)"><use href="#i-filter"/></svg><div class="grow"><div class="t">Medical, 2026</div></div><span class="r">9</span></div>
+      </div>
+      <div class="tabbar"><div class="tab"><svg class="ic"><use href="#i-cards"/></svg>Triage</div><div class="tab"><span class="badge">1</span><svg class="ic"><use href="#i-tray"/></svg>Outbox</div><div class="tab"><svg class="ic"><use href="#i-stack"/></svg>Piles</div><div class="tab"><svg class="ic"><use href="#i-leaf"/></svg>Paperless</div><div class="tab on"><svg class="ic"><use href="#i-search"/></svg>Search</div></div>
+    </div></div></div></figure>
+
+    <!-- C7 Paperless -->
+    <figure><figcaption><b>C7</b> Paperless tracker sorted by check-back date</figcaption><div class="frame-wrap">
+    <div class="phone C"><div class="scr">
+      <div class="top"><div class="tl"><h1>Paperless</h1><span class="n">2/7 stopped</span><div class="av">BW</div></div>
+        <div class="splits"><span class="split on">Open <span class="k">5</span></span><span class="split">Stopped <span class="k">2</span></span><span class="split">Can't stop <span class="k">1</span></span></div>
+      </div>
+      <div class="abs" style="left:0;right:0;top:146px;background:var(--surface);border-top:1px solid var(--line)">
+        <table>
+          <tr><th>Sender</th><th>Status</th><th>Check</th></tr>
+          <tr style="background:var(--shred-bg)"><td><b>Cascade Power</b><br><span style="font-size:11px;color:var(--shred)">Paper arrived Oct 9 after request</span></td><td><span class="st bad">STILL MAILING</span></td><td class="mono" style="color:var(--shred)">now</td></tr>
+          <tr><td><b>Summit Health</b></td><td><span class="st up">WAITING CYCLE</span></td><td class="mono">Oct 28</td></tr>
+          <tr><td><b>Brightline Wireless</b></td><td><span class="st wait">TO DO</span></td><td class="mono">-</td></tr>
+          <tr><td><b>Elm Street Pharmacy</b></td><td><span class="st wait">TO DO</span></td><td class="mono">-</td></tr>
+          <tr><td><b>Cedar Card</b></td><td><span class="st warn">REQUESTED</span></td><td class="mono">Nov 20</td></tr>
+        </table>
+        <div class="sec" style="margin-top:6px"><span>Steps for Brightline Wireless</span><span>Swipe → mark requested</span></div>
+        <div style="padding:0 14px 12px;font-size:12.5px">Account settings, then Billing, then Paper bill off. Each person on a joint account turns it off separately. Expect one more paper bill.</div>
+      </div>
+      <div class="tabbar"><div class="tab"><svg class="ic"><use href="#i-cards"/></svg>Triage</div><div class="tab"><span class="badge">1</span><svg class="ic"><use href="#i-tray"/></svg>Outbox</div><div class="tab"><svg class="ic"><use href="#i-stack"/></svg>Piles</div><div class="tab on"><svg class="ic"><use href="#i-leaf"/></svg>Paperless</div><div class="tab"><svg class="ic"><use href="#i-search"/></svg>Search</div></div>
+    </div></div></div></figure>
+
+    <!-- C8 Settings -->
+    <figure><figcaption><b>C8</b> Settings with Drive health and swipe map</figcaption><div class="frame-wrap">
+    <div class="phone C"><div class="scr">
+      <div class="top"><div class="tl"><span class="iconbtn"><svg class="ic"><use href="#i-back"/></svg></span><h1>Settings</h1></div></div>
+      <div class="abs" style="left:0;right:0;top:104px">
+        <div class="kvrow"><div class="av" style="margin:0">BW</div><div><b>Bryce W.</b><div style="font-size:11.5px;color:var(--muted)">you@example.com</div></div></div>
+        <div class="sec"><span>Google Drive</span><span style="color:var(--file)">● Healthy</span></div>
+        <div class="kvrow">Connection<span class="v">Held by server · refreshed 3h ago</span></div>
+        <div class="kvrow">Folder<span class="v mono">/Paper Trail</span></div>
+        <div class="kvrow">Storage<span class="v">4.2 of 15 GB</span></div>
+        <div class="kvrow">Last verified upload<span class="v">10:12 AM</span></div>
+        <div class="sec"><span>Triage</span><span></span></div>
+        <div class="kvrow">Bulk-file confidence<div class="slider"><i></i><b></b></div><span class="v" style="margin-left:8px">90%</span></div>
+        <div class="kvrow">Swipes<span class="v">→ File · ⇢ File + paperless · ← Shred · ⇠ Keep</span></div>
+        <div class="kvrow">Shred hold<span class="v">3 days</span></div>
+        <div class="sec"><span>Sender rules · 14</span><span>Add</span></div>
+        <div class="kvrow"><span class="mono" style="font-size:11.5px">Cascade Power</span><span class="v">Home/Utilities · Shred</span></div>
+        <div class="kvrow"><span class="mono" style="font-size:11.5px">Harbor Federal</span><span class="v">Banking · Scan + shred</span></div>
+        <div class="kvrow"><span class="mono" style="font-size:11.5px">Northwind</span><span class="v">Taxes/{year} · Scan + shred</span></div>
+        <div class="kvrow" style="color:var(--accent)">11 more</div>
+        <div class="kvrow">Lock with Face ID<span class="sw"></span></div>
+      </div>
+    </div></div></div></figure>
+
+    <!-- C9 Dark -->
+    <figure><figcaption><b>C9</b> Dark: Confident split as a list, row mid long-swipe</figcaption><div class="frame-wrap">
+    <div class="phone C dark"><div class="scr">
+      <div class="top">
+        <div class="tl"><h1>Triage</h1><span class="n">17 left</span><span class="iconbtn" style="margin-left:auto"><svg class="ic s"><use href="#i-cards"/></svg></span><div class="av" style="margin-left:4px">BW</div></div>
+        <div class="splits"><span class="split">Check <span class="k">4</span></span><span class="split on">Confident <span class="k">17</span></span><span class="split">Reading <span class="k">0</span></span></div>
+      </div>
+      <div class="abs" style="left:10px;right:10px;top:150px"><div class="banner"><svg class="ic s" style="color:var(--accent)"><use href="#i-bolt"/></svg><div><b>17 confident.</b> Review or file them all.</div><span class="btn pri">File all 17</span></div></div>
+      <div class="abs" style="left:0;right:0;top:212px">
+        <div class="swipe"><div class="under" style="background:#0f6a3c"><svg class="ic s"><use href="#i-leaf"/></svg>File + paperless</div><div class="rowi" style="left:190px"><span class="vb scan">S+</span><div class="grow ell"><div class="t">Statement, Sep</div><div class="s">Harbor Federal</div></div></div></div>
+        <div class="rowi"><span class="vb shred">SH</span><div class="grow ell"><div class="t">Pharmacy receipt</div><div class="s">Elm Street · Health/Receipts</div></div><span class="r"><span class="cdot"></span> 96</span></div>
+        <div class="rowi"><span class="vb shred">SH</span><div class="grow ell"><div class="t">Phone bill, Sep</div><div class="s">Brightline · Home/Phone</div></div><span class="r"><span class="cdot"></span> 98</span></div>
+        <div class="rowi"><span class="vb scan">S+</span><div class="grow ell"><div class="t">EOB, August visit</div><div class="s">Summit Health · Health/Claims</div></div><span class="r"><span class="cdot"></span> 93</span></div>
+        <div class="rowi"><span class="vb keep">KO</span><div class="grow ell"><div class="t">Vehicle title</div><div class="s">DMV · Vehicles · binder #014</div></div><span class="r"><span class="cdot"></span> 97</span></div>
+        <div class="rowi"><span class="vb scan">S+</span><div class="grow ell"><div class="t">Card statement, Sep</div><div class="s">Cedar Card · Banking</div></div><span class="r"><span class="cdot"></span> 95</span></div>
+        <div class="rowi"><span class="vb shred">SH</span><div class="grow ell"><div class="t">Water bill, Q3</div><div class="s">City Water · Home/Utilities</div></div><span class="r"><span class="cdot"></span> 94</span></div>
+        <div class="rowi"><span class="vb scan">S+</span><div class="grow ell"><div class="t">2025 1099-INT</div><div class="s">Harbor Federal · Taxes/2025</div></div><span class="r"><span class="cdot"></span> 99</span></div>
+        <div class="rowi"><span class="vb shred">SH</span><div class="grow ell"><div class="t">Renewal notice</div><div class="s">Summit Health · Health</div></div><span class="r"><span class="cdot"></span> 91</span></div>
+      </div>
+      <div class="tabbar"><div class="tab on"><svg class="ic"><use href="#i-cards"/></svg>Triage</div><div class="tab"><svg class="ic"><use href="#i-tray"/></svg>Outbox</div><div class="tab"><svg class="ic"><use href="#i-stack"/></svg>Piles</div><div class="tab"><svg class="ic"><use href="#i-leaf"/></svg>Paperless</div><div class="tab"><svg class="ic"><use href="#i-search"/></svg>Search</div></div>
+    </div></div></div></figure>
+  </div>
+</section>
+
+<script>
+// Status bar and home indicator on every phone.
+document.querySelectorAll(".phone").forEach(function (p) {
+  var sb = document.createElement("div");
+  sb.className = "sb";
+  sb.innerHTML = '<span>9:41</span><i class="island"></i><span class="r"><span class="bars"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:11px"></i></span><span class="batt"></span></span>';
+  p.prepend(sb);
+  var h = document.createElement("div");
+  h.className = "home";
+  p.append(h);
+});
+
+// Fake scans, drawn with CSS.
+var DOCS = {
+  w2: '<div class="pad"><div class="hd" style="font-size:10px">W-2 &nbsp;2025</div><div class="ln dk" style="width:60%"></div><div class="grid"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>',
+  "1099": '<div class="pad"><div class="hd" style="font-size:9px">1099-INT</div><div class="ln dk" style="width:50%"></div><div class="grid" style="grid-template-columns:1fr 1fr 1fr"><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="ln" style="width:80%"></div></div>',
+  bill: '<div class="pad"><div class="logo"><b></b><div class="ln dk" style="flex:1"></div></div><div class="ln" style="width:45%"></div><div class="ln" style="width:38%"></div><div class="ln" style="width:90%;margin-top:8%"></div><div class="ln" style="width:90%"></div><div class="ln" style="width:90%"></div><div class="ln" style="width:70%"></div><div class="amt" style="font-size:9px">$84.12</div></div>',
+  receipt: '<div class="pad" style="align-items:center"><div class="ln dk" style="width:70%"></div><div class="ln" style="width:50%"></div><div class="ln" style="width:90%;margin-top:10%"></div><div class="ln" style="width:90%"></div><div class="ln" style="width:90%"></div><div class="ln" style="width:90%"></div><div class="ln dk" style="width:60%;margin-top:10%"></div><div class="ln" style="width:40%"></div></div>',
+  lines: '<div class="pad"><div class="ln dk" style="width:40%"></div><div class="ln" style="width:95%"></div><div class="ln" style="width:92%"></div><div class="ln" style="width:96%"></div><div class="ln" style="width:70%"></div><div class="ln" style="width:94%;margin-top:6%"></div><div class="ln" style="width:90%"></div><div class="ln" style="width:60%"></div></div>',
+  title: '<div class="pad"><div class="hd" style="font-size:13px;text-align:center;color:#6b5a2b">CERTIFICATE OF TITLE</div><div class="ln dk" style="width:70%;align-self:center"></div><div class="ln" style="width:95%;margin-top:6%"></div><div class="ln" style="width:90%"></div><div class="ln" style="width:80%"></div><div class="ln" style="width:94%"></div><div class="seal"></div></div>'
+};
+document.querySelectorAll("[data-doc]").forEach(function (d) {
+  d.classList.add("doc");
+  d.innerHTML = DOCS[d.getAttribute("data-doc")] || DOCS.lines;
+});
+
+// ?dir=A shows one direction in a 3-column grid, for the per-direction PNGs.
+var dir = new URLSearchParams(location.search).get("dir");
+if (dir) {
+  document.body.classList.add("solo");
+  var row = document.getElementById("row-" + dir);
+  if (row) row.classList.add("on");
+}
+</script>
+</body>
+</html>

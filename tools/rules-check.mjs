@@ -56,6 +56,12 @@ const CASES = [
   ["owner reads another uid's tree", { auth: owner, path: fp("users/other_uid/docs/d1"), method: "get" }, "DENY"],
   ["outside users/", { auth: owner, path: fp("public/x"), method: "get" }, "DENY"],
   ["signed out", { path: fp(doc), method: "get" }, "DENY"],
+  ["owner reads a Drive refresh token", { auth: owner, path: fp("oauthTokens/google_sub"), method: "get" }, "DENY"],
+  ["owner lists the Drive refresh tokens", { auth: owner, path: fp("oauthTokens"), method: "list" }, "DENY"],
+  ["owner writes a Drive refresh token", { auth: owner, path: fp("oauthTokens/google_sub"), method: "create", resource: { data: { refreshToken: "x" } } }, "DENY"],
+  ["owner reads a sign-in handoff", { auth: owner, path: fp("oauthHandoffs/h1"), method: "get" }, "DENY"],
+  ["owner lists the sign-in handoffs", { auth: owner, path: fp("oauthHandoffs"), method: "list" }, "DENY"],
+  ["signed out reads a sign-in handoff", { path: fp("oauthHandoffs/h1"), method: "get" }, "DENY"],
 ];
 
 try {

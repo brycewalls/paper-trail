@@ -33,6 +33,10 @@ protocol AuthService: AnyObject {
     /// Read at launch without waiting on the network.
     var state: AuthState { get }
     var drive: DriveLink { get }
+    /// Signed in, but the first consent came back without Drive. The sign-in screen stays up with
+    /// "Connect Google Drive" until it's granted (design spec 4.1). Different from a later revoke,
+    /// which keeps the app usable and shows Reconnect Drive (4.16).
+    var driveConsentPending: Bool { get }
     /// Runs the sign-in flow chosen in ARCHITECTURE.md ("Auth") and connects Drive server-side.
     func signIn() async throws
     /// Re-runs consent for Drive only, after a revoke.
@@ -41,6 +45,10 @@ protocol AuthService: AnyObject {
     /// A Drive access token (drive.file), minted by the server from the stored refresh token (#15).
     /// Cached until a minute before expiry.
     func driveAccessToken() async throws -> String
+}
+
+extension AuthService {
+    var driveConsentPending: Bool { false }
 }
 
 // MARK: - Classify [classify]

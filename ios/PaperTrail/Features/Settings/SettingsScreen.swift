@@ -34,6 +34,7 @@ struct SettingsScreen: View {
                 if isPresented {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Done") { dismiss() }
+                            .accessibilityIdentifier("settings.done")
                     }
                 }
             }

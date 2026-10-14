@@ -19,6 +19,7 @@ struct SenderRulesSettingsRow: View {
                     .contentTransition(.numericText())
             }
         }
+        .accessibilityIdentifier("settings.senderRules")
         .task { await model.load() }
     }
 }

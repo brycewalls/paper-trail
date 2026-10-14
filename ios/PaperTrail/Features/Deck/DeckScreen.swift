@@ -220,6 +220,7 @@ struct DeckScreen: View {
                 .accessibilityAddTraits(.isButton)
                 .accessibilityActions { accessibilityActions(item) }
                 .accessibilityFocused($cardFocused)
+                .accessibilityIdentifier("deck.card")
         } else {
             // Peeks are blank card edges (A1): only their bottom 22 and 36 pt show, and drawing
             // the next card's content there leaks its folder row and chips under the top card.
@@ -518,6 +519,7 @@ private struct ActionRow: View {
             .disabled(!canDecide)
             .accessibilityLabel("Shred")
             .accessibilityInputLabels(["Shred"])
+            .accessibilityIdentifier("deck.shred")
 
             Spacer(minLength: Space.m)
 
@@ -533,6 +535,7 @@ private struct ActionRow: View {
             .accessibilityLabel(canUndo ? "Undo last swipe" : "Undo, nothing to undo")
             .accessibilityValue(canUndo ? (undoTitle ?? "") : "")
             .accessibilityInputLabels(["Undo"])
+            .accessibilityIdentifier("deck.undo")
 
             Spacer(minLength: Space.m)
 
@@ -543,6 +546,7 @@ private struct ActionRow: View {
             .disabled(!canFile)
             .accessibilityLabel("File")
             .accessibilityInputLabels(["File"])
+            .accessibilityIdentifier("deck.file")
         }
     }
 

@@ -137,6 +137,7 @@ struct AvatarButton: View {
         .buttonStyle(.plain)
         .accessibilityLabel("Settings")
         .accessibilityInputLabels(["Settings", "Account"])
+        .accessibilityIdentifier("avatar")
     }
 
     private var initials: String {

@@ -37,6 +37,7 @@ struct ScanMenuButton: View {
         .accessibilityLabel("Scan")
         .accessibilityHint("Double tap to scan. Long press to import from Files or Photos.")
         .accessibilityInputLabels(["Scan", "Scan document"])
+        .accessibilityIdentifier("sort.scan")
     }
 }
 

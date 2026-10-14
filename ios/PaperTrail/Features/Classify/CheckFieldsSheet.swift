@@ -195,6 +195,7 @@ struct CheckFieldsSheet: View {
         VStack(alignment: .leading, spacing: 4) {
             Toggle("Remember for this sender", isOn: $model.remember)
                 .font(.body)
+                .accessibilityIdentifier("checkFields.remember")
             if model.remember {
                 Text(model.rememberFooter)
                     .font(.footnote)
@@ -224,6 +225,7 @@ struct CheckFieldsSheet: View {
         }
         .buttonStyle(.plain)
         .disabled(isConfirming)
+        .accessibilityIdentifier("checkFields.confirm")
         .padding(.top, 20)
     }
 }

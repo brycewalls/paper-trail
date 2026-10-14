@@ -15,6 +15,7 @@ struct ShredHoldRow: View {
         } label: {
             LabeledContent("Shred hold", value: ShredHoldModel.label(model.days))
         }
+        .accessibilityIdentifier("settings.shredHold")
         .task {
             if self.model == nil { self.model = model }
             await model.load()

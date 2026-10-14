@@ -58,6 +58,7 @@ A native SwiftUI app for iPhone (iOS 26 or later, built and tested for the iPhon
 - **The IPA:** `bash tools/build_ipa.sh` writes an unsigned `ios/build/PaperTrail.ipa` (`OUT=dist bash tools/build_ipa.sh` puts it in `dist/`). It needs Xcode and XcodeGen (`brew install xcodegen`). Nothing is signed here; SideStore signs it on the phone.
 - **Releases:** each iPhone build is attached to a prerelease named `ios-vX.Y` on the Releases page.
 - **In the simulator:** `cd ios && xcodegen`, then `xcodebuild test -scheme PaperTrail -destination 'platform=iOS Simulator,name=iPhone 18 Pro Max'`. Launch with `-PTSample` to run on sample data with no Google account.
+- **UI walk-through:** `bash tools/ui_walkthrough.sh` taps through every screen in sample mode, in light and dark, and saves the screenshots to `dist/qa/`.
 - The Xcode project is generated from `ios/project.yml`. Never edit the `.xcodeproj` by hand.
 
 ### Install it with SideStore

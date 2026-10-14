@@ -3,7 +3,7 @@
 import SwiftUI
 
 enum AppTab: Hashable {
-    case sort, outbox, piles, search, settings
+    case sort, outbox, piles, paperless, search
 }
 
 struct RootView: View {
@@ -19,13 +19,13 @@ struct RootView: View {
                 OutboxScreen()
             }
             Tab("Piles", systemImage: "square.stack.3d.up", value: AppTab.piles) {
-                PilesScreen(model: PilesViewModel(docs: env.docs))
+                NavigationStack { PilesScreen(model: PilesViewModel(env: env)) }  // piles
+            }
+            Tab("Paperless", systemImage: "leaf", value: AppTab.paperless) {
+                NavigationStack { PaperlessScreen(model: PaperlessViewModel(env: env)) }  // piles
             }
             Tab("Search", systemImage: "magnifyingglass", value: AppTab.search, role: .search) {
-                SearchScreen()
-            }
-            Tab("Settings", systemImage: "gearshape", value: AppTab.settings) {
-                SettingsScreen()
+                NavigationStack { SearchScreen() }  // piles
             }
         }
         .tint(Theme.accent)

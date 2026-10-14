@@ -107,9 +107,13 @@ nonisolated struct PaperlessSender: Codable, Sendable, Hashable, Identifiable {
     /// Set when a new doc arrives from a sender already Requested, Waiting or Confirmed.
     var stillMailingAt: String?
     var lastSeen: String?
+    /// When Bryce last dealt with a "Still mailing?" flag (Wait a cycle). Docs filed before this
+    /// no longer raise the flag (#23).
+    var mailHandledAt: String?
 
     enum CodingKeys: String, CodingKey {
-        case issuer, how, status, firstSeen, doneAt, requestedAt, checkBackAt, steps, stillMailingAt, lastSeen
+        case issuer, how, status, firstSeen, doneAt, requestedAt, checkBackAt, steps, stillMailingAt, lastSeen,
+             mailHandledAt
     }
 }
 

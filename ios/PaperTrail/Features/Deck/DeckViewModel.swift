@@ -1,5 +1,5 @@
 // Owner: deck. Logic only: no SwiftUI here. Every gesture, button, context menu item and
-// VoiceOver action on the Sort deck calls one of `file(_:)`, `shred(_:)`, `later(_:)`, `undo()`
+// VoiceOver action on the Sort deck calls one of `file(_:)`, `shred(_:)`, `skip(_:)`, `undo()`
 // (docs/design-spec.md section 1, principle 7), so the screens can be rebuilt without touching this.
 import Foundation
 import SwiftData
@@ -11,6 +11,8 @@ enum DeckSide: Sendable, Hashable {
     case file
     /// Swipe left.
     case shred
+    /// Swipe up (#77): the card waits in the Skipped set.
+    case skip
 }
 
 /// What a decision call did, so the gesture knows whether to fly the card off or snap it back.
@@ -25,16 +27,26 @@ enum DeckOutcome: Sendable, Hashable {
     case unavailable
 }
 
-/// The latest decision: one card, or a bulk file as one step. Held back from the outbox for the
-/// undo window (Bryce's decision 4), then released.
+/// The latest decision: one card, a bulk file as one step, or a skip. Held back from the outbox
+/// for the undo window (Bryce's decision 4), then released. A skip has nothing to release, so it is
+/// released from the start and undo only takes the card out of the Skipped set.
 struct DeckDecision {
     let items: [PipelineItem]
-    let decision: PipelineDecision
+    /// Nil for a skip (#77): nothing goes to the outbox.
+    let decision: PipelineDecision?
     /// Stage and failed stage before the decision, to restore on undo.
     let prior: [UUID: (stage: String, failed: String?)]
     var released = false
 
-    var side: DeckSide { decision == .shredOnly ? .shred : .file }
+    var isSkip: Bool { decision == nil }
+
+    var side: DeckSide {
+        switch decision {
+        case nil: .skip
+        case .shredOnly: .shred
+        default: .file
+        }
+    }
 }
 
 @Observable
@@ -48,6 +60,8 @@ final class DeckViewModel {
 
     /// Cards on the deck, top first: read cards waiting for a swipe, plus cards that failed to read.
     private(set) var cards: [PipelineItem] = []
+    /// Skipped cards (#77), in the order they were skipped. Off the deck until sorted again.
+    private(set) var skipped: [PipelineItem] = []
     private(set) var isLoading = false
     /// Documents still with Claude (captured or reading).
     private(set) var readingCount = 0
@@ -128,7 +142,9 @@ final class DeckViewModel {
     func refresh() {
         let held = Set((last?.released == false ? last?.items : nil)?.map(\.id) ?? [])
         let all = (try? context.fetch(FetchDescriptor<PipelineItem>(sortBy: [SortDescriptor(\.createdAt)]))) ?? []
-        cards = all.filter { ($0.stage == .ready || isReadFailed($0)) && !held.contains($0.id) && $0.decision == nil }
+        let waiting = all.filter { ($0.stage == .ready || isReadFailed($0)) && !held.contains($0.id) && $0.decision == nil }
+        cards = waiting.filter { $0.skippedAt == nil }
+        skipped = waiting.filter { $0.skippedAt != nil }.sorted { ($0.skippedAt ?? .distantPast) < ($1.skippedAt ?? .distantPast) }
         readingCount = all.filter { $0.stage == .captured || $0.stage == .reading }.count
         hasHistory = !all.isEmpty
         // The held decision counts too: "All sorted · 4 filed today" shouldn't read 3 for the
@@ -242,9 +258,59 @@ final class DeckViewModel {
 
     func cancelKeepOriginalShred() { keepConfirm = nil }
 
-    /// "Move to the back".
-    func later(_ item: PipelineItem) {
-        item.createdAt = .now
+    // MARK: - Skip (#77)
+
+    /// Swipe up, the Skip button, the long-press menu and VoiceOver: the card leaves the deck for
+    /// the Skipped set, which is saved (it survives a relaunch) and never uploads. Undo brings it
+    /// back like any other swipe. A card that failed to read can be skipped too.
+    @discardableResult
+    func skip(_ item: PipelineItem) -> DeckOutcome {
+        guard cards.contains(where: { $0.id == item.id }) else { return .unavailable }
+        releaseHeld()
+        holdTask?.cancel()
+        holdTask = nil
+        item.skippedAt = .now
+        last = DeckDecision(items: [item], decision: nil, prior: [item.id: (item.stageRaw, item.failedStageRaw)], released: true)
+        try? context.save()
+        refresh()
+        return .decided
+    }
+
+    var skippedCount: Int { skipped.count }
+
+    /// The chip at the top of Sort: "3 skipped". Nil when nothing is skipped.
+    var skippedChipTitle: String? {
+        skipped.isEmpty ? nil : "\(skipped.count) skipped"
+    }
+
+    /// The empty deck's title when only skipped cards are left: "3 skipped. Sort them now?"
+    var skippedPrompt: String? {
+        skipped.isEmpty ? nil : "\(skipped.count) skipped. Sort them now?"
+    }
+
+    /// "Sort skipped": deals every skipped card back to the front of the deck, in the order they
+    /// were skipped, ahead of the cards already there.
+    func sortSkipped() {
+        dealToFront(skipped)
+    }
+
+    /// "Sort now" on one skipped card: it goes on top of the deck.
+    func sortNow(_ item: PipelineItem) {
+        guard skipped.contains(where: { $0.id == item.id }) else { return }
+        dealToFront([item])
+    }
+
+    /// The deck is ordered by `createdAt` (oldest on top), the same key the outbox's "Send back to
+    /// the deck" uses, so dealing to the front moves each card just ahead of the current top.
+    private func dealToFront(_ items: [PipelineItem]) {
+        guard !items.isEmpty else { return }
+        let front = cards.map(\.createdAt).min() ?? .now
+        for (index, item) in items.enumerated() {
+            item.createdAt = front.addingTimeInterval(-Double(items.count - index))
+            item.skippedAt = nil
+        }
+        // The skip being undone is no longer the latest thing to undo once it's back on the deck.
+        if let last, last.isSkip, items.contains(where: { $0.id == last.items.first?.id }) { self.last = nil }
         try? context.save()
         refresh()
     }
@@ -257,6 +323,12 @@ final class DeckViewModel {
         guard let decision = last else { return nil }
         holdTask?.cancel()
         last = nil
+        if decision.isSkip {
+            for item in decision.items { item.skippedAt = nil }
+            try? context.save()
+            refresh()
+            return .skip
+        }
         var restorable = decision.items
         if decision.released {
             var back: [PipelineItem] = []
@@ -284,8 +356,9 @@ final class DeckViewModel {
         guard var decision = last, !decision.released else { return }
         holdTask?.cancel()
         holdTask = nil
+        guard let choice = decision.decision else { return }
         for item in decision.items {
-            item.decision = decision.decision
+            item.decision = choice
             item.decidedAt = .now
             item.stage = .queued
         }
@@ -481,12 +554,19 @@ final class DeckViewModel {
         return parts.joined(separator: " ")
     }
 
-    /// Announced after a decision: "Filed {title}. Next: {next}." / "Shredded {title}." / "All sorted."
+    /// Announced after a decision: "Filed {title}. Next: {next}." / "Shredded {title}." /
+    /// "Skipped {title}. Next: {next}." / "All sorted." With only skipped cards left, the empty
+    /// deck's question: "3 skipped. Sort them now?"
     func announcement(after side: DeckSide, title: String) -> String {
-        guard let next = top else { return "All sorted." }
+        guard let next = top else {
+            let rest = skippedPrompt ?? "All sorted."
+            return side == .skip ? "Skipped \(title). \(rest)" : rest
+        }
+        let nextTitle = next.card?.title ?? "a card that couldn't be read"
         switch side {
-        case .file: return "Filed \(title). Next: \(next.card?.title ?? "a card that couldn't be read")."
+        case .file: return "Filed \(title). Next: \(nextTitle)."
         case .shred: return "Shredded \(title)."
+        case .skip: return "Skipped \(title). Next: \(nextTitle)."
         }
     }
 }

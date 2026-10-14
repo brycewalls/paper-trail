@@ -183,6 +183,70 @@ final class AppWalkthroughUITests: PaperTrailUITestCase {
         shot("32-search-document")
     }
 
+    // MARK: Tab bar and the search island (#62)
+
+    /// Each tab shows its own screen, and only Search has a search field: #51 once put a field
+    /// under every tab's title. The pushed Outbox has none either.
+    func testTabsHaveNoStraySearchField() {
+        launch()
+        waitFor(card, 20)
+        for name in ["Sort", "Piles", "Paperless"] {
+            tab(name).tap()
+            waitFor(app.navigationBars[name], 5, "The \(name) tab didn't show its screen")
+            XCTAssertTrue(eventually { self.tab(name).isSelected }, "\(name) isn't the selected tab")
+            pause(0.6)
+            XCTAssertEqual(app.searchFields.count, 0, "\(name) shows a search field (#51)")
+        }
+        tab("Sort").tap()
+        waitFor(element("outbox.accessory"), 5, "No outbox bar above the tab bar").tap()
+        waitFor(app.navigationBars["Outbox"], 5, "Outbox screen didn't open")
+        pause(0.6)
+        XCTAssertEqual(app.searchFields.count, 0, "The pushed Outbox shows a search field (#51)")
+        goBack()
+        waitFor(app.navigationBars["Sort"], 5)
+
+        tab("Search").tap()
+        XCTAssertEqual(app.searchFields.count, 1, "Search should have exactly one field")
+        shot("34-search-island")
+    }
+
+    /// The rest of the throwaway #51 flow: the keyboard's Search key saves a recent, clearing the
+    /// field brings the recents back, a recent searches again, and closing returns to the tab
+    /// that was showing before Search.
+    func testSearchSubmitClearRecentAndClose() {
+        launch()
+        waitFor(card, 20)
+        tab("Piles").tap()
+        waitFor(app.navigationBars["Piles"], 5)
+        tab("Search").tap()
+        let field = waitFor(app.searchFields.firstMatch, 5, "No search field after tapping Search (#51)")
+        removeRecent("brightline")
+        field.tap()
+        field.typeText("brightline")
+        let result = waitFor(element("search.result"), 5, "Typing 'brightline' found nothing")
+        XCTAssertTrue(result.label.contains("Brightline Wireless"), "First result should be the Brightline Wireless bill, got \(result.label)")
+        field.typeText("\n")
+        pause(0.6)
+        shot("35-search-submitted")
+
+        clear(field)
+        XCTAssertTrue(eventually { !self.element("search.result").exists }, "Clearing the field left the results up")
+        let recent = app.buttons["brightline"].firstMatch
+        waitFor(recent, 5, "The Search key didn't save 'brightline' as a recent")
+        shot("36-search-recents")
+        recent.tap()
+        waitFor(element("search.result"), 5, "Tapping a recent didn't search again")
+        XCTAssertEqual(field.value as? String, "brightline", "Tapping a recent should fill the field")
+
+        clear(field)
+        removeRecent("brightline")
+        close(field)
+        XCTAssertTrue(eventually { self.app.navigationBars["Piles"].exists && self.tab("Piles").isSelected },
+                      "Closing Search should return to Piles")
+        XCTAssertEqual(app.searchFields.count, 0, "Piles shows a search field after closing Search")
+        shot("37-search-closed")
+    }
+
     // MARK: Paperless (4.7)
 
     func testPaperlessChangeStatus() {
@@ -207,6 +271,37 @@ final class AppWalkthroughUITests: PaperTrailUITestCase {
             return row.exists && row.label.contains("Requested")
         }, "Brightline should now read Requested in the ledger")
         shot("43-paperless-after-status")
+    }
+
+    // MARK: Search helpers
+
+    /// The field's clear button (the x inside it).
+    private func clear(_ field: XCUIElement) {
+        let x = field.buttons.firstMatch
+        if x.exists { x.tap() } else {
+            field.tap()
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 20))
+        }
+    }
+
+    /// The island's close button, which ends the search and returns to the previous tab.
+    private func close(_ field: XCUIElement) {
+        let labels = ["Close", "Cancel", "close"]
+        if let button = labels.lazy.map({ self.app.buttons[$0].firstMatch }).first(where: { $0.exists && $0.isHittable }) {
+            button.tap()
+        } else {
+            XCTFail("No close button on the search field:\n\(app.debugDescription)")
+        }
+    }
+
+    /// Swipes a saved recent away, so the run starts and ends without it.
+    private func removeRecent(_ text: String) {
+        let row = app.buttons[text].firstMatch
+        guard row.exists else { return }
+        row.swipeLeft()
+        let remove = app.buttons["Remove"].firstMatch
+        if remove.waitForExistence(timeout: 3) { remove.tap() }
+        XCTAssertTrue(eventually { !self.app.buttons[text].exists }, "Couldn't remove the recent '\(text)'")
     }
 
     // MARK: Settings: sender rules, shred hold (4.9, 4.12)
@@ -271,5 +366,30 @@ final class AppWalkthroughUITests: PaperTrailUITestCase {
         let subtitle = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'to go'")).firstMatch
         XCTAssertTrue(eventually(15) { subtitle.exists && !subtitle.label.hasPrefix("4 to go") },
                       "Deck count should grow after sending scans, got \(subtitle.exists ? subtitle.label : "no subtitle")")
+    }
+
+    /// #54: a scanned pile isn't read as one card while the split is still open. Its header waits,
+    /// and each document reads once "Split into documents" lands.
+    func testStackScanWaitsForTheSplit() {
+        launch(["-PTScanStack"])
+        waitFor(card, 20)
+        element("sort.scan").press(forDuration: 1.0)
+        waitFor(app.buttons["Scan document"], 5, "Long press on Scan should show the menu").tap()
+        waitFor(element("review.send"), 15, "Scan didn't open the review screen")
+        // Header rows combine their text and pill, so match on what the label contains.
+        let held = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Reads when you split or send'")).firstMatch
+        let reading = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Reading' OR label CONTAINS 'Reads when'"))
+        waitFor(held, 15, "The six-page pile should wait for the split instead of reading")
+        XCTAssertTrue(element("review.send").isEnabled, "Send should work while the pile waits")
+        pause(0.6)
+        shot("63-scan-stack-held")
+        let split = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Split into documents'")).firstMatch
+        waitFor(split, 5, "No Split into documents row").tap()
+        XCTAssertTrue(eventually(20) { reading.count == 0 && self.app.staticTexts["6 pages, 4 documents"].exists },
+                      "Each split document should be read")
+        pause(0.6)
+        shot("64-scan-stack-split-read")
+        element("review.send").tap()
+        XCTAssertTrue(eventually { !self.element("review.send").exists }, "Send didn't close the review")
     }
 }

@@ -61,8 +61,7 @@ struct SignInScreen: View {
             case .connectDrive(let email):
                 Text("Signed in as \(email)")
                     .font(.subheadline)
-                AuthPrimaryButton(title: "Connect Google Drive", isWorking: model.isWorking) { Task { await model.connectDrive() } }
-                    .disabled(model.isWorking)
+                PrimaryButton("Connect Google Drive", isWorking: model.isWorking) { Task { await model.connectDrive() } }
                 failure
                 footnote("Paper Trail needs Drive to file your scans. Nothing uploads until it's connected.")
             case .notAllowed:

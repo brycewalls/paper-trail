@@ -12,7 +12,7 @@ The contract every agent and every PR into `ios` follows. If you need to change 
 
 ## Presentation is separate from logic
 
-**The UI design is decided:** Direction A, "Glass", specified in `docs/design-spec.md`. Shared tokens and components are in `Core/UI` (built by deck); screens not yet rebuilt to the spec are still plain functional stand-ins.
+**The UI design is decided:** Direction A, "Glass", specified in `docs/design-spec.md`. Shared tokens and components are in `Core/UI` (built by deck). Every screen is built to the spec. Some features still carry their own copies of the spec colors from before `Core/UI` landed (`AuthPalette`, `PileKit`, `OutboxStyle`, `CaptureStyle`); folding them into `Core/UI` is tracked as an issue.
 
 So the code is split so the views can be rebuilt without touching anything else:
 
@@ -67,14 +67,16 @@ Direction A (docs/design-spec.md, section 0) replaced the scaffold's five tabs. 
 |---|---|---|---|
 | Sort | `DeckScreen` | deck | The swipe deck. Scan, Files and Photos live in its toolbar menu next to the avatar and are built by capture. |
 | Piles | `PilesScreen` | piles | Shred pile, keep originals, all filed, stats. |
-| Paperless | `PaperlessScreen` | piles | The paperless ledger (#23). A stand-in in `RootView` until piles lands it. |
+| Paperless | `PaperlessScreen` | piles | The paperless ledger (#23). |
 | Search (`Tab(role: .search)`) | `SearchScreen` | piles | On-device search (#22). |
 
 Not tabs:
 - **Outbox:** `OutboxAccessory` (outbox) in `.tabViewBottomAccessory`; tapping it pushes `OutboxScreen` onto the current tab's stack through `AppRouter.openOutbox()`.
 - **Settings:** a sheet from the avatar (`AvatarButton` in `Core/UI`, which sets `AppRouter.showSettings`).
 
-`App/AppRouter.swift` holds the selected tab, one `NavigationPath` per tab and the Settings sheet. `RootView` owns one `NavigationStack` per tab, so **tab screens never wrap themselves in a `NavigationStack`**; they declare `.navigationDestination(for:)` for their own route types. A screen that owns the bottom edge (card detail's Shred / File bar) hides the accessory by adding itself to `AppRouter.accessoryHiders`.
+`App/AppRouter.swift` holds the selected tab, one `NavigationPath` per tab and the Settings sheet. `RootView` owns one `NavigationStack` per tab, so **tab screens never wrap themselves in a `NavigationStack`**; they declare `.navigationDestination(for:)` for their own route types. A screen that owns the bottom edge (card detail's Shred / File bar, and the Outbox itself, spec 4.4) hides the accessory by adding itself to `AppRouter.accessoryHiders`.
+
+Section headers: iOS 26 stopped capitalizing list section headers, so screens use `Section(caps: "Title")` (`Core/UI/SharedViews.swift`) to draw them in capitals as Direction A does. In sample mode, `-PTTab piles|paperless|search` opens on that tab for simulator screenshots.
 
 Push detail screens with `NavigationStack` inside the tab. Sheets for capture and edits. If the design spec changes the tabs, it updates this table.
 
@@ -83,7 +85,7 @@ Push detail screens with `NavigationStack` inside the tab. Sheets for capture an
 `App/AppEnvironment.swift` holds every service behind its protocol and is passed down with `.environment(env)`:
 
 - `AppEnvironment.sample()`: all fakes, in memory. Used by unit tests (automatically), SwiftUI previews and the simulator when launched with `-PTSample`.
-- `AppEnvironment.live()`: configures Firebase and holds the live services. **Each feature agent replaces only its own line** (marked with its owner) when its live service lands, so parallel PRs don't conflict. `isSample` flips to false once no fakes remain, and the outbox switches the model container to on-disk.
+- `AppEnvironment.live()`: configures Firebase and holds the live services. Every service is live (auth, classify, capture, outbox and Drive, and the Firestore `DocStore`), the model container is on disk, and `isSample` is false. Test seams (`-PTSample`, `-PTAuth`, `-PTOutboxDemo`, `-PTOpenScan`, `-PTTab`) only act when `isSample` is true.
 
 Protocols (all in `Core/Services/ServiceProtocols.swift`): `AuthService`, `ClassifyService`, `DriveService`, `DocStore`, `CaptureService`, `OutboxService`. `OutboxService` also exposes `status` (`OutboxStatus`: online, needs reconnect, haptic counters, last upload) and `sendBack(_:)`. `DocStore` has `settings()` / `saveSettings(_:)` for `config/settings`; the Firestore `DocStore` (piles) implements them. When you add a method, add it to the fake in `Core/Services/Fakes/Fakes.swift` in the same PR so everyone else still builds.
 
@@ -239,6 +241,8 @@ How it's built (capture, `Features/Capture/`):
 - Swift Testing (`import Testing`) in `PaperTrailTests/`. Test view models and feature logic against `AppEnvironment.sample()`; contract tests decode real JSON from the function and the web app.
 - Simulator: `xcodebuild test -scheme PaperTrail -destination 'platform=iOS Simulator,name=iPhone 18 Pro Max'`. Launch with `-PTSample` for the sample deck.
 - CI (`.github/workflows/ci.yml`, job `ios`) runs xcodegen, the simulator build and the unit tests on macOS when `ios/` changes or the PR targets `ios`.
+- `FullFlowTests` runs the whole pipeline with only the network stood in: scan review, reading, the deck's swipe and undo hold, the live outbox engine (upload, record, checksum), then Piles, Search and Paperless.
+- In-memory pipeline containers get unique names (`PipelineStore.container(inMemory: true)`), so parallel tests never share a store.
 - Camera, real sign-in, Drive and Claude need the phone or Bryce's setup; say what's untested in each PR.
 
 ## Owners

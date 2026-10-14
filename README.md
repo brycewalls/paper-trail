@@ -49,6 +49,39 @@ These need Bryce in the Google and Firebase consoles. Claude did the rest: the p
 4. Set the API key secret (paste the key at the prompt, it never goes in a file): `firebase functions:secrets:set ANTHROPIC_API_KEY --project paper-trail-bw`
 5. Deploy everything: `bash tools/deploy.sh`
 
+## iPhone app (ios/)
+
+A native SwiftUI app for iPhone (iOS 26 or later, built and tested for the iPhone 15 Pro Max on iOS 27), on the same Firebase project, Firestore data and Drive folders as the web app. Direction A ("Glass") from `docs/design-spec.md`: Sort (the swipe deck), Piles, Paperless and Search, with the outbox as a bar above the tabs and Settings from the avatar. The code contract is `ios/ARCHITECTURE.md`; the plan is issue #33.
+
+### Build it
+
+- **The IPA:** `bash tools/build_ipa.sh` writes an unsigned `ios/build/PaperTrail.ipa` (`OUT=dist bash tools/build_ipa.sh` puts it in `dist/`). It needs Xcode and XcodeGen (`brew install xcodegen`). Nothing is signed here; SideStore signs it on the phone.
+- **Releases:** each iPhone build is attached to a prerelease named `ios-vX.Y` on the Releases page.
+- **In the simulator:** `cd ios && xcodegen`, then `xcodebuild test -scheme PaperTrail -destination 'platform=iOS Simulator,name=iPhone 18 Pro Max'`. Launch with `-PTSample` to run on sample data with no Google account.
+- The Xcode project is generated from `ios/project.yml`. Never edit the `.xcodeproj` by hand.
+
+### Install it with SideStore
+
+The app is sideloaded with SideStore on a free Apple ID, so it has no entitlements and nothing depends on the bundle ID.
+
+1. On the iPhone, open the latest `ios-v` release on the Releases page in Safari and download `PaperTrail.ipa`.
+2. Open SideStore, go to My Apps, tap the plus button, and pick `PaperTrail.ipa` from Files.
+3. SideStore signs it with your Apple ID and installs it. The first launch shows the sign-in screen.
+
+A free Apple ID signs apps for 7 days. Open SideStore and tap Refresh All before the 7 days run out (SideStore can also refresh in the background while its VPN is connected). If it lapses, the app won't open until you refresh it; your scans stay on the phone. A free Apple ID also allows 3 sideloaded apps at once, SideStore included.
+
+To update, install the newer IPA the same way. SideStore keeps the app's data.
+
+### Setup the iPhone app needs (once)
+
+Sign-in uses Google's web flow with the code exchanged on the server, so Drive stays connected and nothing depends on the bundle ID. These steps need Bryce in the consoles:
+
+1. In the Google Cloud console for `paper-trail-bw`, go to APIs & Services, then Credentials, then OAuth 2.0 Client IDs, then the "Web client (auto created by Google Service)" client, and copy its Client secret.
+2. Set it as a Functions secret and paste it at the prompt: `firebase functions:secrets:set GOOGLE_OAUTH_CLIENT_SECRET --project paper-trail-bw`
+3. On that same client page, under Authorized redirect URIs, add `https://paper-trail-bw.web.app/oauth/callback` and save.
+4. In APIs & Services, then Credentials, then API keys, open the key that matches `API_KEY` in `ios/GoogleService-Info.plist`. Application restrictions should be None, not "iOS apps". Keep its API restrictions.
+5. Deploy the functions and Hosting once the iPhone work is on `main`: `firebase deploy --only functions,hosting --project paper-trail-bw` (adds `oauthCallback`, `oauthRedeem`, `driveToken`, the extended `classify`, and the `/oauth/callback` and `/oauth/redeem` rewrites).
+
 ## Working on it
 
 - **Run it locally with no Google account:** `node tools/serve.mjs`, then http://localhost:5178/public/index.html?fake=1. Firebase, Claude and Drive are swapped for in-memory stand-ins (`tools/fake/fake-backend.js`). Add `&as=stranger` for the private screen, `&signedout`, `&nodrive`, `&drive401` (Reconnect Drive), `&readfail` (Try again).

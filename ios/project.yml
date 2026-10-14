@@ -50,8 +50,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.brycewalls.papertrail
         PRODUCT_NAME: PaperTrail
-        MARKETING_VERSION: "0.1"
-        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "0.2"
+        CURRENT_PROJECT_VERSION: "2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         # Design tokens (docs/design-spec.md 2.1) are asset catalog color sets used through
         # generated symbols, e.g. Color(.shred). AccentColor is the app-wide tint.

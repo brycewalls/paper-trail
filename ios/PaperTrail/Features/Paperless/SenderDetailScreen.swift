@@ -50,7 +50,7 @@ struct SenderDetailScreen: View {
                                 .font(.headline)
                                 .foregroundStyle(.white)
                                 .frame(maxWidth: .infinity, minHeight: 52)
-                                .background(PileKit.Palette.accentFill, in: Capsule())
+                                .background(Color(.accentFill), in: Capsule())
                         }
                         .buttonStyle(.plain)
                         .listRowInsets(EdgeInsets())

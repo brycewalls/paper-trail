@@ -133,9 +133,9 @@ struct SenderRuleDetailScreen: View {
                     .font(.body.monospaced())
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-                ClassifyFlowLayout(spacing: 8) {
+                FlowLayout(spacing: Space.s) {
                     ForEach(SenderRuleEngine.tokens, id: \.self) { token in
-                        ClassifyChoiceChip(title: token, isOn: (rule.filenamePattern ?? "").contains(token)) {
+                        ChoiceChip(title: token, isSelected: (rule.filenamePattern ?? "").contains(token)) {
                             rule.filenamePattern = (rule.filenamePattern ?? "") + token
                         }
                         .accessibilityLabel("Add \(token)")

@@ -48,7 +48,7 @@ private struct PaperlessContent: View {
                         withAnimation(.smooth) { model.showAllFlags = true }
                     } label: {
                         HStack {
-                            Text(model.moreFlagsText).foregroundStyle(PileKit.Palette.unsure)
+                            Text(model.moreFlagsText).foregroundStyle(Color(.unsure))
                             Spacer()
                             Image(systemName: "chevron.down").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
                         }
@@ -112,7 +112,7 @@ private struct PaperlessContent: View {
         .swipeActions(edge: .trailing) {
             ForEach(model.swipeChoices(sender), id: \.self) { choice in
                 Button(choice.label) { Task { await model.setStatus(sender, to: choice) } }
-                    .tint(choice == .confirmed ? PileKit.Palette.fileFill : choice == .requested ? PileKit.Palette.accentFill : .gray)
+                    .tint(choice == .confirmed ? Color(.fileFill) : choice == .requested ? Color(.accentFill) : .gray)
             }
         }
     }
@@ -133,7 +133,7 @@ fileprivate func paperlessRowContent(title: String, subtitle: String?, status: P
             }
         }
         Spacer(minLength: 8)
-        PileKit.StatusPill(kind: .paperless(status))
+        StatusPill(kind: .paperless(status))
     }
     .frame(minHeight: 44)
     .contentShape(Rectangle())
@@ -147,18 +147,18 @@ private struct StillMailingBanner: View {
 
     var body: some View {
         Section {
-            PileKit.BannerRow(background: PileKit.Palette.unsureSoft) {
+            BannerContent(fill: Color(.unsureSoft)) {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 6) {
                         Image(systemName: "exclamationmark.triangle.fill").accessibilityHidden(true)
                         Text("Still mailing?")
                     }
                     .font(.subheadline.bold())
-                    .foregroundStyle(PileKit.Palette.unsure)
+                    .foregroundStyle(Color(.unsure))
                     Text(text).font(.subheadline)
                     HStack(spacing: 8) {
-                        PileKit.BannerChip(title: "Open their steps", action: openSteps)
-                        PileKit.BannerChip(title: "Wait a cycle", action: waitACycle)
+                        BannerChip(title: "Open their steps", action: openSteps)
+                        BannerChip(title: "Wait a cycle", action: waitACycle)
                     }
                     .padding(.top, 4)
                 }

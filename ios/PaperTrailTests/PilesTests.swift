@@ -62,6 +62,23 @@ struct PilesTests {
         #expect(model.waitingSubtitle(model.waiting[0]).hasPrefix("Drive copy confirmed · hold ends "))
         #expect(model.waitingPill(model.waiting[1]) == "Checking")
         #expect(model.waitingSubtitle(model.waiting[1]) == "Checking the Drive copy")
+        // The shared StatusPill (#49) draws the same text from the day count.
+        #expect(model.waitingDaysLeft(model.waiting[0]) == 2)
+        #expect(model.waitingDaysLeft(model.waiting[1]) == nil)
+        #expect(StatusPill.text(for: .waiting(daysLeft: 2)) == model.waitingPill(model.waiting[0]))
+        #expect(StatusPill.text(for: .checking) == model.waitingPill(model.waiting[1]))
+        #expect(StatusPill.text(for: .waiting(daysLeft: 1)) == "1 day")
+        #expect(StatusPill.text(for: .waiting(daysLeft: 0)) == "Today")
+    }
+
+    @Test func rowThumbnailLabels() {
+        var d = doc("a")
+        d.title = "2025 W-2, Northwind Logistics"
+        #expect(d.thumbnailLabel == "W-2\n2025")
+        d.title = "2024 1099-INT"
+        #expect(d.thumbnailLabel == "1099-INT\n2024")
+        d.title = "Pharmacy receipt"
+        #expect(d.thumbnailLabel == "")
     }
 
     @Test func bannerWithoutAHold() async {

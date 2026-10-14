@@ -98,7 +98,7 @@ private struct CaptureCover: View {
             case .saving, .none:
                 ProgressView("Saving pages")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(CaptureStyle.background)
+                    .background(Palette.background)
             case .review:
                 if let review = controller.review {
                     ScanReviewScreen(model: review, controller: controller)

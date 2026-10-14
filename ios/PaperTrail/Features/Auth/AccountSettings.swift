@@ -110,7 +110,7 @@ struct DriveSettingsSection: View {
         Section {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Circle()
-                    .fill(model.isDriveConnected ? AuthPalette.file : AuthPalette.danger)
+                    .fill(model.isDriveConnected ? Color(.file) : Palette.danger)
                     .frame(width: 10, height: 10)
                     .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 1 }
                     .accessibilityHidden(true)
@@ -179,7 +179,7 @@ struct ReconnectDriveButton: View {
             if model.failed {
                 Text(ReconnectDriveModel.failure)
                     .font(.footnote)
-                    .foregroundStyle(AuthPalette.danger)
+                    .foregroundStyle(Palette.danger)
             }
         }
     }
@@ -205,7 +205,7 @@ struct ReconnectDriveBanner: View {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(alignment: .firstTextBaseline, spacing: 12) {
                         Image(systemName: "exclamationmark.icloud.fill")
-                            .foregroundStyle(AuthPalette.danger)
+                            .foregroundStyle(Palette.danger)
                             .accessibilityHidden(true)
                         Text("\(Text("Drive needs reconnecting.").bold()) Your scans are safe on this phone and upload once it's back.")
                             .font(.subheadline)
@@ -213,11 +213,11 @@ struct ReconnectDriveBanner: View {
                     ReconnectDriveButton(model: model)
                         .buttonStyle(.bordered)
                         .controlSize(.small)
-                        .tint(AuthPalette.danger)
+                        .tint(Palette.danger)
                 }
                 .padding(.vertical, 4)
             }
-            .listRowBackground(AuthPalette.dangerSoft)
+            .listRowBackground(Palette.dangerSoft)
         }
     }
 }

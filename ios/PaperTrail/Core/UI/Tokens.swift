@@ -7,7 +7,7 @@
 // (Resources/Assets.xcassets), used through Xcode's generated symbols, e.g. `Color(.shred)` or
 // `.foregroundStyle(.file)`. Neutrals come from the system so they track Increase Contrast.
 // Color sets: AccentColor, AccentFill, AccentSoft, CardWell, Shred, ShredSoft, Keep, KeepSoft,
-// File, FileSoft, Unsure, UnsureSoft. "Danger" is the Shred pair (2.1), see `Palette.danger`.
+// File, FileSoft, FileFill, Unsure, UnsureSoft. "Danger" is the Shred pair (2.1), see `Palette.danger`.
 import SwiftUI
 
 enum Palette {

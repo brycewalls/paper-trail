@@ -24,7 +24,7 @@ struct ScanReviewScreen: View {
             .listStyle(.insetGrouped)
             .listSectionSpacing(12)
             .scrollContentBackground(.hidden)
-            .background(CaptureStyle.background)
+            .background(Palette.background)
             .safeAreaInset(edge: .bottom) { sendBar }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -34,7 +34,7 @@ struct ScanReviewScreen: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(model.moreTitle) { Task { await controller.addMore() } }
                         .fontWeight(.semibold)
-                        .tint(CaptureStyle.accent)
+                        .tint(Color(.accent))
                 }
             }
             .confirmationDialog(model.discardTitle, isPresented: $confirmingDiscard, titleVisibility: .visible) {
@@ -69,7 +69,7 @@ struct ScanReviewScreen: View {
                     .font(.headline)
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity, minHeight: 52)
-                    .background(CaptureStyle.accentFill.opacity(model.canSend ? 1 : 0.4), in: .capsule)
+                    .background(Color(.accentFill).opacity(model.canSend ? 1 : 0.4), in: .capsule)
             }
             .buttonStyle(.plain)
             .disabled(!model.canSend)
@@ -81,7 +81,7 @@ struct ScanReviewScreen: View {
         .padding(.horizontal, 20)
         .padding(.top, 12)
         .padding(.bottom, 4)
-        .background(CaptureStyle.background)
+        .background(Palette.background)
     }
 }
 
@@ -129,18 +129,12 @@ private struct GroupCard: View {
     }
 }
 
-/// "Read" (File on FileSoft) or "Reading" (gray), shaped like StatusPill (spec 3.6).
+/// "Read" or "Reading" on each proposed document (A3): the shared StatusPill.
 private struct ReviewPill: View {
     let isRead: Bool
 
     var body: some View {
-        Text(isRead ? "Read" : "Reading")
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(isRead ? CaptureStyle.file : .secondary)
-            .padding(.vertical, 4)
-            .padding(.horizontal, 10)
-            .background(isRead ? CaptureStyle.fileSoft : CaptureStyle.cardWell, in: .capsule)
-            .fixedSize()
+        StatusPill(kind: isRead ? .read : .reading).fixedSize()
     }
 }
 
@@ -155,39 +149,16 @@ private struct DuplicateLine: View {
             Label {
                 Text(message).font(.subheadline)
             } icon: {
-                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(CaptureStyle.unsure)
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color(.unsure))
             }
             HStack(spacing: 8) {
-                Chip(title: "Skip", selected: skipped) { choose(true) }
-                Chip(title: "File again", selected: !skipped) { choose(false) }
+                ChoiceChip(title: "Skip", isSelected: skipped) { choose(true) }
+                ChoiceChip(title: "File again", isSelected: !skipped) { choose(false) }
             }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(CaptureStyle.unsureSoft, in: .rect(cornerRadius: 10, style: .continuous))
-    }
-
-    /// ChoiceChip (spec 3.5): 34 tall, padded to a 44 pt target.
-    private struct Chip: View {
-        let title: String
-        let selected: Bool
-        let action: () -> Void
-
-        var body: some View {
-            Button(action: action) {
-                Text(title)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(selected ? CaptureStyle.accent : .primary)
-                    .padding(.horizontal, 14)
-                    .frame(minHeight: 34)
-                    .background(selected ? CaptureStyle.accentSoft : CaptureStyle.surface, in: .capsule)
-                    .overlay { if !selected { Capsule().strokeBorder(Color(.separator)) } }
-                    .padding(.vertical, 5)
-                    .contentShape(.rect)
-            }
-            .buttonStyle(.plain)
-            .accessibilityAddTraits(selected ? .isSelected : [])
-        }
+        .background(Color(.unsureSoft), in: .rect(cornerRadius: 10, style: .continuous))
     }
 }
 
@@ -200,7 +171,7 @@ private struct PageThumbnail: View {
 
     var body: some View {
         ZStack {
-            CaptureStyle.cardWell
+            Color(.cardWell)
             if let data, let image = UIImage(data: data) {
                 Image(uiImage: image)
                     .resizable()
@@ -213,7 +184,7 @@ private struct PageThumbnail: View {
         }
         .frame(width: 66, height: 86)
         .clipShape(.rect(cornerRadius: 6, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Color(.separator), lineWidth: 0.5))
+        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5))
         .contextMenu {
             Button("Rotate", systemImage: "rotate.right", action: rotate)
             Button("Delete page", systemImage: "trash", role: .destructive, action: delete)
@@ -253,11 +224,11 @@ private struct JoinButton: View {
         Button(action: action) {
             Label("Join", systemImage: "link")
                 .font(.subheadline.weight(.medium))
-                .foregroundStyle(CaptureStyle.accent)
+                .foregroundStyle(Color(.accent))
                 .padding(.horizontal, 14)
                 .frame(minHeight: 34)
-                .background(CaptureStyle.surface, in: .capsule)
-                .overlay(Capsule().strokeBorder(Color(.separator)))
+                .background(Palette.surface, in: .capsule)
+                .overlay(Capsule().strokeBorder(Palette.separator))
                 .padding(.vertical, 5)
                 .contentShape(.rect)
         }

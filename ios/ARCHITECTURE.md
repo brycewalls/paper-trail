@@ -85,7 +85,7 @@ Push detail screens with `NavigationStack` inside the tab. Sheets for capture an
 `App/AppEnvironment.swift` holds every service behind its protocol and is passed down with `.environment(env)`:
 
 - `AppEnvironment.sample()`: all fakes, in memory. Used by unit tests (automatically), SwiftUI previews and the simulator when launched with `-PTSample`.
-- `AppEnvironment.live()`: configures Firebase and holds the live services. Every service is live (auth, classify, capture, outbox and Drive, and the Firestore `DocStore`), the model container is on disk, and `isSample` is false. Test seams (`-PTSample`, `-PTAuth`, `-PTOutboxDemo`, `-PTOpenScan`, `-PTTab`) only act when `isSample` is true.
+- `AppEnvironment.live()`: configures Firebase and holds the live services. Every service is live (auth, classify, capture, outbox and Drive, and the Firestore `DocStore`), the model container is on disk, and `isSample` is false. Test seams (`-PTSample`, `-PTAuth`, `-PTOutboxDemo`, `-PTOpenScan`, `-PTTab`, `-PTAutoFile`, which taps File, Shred and File through the action row's path) only act when `isSample` is true.
 
 Protocols (all in `Core/Services/ServiceProtocols.swift`): `AuthService`, `ClassifyService`, `DriveService`, `DocStore`, `CaptureService`, `OutboxService`. `OutboxService` also exposes `status` (`OutboxStatus`: online, needs reconnect, haptic counters, last upload) and `sendBack(_:)`. `DocStore` has `settings()` / `saveSettings(_:)` for `config/settings`; the Firestore `DocStore` (piles) implements them. When you add a method, add it to the fake in `Core/Services/Fakes/Fakes.swift` in the same PR so everyone else still builds.
 

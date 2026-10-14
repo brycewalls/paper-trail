@@ -24,6 +24,10 @@ struct DeckScreen: View {
     @State private var ghost: Ghost?
     @State private var enterOpacity: Double = 1
     @State private var cardWidth: CGFloat = 350
+    @State private var deckHeight: CGFloat = 600
+    /// Which way the current drag is going: up (skip, #77) or sideways (file and shred).
+    @State private var draggingUp = false
+    @State private var showSkippedSheet = false
     @State private var thumbnails: [UUID: CGImage] = [:]
     @State private var showBulkSheet = false
     @AccessibilityFocusState private var cardFocused: Bool
@@ -84,6 +88,9 @@ struct DeckScreen: View {
                     Task { await confirmCheck(item) }
                 }
             }
+            .sheet(isPresented: $showSkippedSheet) {
+                SkippedSheet(model: model) { sortNow($0) } sortAll: { sortSkipped() }
+            }
             .sheet(isPresented: $showBulkSheet) {
                 BulkFileSheet(model: model, items: model.bulkCandidates) { chosen in
                     showBulkSheet = false
@@ -112,21 +119,49 @@ struct DeckScreen: View {
         if model.cards.isEmpty && ghost == nil {
             VStack(spacing: 0) {
                 reconnectBanner
+                promptRow.padding(.top, Space.s)
                 emptyState
             }
         } else {
             VStack(spacing: Space.xl) {
                 reconnectBanner
-                if let title = model.bulkPromptTitle(enabled: offerBulkFile) {
-                    Button(title) { showBulkSheet = true }
-                        .buttonStyle(.bordered)
-                        .buttonBorderShape(.capsule)
-                        .controlSize(.small)
-                }
+                promptRow
                 deck
             }
             .padding(.top, Space.s)
             .padding(.bottom, Space.l)
+        }
+    }
+
+    /// The quiet capsules above the card: "3 skipped" (#77) and the bulk file prompt (3.9). Side
+    /// by side when they fit, stacked at large text sizes.
+    @ViewBuilder private var promptRow: some View {
+        let bulk = model.bulkPromptTitle(enabled: offerBulkFile)
+        if model.skippedChipTitle != nil || bulk != nil {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: Space.s) { prompts(bulk) }
+                VStack(spacing: Space.s) { prompts(bulk) }
+            }
+            .padding(.horizontal, Space.xl)
+        }
+    }
+
+    @ViewBuilder private func prompts(_ bulk: String?) -> some View {
+        if let skipped = model.skippedChipTitle {
+            Button { showSkippedSheet = true } label: {
+                Label(skipped, systemImage: "arrow.up.forward")
+            }
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.capsule)
+            .controlSize(.small)
+            .accessibilityHint("Shows the cards you skipped.")
+            .accessibilityIdentifier("deck.skipped")
+        }
+        if let bulk {
+            Button(bulk) { showBulkSheet = true }
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.capsule)
+                .controlSize(.small)
         }
     }
 
@@ -148,6 +183,7 @@ struct DeckScreen: View {
             undoTitle: model.last?.items.first?.card?.title,
             shred: { if let top = model.top { decide(.shred, top, fromButton: true) } },
             undo: { Task { await undo() } },
+            skip: { if let top = model.top { decide(.skip, top, fromButton: true) } },
             file: { if let top = model.top { decide(.file, top, fromButton: true) } })
     }
 
@@ -168,7 +204,9 @@ struct DeckScreen: View {
                             .transition(.identity)
                     }
                     if let ghost {
-                        card(for: ghost.item, dragX: ghost.side == .file ? threshold : -threshold)
+                        card(for: ghost.item,
+                             dragX: ghost.side == .file ? threshold : ghost.side == .shred ? -threshold : 0,
+                             dragY: ghost.side == .skip ? -threshold : 0)
                             .modifier(CardMotion(offset: ghost.offset, width: cardWidth, reduceMotion: reduceMotion))
                             .opacity(ghost.opacity)
                             .zIndex(20)
@@ -192,14 +230,20 @@ struct DeckScreen: View {
                 actionRow
                 Spacer(minLength: 0)
             }
-            .onAppear { cardWidth = geo.size.width - 2 * Metrics.cardSideMargin }
-            .onChange(of: geo.size.width) { _, width in cardWidth = width - 2 * Metrics.cardSideMargin }
+            .onAppear {
+                cardWidth = geo.size.width - 2 * Metrics.cardSideMargin
+                deckHeight = geo.size.height
+            }
+            .onChange(of: geo.size) { _, size in
+                cardWidth = size.width - 2 * Metrics.cardSideMargin
+                deckHeight = size.height
+            }
         }
     }
 
     @ViewBuilder private func cardView(_ item: PipelineItem, index: Int) -> some View {
         if index == 0 {
-            card(for: item, dragX: offset.width)
+            card(for: item, dragX: draggingUp ? 0 : offset.width, dragY: draggingUp ? offset.height : 0)
                 .cardShadow()
                 .modifier(CardMotion(offset: offset, width: cardWidth, reduceMotion: reduceMotion))
                 .opacity(enterOpacity)
@@ -209,7 +253,7 @@ struct DeckScreen: View {
                     Button("File", systemImage: "checkmark") { decide(.file, item, fromButton: true) }
                         .disabled(item.card == nil || model.isReadFailed(item))
                     Button("Shred", systemImage: "xmark") { decide(.shred, item, fromButton: true) }
-                    Button("Move to the back", systemImage: "arrow.down.to.line") { later(item) }
+                    Button("Skip", systemImage: "arrow.up.forward") { decide(.skip, item, fromButton: true) }
                     Button("Edit details", systemImage: "pencil") { router.push(DeckRoute.card(item.id)) }
                 } preview: {
                     previewPage(item)
@@ -232,7 +276,7 @@ struct DeckScreen: View {
         }
     }
 
-    private func card(for item: PipelineItem, dragX: CGFloat) -> some View {
+    private func card(for item: PipelineItem, dragX: CGFloat, dragY: CGFloat = 0) -> some View {
         DeckCardView(
             card: item.card,
             pageCount: item.pageCount,
@@ -240,6 +284,7 @@ struct DeckScreen: View {
             readFailed: model.isReadFailed(item),
             thumbnail: thumbnails[item.id],
             dragX: dragX,
+            dragY: dragY,
             threshold: threshold,
             onCheck: { field in model.openCheck(item, at: field) },
             onTryAgain: { Task { await model.retryRead(item) } },
@@ -264,6 +309,22 @@ struct DeckScreen: View {
                 Text(model.readingCount == 1 ? "Reading 1 document" : "Reading \(max(model.readingCount, 1)) documents")
             } description: {
                 Text("They show up here as soon as Claude is done.")
+            }
+        } else if let prompt = model.skippedPrompt {
+            // Only skipped cards are left (#77).
+            ContentUnavailableView {
+                Label(prompt, systemImage: "arrow.up.forward.circle")
+            } description: {
+                if model.filedToday > 0 {
+                    Text(model.filedToday == 1 ? "1 filed today. The outbox is handling the uploads."
+                         : "\(model.filedToday) filed today. The outbox is handling the uploads.")
+                }
+            } actions: {
+                Button("Sort skipped") { sortSkipped() }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("deck.sortSkipped")
+                ScanNowButton(title: "Scan more")
+                    .buttonStyle(.bordered)
             }
         } else if !model.hasHistory {
             ContentUnavailableView {
@@ -295,16 +356,22 @@ struct DeckScreen: View {
     private func dragGesture(_ item: PipelineItem) -> some Gesture {
         DragGesture(minimumDistance: 12)
             .onChanged { value in
+                let tx = value.translation.width, ty = value.translation.height
                 if !dragging {
-                    // At large text sizes the body scrolls: only claim horizontal-dominant drags.
-                    guard abs(value.translation.width) > abs(value.translation.height) || typeSize < .accessibility1 else { return }
+                    // At large text sizes the body scrolls: only claim horizontal-dominant drags,
+                    // so Skip there is the button (#77).
+                    guard abs(tx) > abs(ty) || typeSize < .accessibility1 else { return }
                     dragging = true
                     haptic.prepare()
                 }
+                // Up-dominant drags skip (#77): the card follows the finger up 1:1 and sideways
+                // movement is damped. Otherwise sideways is 1:1 and vertical is damped (2.7).
+                let up = -ty > abs(tx) && typeSize < .accessibility1
+                draggingUp = up
                 withAnimation(Motion.dragFollow) {
-                    offset = CGSize(width: value.translation.width, height: value.translation.height * 0.15)
+                    offset = up ? CGSize(width: tx * 0.15, height: ty) : CGSize(width: tx, height: ty * 0.15)
                 }
-                let nowCrossed = abs(value.translation.width) >= threshold
+                let nowCrossed = up ? -ty >= threshold : abs(tx) >= threshold
                 if nowCrossed && !crossed { haptic.impactOccurred() }
                 crossed = nowCrossed
             }
@@ -312,11 +379,17 @@ struct DeckScreen: View {
                 guard dragging else { return }
                 dragging = false
                 crossed = false
-                let tx = value.translation.width
-                let flick = value.predictedEndTranslation.width
-                if tx >= threshold || flick >= 2 * threshold {
+                let tx = value.translation.width, ty = value.translation.height
+                let flick = value.predictedEndTranslation
+                if draggingUp {
+                    if -ty >= threshold || -flick.height >= 2 * threshold {
+                        decide(.skip, item, fromButton: false)
+                    } else {
+                        snapBack()
+                    }
+                } else if tx >= threshold || flick.width >= 2 * threshold {
                     decide(.file, item, fromButton: false)
-                } else if tx <= -threshold || flick <= -2 * threshold {
+                } else if tx <= -threshold || flick.width <= -2 * threshold {
                     decide(.shred, item, fromButton: false)
                 } else {
                     snapBack()
@@ -332,7 +405,11 @@ struct DeckScreen: View {
         let title = item.card?.title ?? "Document"
         var outcome = DeckOutcome.unavailable
         withAnimation(reduceMotion ? Motion.reducedFade : Motion.promote) {
-            outcome = side == .file ? model.file(item) : model.shred(item)
+            switch side {
+            case .file: outcome = model.file(item)
+            case .shred: outcome = model.shred(item)
+            case .skip: outcome = model.skip(item)
+            }
         }
         guard outcome == .decided else {
             snapBack()
@@ -363,22 +440,42 @@ struct DeckScreen: View {
             offset = .zero
             enterOpacity = 1
         }
-        let target = CGSize(width: (side == .file ? 1.5 : -1.5) * cardWidth, height: start.height)
+        draggingUp = false
         if reduceMotion {
             withAnimation(Motion.reducedEase) { ghost?.opacity = 0 } completion: { ghost = nil }
+        } else if side == .skip {
+            // Up and out over the title, fading so it never sits on the toolbar (#77).
+            let target = CGSize(width: start.width, height: -1.2 * deckHeight)
+            withAnimation(Motion.flyOff) {
+                ghost?.offset = target
+                ghost?.opacity = 0
+            } completion: { ghost = nil }
         } else {
+            let target = CGSize(width: (side == .file ? 1.5 : -1.5) * cardWidth, height: start.height)
             withAnimation(Motion.flyOff) { ghost?.offset = target } completion: { ghost = nil }
         }
     }
 
     private func snapBack() {
         crossed = false
-        withAnimation(reduceMotion ? Motion.reducedEase : Motion.snapBack) { offset = .zero }
+        withAnimation(reduceMotion ? Motion.reducedEase : Motion.snapBack) { offset = .zero } completion: {
+            draggingUp = false
+        }
     }
 
-    private func later(_ item: PipelineItem) {
-        withAnimation(reduceMotion ? Motion.reducedFade : Motion.promote) { model.later(item) }
-        announce("Moved to the back. Next: \(model.top?.card?.title ?? "")")
+    /// "Sort skipped" (#77): the skipped cards come back to the front of the deck.
+    private func sortSkipped() {
+        showSkippedSheet = false
+        let count = model.skippedCount
+        withAnimation(reduceMotion ? Motion.reducedFade : Motion.promote) { model.sortSkipped() }
+        announce(count == 1 ? "1 card back on the deck." : "\(count) cards back on the deck.")
+    }
+
+    /// "Sort now" on one skipped card: it goes on top of the deck.
+    private func sortNow(_ item: PipelineItem) {
+        withAnimation(reduceMotion ? Motion.reducedFade : Motion.promote) { model.sortNow(item) }
+        if model.skipped.isEmpty { showSkippedSheet = false }
+        announce("\(item.card?.title ?? "Document") is on top of the deck.")
     }
 
     private func undo() async {
@@ -390,7 +487,11 @@ struct DeckScreen: View {
             withAnimation(Motion.reducedFade) { enterOpacity = 1 }
         } else {
             withTransaction(instant) {
-                offset = CGSize(width: (side == .file ? 1.5 : -1.5) * cardWidth, height: 0)
+                switch side {
+                case .file: offset = CGSize(width: 1.5 * cardWidth, height: 0)
+                case .shred: offset = CGSize(width: -1.5 * cardWidth, height: 0)
+                case .skip: offset = CGSize(width: 0, height: -deckHeight)   // back down from the top
+                }
                 enterOpacity = 1
             }
             withAnimation(Motion.undoReturn) { offset = .zero }
@@ -426,7 +527,7 @@ struct DeckScreen: View {
             decide(.file, item, fromButton: true)
         }
         Button("Shred") { decide(.shred, item, fromButton: true) }
-        Button("Move to the back") { later(item) }
+        Button("Skip") { decide(.skip, item, fromButton: true) }
         Button("Edit details") { router.push(DeckRoute.card(item.id)) }
         if model.canUndo {
             Button("Undo") { Task { await undo() } }
@@ -498,7 +599,11 @@ private struct ActionRow: View {
     let undoTitle: String?
     let shred: () -> Void
     let undo: () -> Void
+    let skip: () -> Void
     let file: () -> Void
+
+    /// Inside the glass circle's padding: 32 at the default size (a 48 pt circle).
+    @ScaledMetric(relativeTo: .headline) private var circleInner: CGFloat = Metrics.undoDiameter - 16
 
     var body: some View {
         GlassEffectContainer {
@@ -507,6 +612,10 @@ private struct ActionRow: View {
                 row(labels: false)
             }
         }
+        // Four buttons share the row (#77). Past accessibility2 the glyphs stop growing so Shred,
+        // Undo, Skip and File stay on one line; a long press shows each one in the Large Content
+        // Viewer, and VoiceOver reads the full labels.
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
         .padding(.horizontal, Metrics.cardSideMargin)
     }
 
@@ -520,22 +629,32 @@ private struct ActionRow: View {
             .accessibilityLabel("Shred")
             .accessibilityInputLabels(["Shred"])
             .accessibilityIdentifier("deck.shred")
+            .accessibilityShowsLargeContentViewer()
 
             Spacer(minLength: Space.m)
 
-            Button(action: undo) {
-                Image(systemName: "arrow.uturn.backward")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
-                    .frame(width: Metrics.undoDiameter - 16, height: Metrics.undoDiameter - 16)
+            // Undo and Skip (#77) are a pair of small circles between the two big actions.
+            HStack(spacing: Space.m) {
+                Button(action: undo) { circleSymbol("arrow.uturn.backward") }
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.circle)
+                    .disabled(!canUndo)
+                    .accessibilityLabel(canUndo ? "Undo last swipe" : "Undo, nothing to undo")
+                    .accessibilityValue(canUndo ? (undoTitle ?? "") : "")
+                    .accessibilityInputLabels(["Undo"])
+                    .accessibilityIdentifier("deck.undo")
+                    .accessibilityShowsLargeContentViewer()
+
+                Button(action: skip) { circleSymbol("arrow.up.forward") }
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.circle)
+                    .disabled(!canDecide)
+                    .accessibilityLabel("Skip")
+                    .accessibilityHint("Sets this card aside to sort later.")
+                    .accessibilityInputLabels(["Skip"])
+                    .accessibilityIdentifier("deck.skip")
+                    .accessibilityShowsLargeContentViewer()
             }
-            .buttonStyle(.glass)
-            .buttonBorderShape(.circle)
-            .disabled(!canUndo)
-            .accessibilityLabel(canUndo ? "Undo last swipe" : "Undo, nothing to undo")
-            .accessibilityValue(canUndo ? (undoTitle ?? "") : "")
-            .accessibilityInputLabels(["Undo"])
-            .accessibilityIdentifier("deck.undo")
 
             Spacer(minLength: Space.m)
 
@@ -547,7 +666,18 @@ private struct ActionRow: View {
             .accessibilityLabel("File")
             .accessibilityInputLabels(["File"])
             .accessibilityIdentifier("deck.file")
+            .accessibilityShowsLargeContentViewer()
         }
+    }
+
+    /// The circle's symbol (3.3): a 48 pt circle at the default size that grows with the symbol
+    /// at large text sizes, so the glyph never spills out of it.
+    private func circleSymbol(_ name: String) -> some View {
+        Image(systemName: name)
+            .font(.headline)
+            .foregroundStyle(.secondary)
+            // Capped at 40 (a 56 pt circle) so the row keeps its 64 pt of room above the outbox bar.
+            .frame(width: min(circleInner, 40), height: min(circleInner, 40))
     }
 
     private func actionLabel(_ title: String, symbol: String, color: Color, showsTitle: Bool) -> some View {

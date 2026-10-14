@@ -11,6 +11,8 @@ struct DeckCardView: View {
     let thumbnail: CGImage?
     /// Live horizontal drag, for the overlays. Positive is toward File.
     var dragX: CGFloat = 0
+    /// Live vertical drag while skipping (#77). Negative is up, toward Skip.
+    var dragY: CGFloat = 0
     var threshold: CGFloat = 110
     var onCheck: (CardField) -> Void = { _ in }
     var onTryAgain: () -> Void = {}
@@ -102,6 +104,10 @@ struct DeckCardView: View {
         }
         .overlay(alignment: .topTrailing) {
             SwipeOverlay(side: .shred, isKeepOriginal: card?.verdict == .keepOriginal, progress: -dragX / threshold)
+                .padding(Space.m)
+        }
+        .overlay(alignment: .top) {
+            SwipeOverlay(side: .skip, isKeepOriginal: false, progress: -dragY / threshold)
                 .padding(Space.m)
         }
     }
@@ -230,7 +236,7 @@ struct DeckCardView: View {
     }
 }
 
-/// The glass "File" / "Shred" label that fades in while dragging (3.2). Hidden from VoiceOver.
+/// The glass "File" / "Shred" / "Skip" label that fades in while dragging (3.2). Hidden from VoiceOver.
 struct SwipeOverlay: View {
     let side: DeckSide
     let isKeepOriginal: Bool
@@ -242,9 +248,9 @@ struct SwipeOverlay: View {
     private var crossed: Bool { progress >= 1 }
 
     var body: some View {
-        Label(title, systemImage: side == .file ? "checkmark" : "xmark")
+        Label(title, systemImage: symbol)
             .font(.headline.bold())
-            .foregroundStyle(side == .file ? Color(.file) : Palette.danger)
+            .foregroundStyle(color)
             .padding(.horizontal, Space.m)
             .padding(.vertical, 6)
             .glassEffect(.regular, in: .capsule)
@@ -259,6 +265,23 @@ struct SwipeOverlay: View {
         switch side {
         case .file: "File"
         case .shred: isKeepOriginal ? "Shred? Asks first" : "Shred"
+        case .skip: "Skip"
+        }
+    }
+
+    private var symbol: String {
+        switch side {
+        case .file: "checkmark"
+        case .shred: "xmark"
+        case .skip: "arrow.up.forward"
+        }
+    }
+
+    private var color: Color {
+        switch side {
+        case .file: Color(.file)
+        case .shred: Palette.danger
+        case .skip: Color(.accent)
         }
     }
 }

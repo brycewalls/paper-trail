@@ -208,9 +208,10 @@ struct DeckViewModelTests {
 
     @Test func bulkPromptWordingWhenTheTopCardIsUnsure() async throws {
         let (deck, _) = await makeDeck()
-        deck.later(try card(deck, "Duke Energy"))
+        deck.skip(try card(deck, "Duke Energy"))
         #expect(deck.top?.card?.issuer == "Blue Cross")
-        #expect(deck.bulkPromptTitle(enabled: true) == "File the 3 confident cards")
+        // Skipped cards are off the deck, so they're not offered either.
+        #expect(deck.bulkPromptTitle(enabled: true) == "File the 2 confident cards")
     }
 
     @Test func bulkFileIsOneUndoStep() async throws {
@@ -228,15 +229,121 @@ struct DeckViewModelTests {
         #expect(deck.fileTogether([try card(deck, "Blue Cross")]) == .unavailable)
     }
 
-    // MARK: Later, subtitle, read failures
+    // MARK: Skip (#77)
 
-    @Test func laterMovesTheCardToTheBack() async throws {
+    @Test func skipTakesTheCardOffTheDeckIntoTheSkippedSet() async throws {
+        let (deck, env) = await makeDeck()
+        let top = try #require(deck.top)
+        #expect(deck.skip(top) == .decided)
+        #expect(!deck.cards.contains { $0.id == top.id })
+        #expect(deck.skipped.map(\.id) == [top.id])
+        #expect(deck.skippedChipTitle == "1 skipped")
+        #expect(deck.subtitle.hasPrefix("3 to go"))
+        // Nothing is decided and nothing uploads.
+        #expect(top.stage == .ready && top.decision == nil && top.skippedAt != nil)
+        #expect(deck.filedToday == 0)
+        await deck.flush()
+        #expect(try outbox(env).enqueued.isEmpty)
+    }
+
+    @Test func skipIsOneUndoStepAndTheCardComesBackOnTop() async throws {
         let (deck, _) = await makeDeck()
         let top = try #require(deck.top)
-        deck.later(top)
-        #expect(deck.cards.last?.id == top.id)
-        #expect(deck.cards.count == 4)
+        deck.skip(top)
+        #expect(deck.canUndo)
+        #expect(await deck.undo() == .skip)
+        #expect(deck.top?.id == top.id)
+        #expect(deck.skipped.isEmpty && top.skippedAt == nil)
+        #expect(!deck.canUndo)
     }
+
+    @Test func skipReleasesTheHeldSwipeAndUndoOnlyTakesBackTheSkip() async throws {
+        let (deck, env) = await makeDeck()
+        let duke = try card(deck, "Duke Energy")
+        let flyer = try card(deck, "Big Box Furniture")
+        deck.file(duke)
+        deck.skip(flyer)
+        await deck.flush()
+        #expect(try outbox(env).enqueued == [duke.id])
+        #expect(await deck.undo() == .skip)
+        #expect(deck.cards.contains { $0.id == flyer.id })
+        #expect(duke.decision == .file)
+        #expect(try outbox(env).sentBack.isEmpty)
+    }
+
+    @Test func skippedCardsAreSavedAcrossLaunches() async throws {
+        let (deck, env) = await makeDeck()
+        let duke = try card(deck, "Duke Energy")
+        deck.skip(duke)
+        // A fresh view model on the same store, as after a relaunch.
+        let relaunched = DeckViewModel(env: env)
+        relaunched.refresh()
+        #expect(relaunched.skipped.map(\.id) == [duke.id])
+        #expect(!relaunched.cards.contains { $0.id == duke.id })
+        #expect(relaunched.cards.count == 3)
+    }
+
+    @Test func sortSkippedDealsThemBackToTheFrontInSkipOrder() async throws {
+        let (deck, _) = await makeDeck()
+        let first = try #require(deck.top)
+        deck.skip(first)
+        let second = try #require(deck.top)
+        deck.skip(second)
+        let nowOnTop = try #require(deck.top)
+        #expect(deck.skippedChipTitle == "2 skipped")
+        deck.sortSkipped()
+        #expect(deck.skipped.isEmpty)
+        #expect(deck.cards.prefix(3).map(\.id) == [first.id, second.id, nowOnTop.id])
+        #expect(deck.cards.count == 4)
+        #expect(deck.skippedChipTitle == nil)
+        // The skip is back on the deck, so there's nothing left for Undo to reverse.
+        #expect(!deck.canUndo)
+    }
+
+    @Test func sortNowPutsOneSkippedCardOnTop() async throws {
+        let (deck, _) = await makeDeck()
+        let duke = try card(deck, "Duke Energy")
+        let flyer = try card(deck, "Big Box Furniture")
+        deck.skip(duke)
+        deck.skip(flyer)
+        deck.sortNow(flyer)
+        #expect(deck.top?.id == flyer.id)
+        #expect(deck.skipped.map(\.id) == [duke.id])
+        #expect(deck.skippedChipTitle == "1 skipped")
+    }
+
+    @Test func anEmptyDeckWithSkippedCardsAsksToSortThem() async throws {
+        let (deck, _) = await makeDeck()
+        while let top = deck.top { deck.skip(top) }
+        #expect(deck.cards.isEmpty)
+        #expect(deck.skippedPrompt == "4 skipped. Sort them now?")
+        #expect(deck.subtitle == "")
+        #expect(deck.announcement(after: .skip, title: "X") == "Skipped X. 4 skipped. Sort them now?")
+        deck.sortSkipped()
+        #expect(deck.cards.count == 4)
+        #expect(deck.skippedPrompt == nil)
+    }
+
+    @Test func aCardThatFailedToReadCanBeSkipped() async throws {
+        let (deck, _) = await makeDeck()
+        let top = try #require(deck.top)
+        top.fail(at: .reading, "Claude didn't answer.")
+        deck.refresh()
+        #expect(deck.skip(top) == .decided)
+        #expect(deck.skipped.map(\.id) == [top.id])
+        deck.sortNow(top)
+        #expect(deck.top?.id == top.id && deck.isReadFailed(top))
+    }
+
+    @Test func skippingSomethingNotOnTheDeckDoesNothing() async throws {
+        let (deck, _) = await makeDeck()
+        let duke = try card(deck, "Duke Energy")
+        deck.skip(duke)
+        #expect(deck.skip(duke) == .unavailable)
+        #expect(deck.skipped.count == 1)
+    }
+
+    // MARK: Subtitle, read failures
 
     @Test func subtitleCountsCardsAndConfidentOnes() async throws {
         let (deck, _) = await makeDeck()
@@ -353,6 +460,7 @@ struct DeckViewModelTests {
         let (deck, _) = await makeDeck()
         #expect(deck.announcement(after: .file, title: "X") == "Filed X. Next: Duke Energy bill, March 2024.")
         #expect(deck.announcement(after: .shred, title: "X") == "Shredded X.")
+        #expect(deck.announcement(after: .skip, title: "X") == "Skipped X. Next: Duke Energy bill, March 2024.")
     }
 
     @Test func formatting() {

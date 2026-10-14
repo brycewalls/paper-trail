@@ -37,7 +37,8 @@ nonisolated enum PipelineDecision: String, Codable, Sendable {
     case file
     /// Swipe left: log as shred, no Drive copy.
     case shredOnly
-    /// Later: back of the deck, no decision yet.
+    /// Unused. Skip (#77) is `PipelineItem.skippedAt`, not a decision. Kept because raw values
+    /// are stored and never renamed.
     case later
 }
 
@@ -75,6 +76,10 @@ final class PipelineItem {
     // Decision (Deck)
     var decisionRaw: String?
     var decidedAt: Date?
+    /// When the card was skipped on Sort (swipe up, the Skip button, the menu or VoiceOver, #77).
+    /// A skipped card stays `ready` with no decision but leaves the deck for the Skipped set until
+    /// "Sort skipped" or "Sort now" deals it back. Nothing uploads while it waits.
+    var skippedAt: Date? = nil
 
     // Outbox
     var uploadSessionURL: String?

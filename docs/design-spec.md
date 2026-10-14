@@ -60,7 +60,7 @@ These override anything below that disagrees.
 4. **Dynamic Type everywhere.** Every text uses a text style from section 2. No fixed heights on anything holding text. Test at `.xSmall`, `.large` (default) and `.accessibility3`.
 5. **Both themes.** Every color is a light/dark pair (section 2). A9 is the dark reference.
 6. **Reduce Motion and Reduce Transparency respected.** Section 2.7 for motion. Transparency is handled by the system for every glass element above; don't add a custom fallback unless a test with Reduce Transparency on shows a custom glass element losing legibility, then use `.background(.regularMaterial)`.
-7. **Every swipe has a button twin that fires the same action** (brief, principle 3). The view model has one `file(_:)`, `shred(_:)`, `later(_:)`, `undo()`; gestures, buttons, context menus and accessibility actions all call those.
+7. **Every swipe has a button twin that fires the same action** (brief, principle 3). The view model has one `file(_:)`, `shred(_:)`, `skip(_:)`, `undo()`; gestures, buttons, context menus and accessibility actions all call those.
 8. **Nothing buzzes without a reason** (section 2.6).
 
 ## 2. Tokens
@@ -174,12 +174,12 @@ SwiftUI `.sensoryFeedback` where a value changes; UIKit generators where the tri
 
 | Event | Generator | Fires when |
 |---|---|---|
-| Card crosses the commit threshold outward | `UIImpactFeedbackGenerator(style: .light)` / `.impact(weight: .light)` | Once per outward crossing during a drag, in either direction. Not on crossing back in. |
-| File or Shred button tapped | `UIImpactFeedbackGenerator(style: .light)` | On tap, the same as a committed swipe (button twin). |
+| Card crosses the commit threshold outward | `UIImpactFeedbackGenerator(style: .light)` / `.impact(weight: .light)` | Once per outward crossing during a drag, in any of the three directions (right File, left Shred, up Skip, #77). Not on crossing back in. |
+| File, Shred or Skip button tapped | `UIImpactFeedbackGenerator(style: .light)` | On tap, the same as a committed swipe (button twin). The long-press menu's and VoiceOver's File, Shred and Skip do the same. |
 | Bulk file confirmed | `UIImpactFeedbackGenerator(style: .light)` | Once, on "File 7". |
 | Uploads verified | `UINotificationFeedbackGenerator` `.success` | Once when the last in-flight upload of a batch verifies (Drive checksum and page count match). App in the foreground only. Never once per document. |
 | Upload needs attention | `UINotificationFeedbackGenerator` `.warning` | Once per item when it moves into Needs attention (automatic retries used up, or Drive needs reconnecting). Foreground only. |
-| Undo, sheet open, Keep original confirm, Mark as shredded, tab switches | none | |
+| Undo, sheet open, Keep original confirm, Mark as shredded, tab switches, Sort skipped, Sort now | none | |
 
 ### 2.7 Animation
 
@@ -189,12 +189,14 @@ SwiftUI springs (`.spring(duration:bounce:)`). Read `@Environment(\.accessibilit
 |---|---|---|
 | Drag follow | Card follows the finger 1:1 horizontally; vertical movement is damped to 15%. Rotation `clamp(tx / cardWidth * 10, -10, 10)` degrees, anchor at `UnitPoint(x: 0.5, y: 1.2)` (A1's 50% 120%). `.interactiveSpring(response: 0.15, dampingFraction: 0.86)` | Translation only, no rotation |
 | Commit threshold | `max(110 pt, 30% of card width)`, or a flick where `predictedEndTranslation.width` passes 2x the threshold | same |
+| Skip drag (#77) | An up-dominant drag (`-ty > abs(tx)`) follows the finger 1:1 vertically, horizontal damped to 15%, no rotation. Commits at the same threshold upward, or a flick where `-predictedEndTranslation.height` passes 2x it. Not at `.accessibility1` and up, where the card body scrolls; the Skip button covers it | same |
+| Skip fly-off | Up to `y = -1.2 * deck height` while fading to 0, `.spring(duration: 0.32, bounce: 0)` (the fly-off token) | Opacity to 0, `.easeOut(duration: 0.2)` |
 | Overlay label | Opacity `min(1, abs(tx) / threshold)`; scales 0.9 to 1.0 when the threshold is crossed with `.spring(duration: 0.2, bounce: 0.4)` | Opacity only |
 | Snap-back (released short, or Keep original confirm) | `.spring(duration: 0.4, bounce: 0.3)` | `.easeOut(duration: 0.2)` |
 | Fly-off | To `x = ±1.5 * cardWidth` with the gesture's velocity, `.spring(duration: 0.32, bounce: 0)` | Opacity to 0, `.easeOut(duration: 0.2)`, no movement |
 | Button-triggered fly-off | Same as fly-off with a starting velocity of 1200 pt/s | Same as Reduce Motion fly-off |
 | Next card promotion | Scale 0.96 to 1, offset 22 to 0, `.spring(duration: 0.35, bounce: 0.15)` | Cross-fade 0.2 s |
-| Undo return | Card enters from the side it left, `.spring(duration: 0.45, bounce: 0.2)` | Fade in 0.2 s |
+| Undo return | Card enters from the side it left (from the top after a Skip), `.spring(duration: 0.45, bounce: 0.2)` | Fade in 0.2 s |
 | Accessory state change | `.contentTransition(.numericText())` for counts, `.smooth` for the ring | Counts change without transition |
 
 ## 3. Components
@@ -234,27 +236,29 @@ The free-text `summary` and `verdictReason` are not on the card; they are on the
 **Gestures**
 
 - Horizontal drag: swipe right = File, swipe left = Shred (2.7).
+- Swipe up = Skip (#77): the card leaves the deck for the Skipped set (3.13). Undoable like the other swipes.
 - Tap: push the card detail (4.13).
-- Long press: `.contextMenu` with File, Shred, Later ("Move to the back"), Edit details, and a preview of the full first page.
+- Long press: `.contextMenu` with File, Shred, Skip (`arrow.up.forward`, was "Later" / "Move to the back"), Edit details, and a preview of the full first page.
 - Tap an `UnsureRow`: open the check-fields sheet scrolled to that field.
 
 **SwiftUI building blocks:** `ZStack` of peeks and the top card; `DragGesture` with `.updating` for the live offset; `.rotationEffect(anchor:)`; `.offset`; `.overlay(alignment: .topLeading)` for the swipe label; `.accessibilityElement(children: .combine)` plus `.accessibilityActions` (section 6).
 
-### 3.2 Swipe overlays (File / Shred)
+### 3.2 Swipe overlays (File / Shred / Skip)
 
-Glass capsule label on the card's scan well. File: top leading, `checkmark` + "File" in `File`, `.headline.bold()`. Shred: top trailing, `xmark` + "Shred" in `Danger`. When the top card is a Keep original, the Shred overlay reads "Shred? Asks first" so the confirm isn't a surprise. Built with `Label` + `.padding(.horizontal, 12).padding(.vertical, 6)` + `.glassEffect(.regular, in: .capsule)`. Opacity and scale per 2.7. `accessibilityHidden(true)` (the action is announced by the action itself).
+Glass capsule label on the card's scan well. File: top leading, `checkmark` + "File" in `File`, `.headline.bold()`. Shred: top trailing, `xmark` + "Shred" in `Danger`. Skip (#77): top center, `arrow.up.forward` + "Skip" in `AccentColor`, opacity from the upward drag. When the top card is a Keep original, the Shred overlay reads "Shred? Asks first" so the confirm isn't a surprise. Built with `Label` + `.padding(.horizontal, 12).padding(.vertical, 6)` + `.glassEffect(.regular, in: .capsule)`. Opacity and scale per 2.7. `accessibilityHidden(true)` (the action is announced by the action itself).
 
-### 3.3 ActionRow (Shred, Undo, File)
+### 3.3 ActionRow (Shred, Undo, Skip, File)
 
-`GlassEffectContainer` holding three buttons, `HStack` with `Spacer`s, 20 pt side margins, 20 below the card.
+`GlassEffectContainer` holding four buttons, `HStack` with `Spacer`s, 20 pt side margins, 20 below the card. Undo and Skip sit together in the middle, 12 apart, so the row reads Shred, Undo, Skip, File.
 
 | Button | Look | Action | States |
 |---|---|---|---|
 | Shred | Capsule, 54 tall, `xmark` + "Shred" in `Danger`, `.buttonStyle(.glass)` | `model.shred(top)` | Disabled when the deck is empty. On a Keep original card, opens the confirm (4.14) first. |
 | Undo | 48 circle, `arrow.uturn.backward` in `.secondary`, `.buttonStyle(.glass)`, `.buttonBorderShape(.circle)` | `model.undo()` | Disabled (and dimmed by the system) when there's nothing to undo. One step only: it undoes the last decision, including a bulk file as one step. |
+| Skip (#77) | 48 circle like Undo: `arrow.up.forward` in `.secondary`, `.buttonStyle(.glass)`, `.buttonBorderShape(.circle)` | `model.skip(top)` | Disabled when the deck is empty. Works on any card, including one that failed to read. |
 | File | Capsule, 54 tall, `checkmark` + "File" in `File` | `model.file(top)` | On a card with unsure fields, opens the check-fields sheet instead of filing. Disabled when the deck is empty or the card failed to read. |
 
-At accessibility text sizes the labels stay and the row stays one line; if it doesn't fit, Shred and File drop to icon-only with their labels kept for VoiceOver (`ViewThatFits`).
+At accessibility text sizes the labels stay and the row stays one line; if it doesn't fit, Shred and File drop to icon-only with their labels kept for VoiceOver (`ViewThatFits`). The row's text size stops at `.accessibility2` and the circles' glyph box at 40 pt (a 56 pt circle), so all four buttons fit on one line above the outbox bar at the largest size; each button shows in the Large Content Viewer on a long press (`.accessibilityShowsLargeContentViewer()`).
 
 **Undo window.** The latest decision is held back from the outbox until the next decision, 10 seconds pass, or the user leaves the Sort tab. Undo inside that window puts the card back with nothing to reverse. After it, Undo still works: a File that has already uploaded is sent back to the deck and the outbox trashes the Drive copy it made (Drive `files.update` with `trashed: true`), and a Shred removes its Firestore log entry.
 
@@ -370,6 +374,7 @@ All `ContentUnavailableView`.
 |---|---|---|---|---|
 | Sort, first time | `doc.viewfinder` | "Scan your first stack" | "Claude reads each document and gets it ready to file." | "Scan" (`.borderedProminent`), "Import" (`.bordered`, a menu: Files, Photos) |
 | Sort, all done | `checkmark.circle` | "All sorted" | "14 filed today. The outbox is handling the uploads." | "Scan more" |
+| Sort, only skipped cards left (#77) | `arrow.up.forward.circle` | "3 skipped. Sort them now?" | "14 filed today. The outbox is handling the uploads." (only when something was filed today) | "Sort skipped" (`.borderedProminent`), "Scan more" (`.bordered`) |
 | Sort, reading | `ProgressView` | "Reading 3 documents" | "They show up here as soon as Claude is done." | none |
 | Outbox, empty | `tray` | "Nothing in the outbox" | "Filed documents upload from here." | none |
 | Piles, Shred | `checkmark.circle` | "Nothing to shred" | "Documents you file show up here once their Drive copy is confirmed." | none |
@@ -395,6 +400,15 @@ All `ContentUnavailableView`.
 | Unsupported import | Import | Alert "That file can't be filed", message "PDFs and photos work. {filename} is a {type}." | OK |
 | Not on the allowlist | Sign-in | "This account isn't on the list. Sign in with a different Google account." | "Use another account" |
 | Sign-in canceled or failed | Sign-in | "Sign-in didn't finish. Try again when you're ready." | Button stays |
+
+### 3.13 Skipped set (#77)
+
+Skip sets a card aside without deciding it. It stays on the phone (`PipelineItem.skippedAt`), never uploads, and survives a relaunch.
+
+- **Chip.** At the top of Sort, centered above the card next to the bulk file prompt (side by side when they fit, stacked otherwise): `.bordered` capsule, `.controlSize(.small)`, `arrow.up.forward` + "3 skipped". Shown whenever anything is skipped, including over the empty deck. Opens the sheet.
+- **Sheet.** `.sheet` at `[.medium, .large]` with the grabber, same title block as the bulk file sheet: "3 skipped" (`.title3.bold()`). One inset grouped section, rows per 3.10: thumbnail, title, "{issuer} · {date}" subtitle, trailing "Sort now" (`.bordered`, capsule, `.controlSize(.small)`), in the order they were skipped. Footer: "Saved on your phone until you sort them. Nothing uploads while they wait." Pinned bottom: `PrimaryButton("Sort skipped")`. The sheet closes when the last card leaves it.
+- **Sort now** puts that card on top of the deck. **Sort skipped** deals every skipped card back to the front of the deck, in the order they were skipped, ahead of the cards already there.
+- **Undo.** A skip is one undo step like a swipe: Undo brings the card back on top from above. Skipping releases the previous swipe's hold to the outbox, the same as any next decision.
 
 ## 4. Screens
 
@@ -426,7 +440,7 @@ Navigation: on success, cross-fade to `RootView` on the Sort tab, which shows th
 `NavigationStack`, large title "Sort".
 
 1. Nav bar: large title "Sort". Subtitle (`.navigationSubtitle`): "{n} to go · {m} ready to file" (`n` = cards on the deck, `m` = confident cards). With cards still being read: "{n} to go · {m} ready to file · 3 reading". Trailing toolbar: `ScanMenuButton` (`doc.viewfinder`, a `Menu` with no `primaryAction`: a tap opens "Scan document", "Import from Files", "Import from Photos", per decision 1 and #74), then the avatar button (initials on `AccentSoft`, `AccentColor` text, 36 pt) which opens Settings (4.9).
-2. Bulk file prompt (3.9), only when the setting is on and at least two confident cards remain: "File the other 7 confident cards" (counts every confident card except the one on top when the top is confident; otherwise all of them, "File the 7 confident cards").
+2. The "3 skipped" chip (3.13) when anything is skipped, then the bulk file prompt (3.9), only when the setting is on and at least two confident cards remain: "File the other 7 confident cards" (counts every confident card except the one on top when the top is confident; otherwise all of them, "File the 7 confident cards").
 3. Deck: `DeckCard` with two peeks.
 4. `ActionRow`.
 5. (System) `OutboxAccessory`, then the tab bar with the search island.
@@ -620,13 +634,15 @@ Shown only when the server reports the refresh token is gone (`DriveLink.needsRe
 
 - Label: "{title}. {issuer}, {date}. {verdict stamp}. Folder {folder}. {Sensitive.} {retention}." For an unsure card, add "2 fields to check: sender, date."
 - Hint: "Swipe up or down for actions."
-- Custom actions (`.accessibilityAction(named:)`), in this order: "File" (on an unsure card: "Check 2 fields and file"), "Shred", "Move to the back", "Edit details", "Undo" (only when available).
-- Each action calls the same view model methods as the swipes and buttons. After an action, post an announcement: "Filed {title}. Next: {next title}." / "Shredded {title}." / "All sorted." The deck card then takes focus (`@AccessibilityFocusState`).
+- Custom actions (`.accessibilityAction(named:)`), in this order: "File" (on an unsure card: "Check 2 fields and file"), "Shred", "Skip" (was "Move to the back", #77), "Edit details", "Undo" (only when available).
+- Each action calls the same view model methods as the swipes and buttons. After an action, post an announcement: "Filed {title}. Next: {next title}." / "Shredded {title}." / "Skipped {title}. Next: {next title}." / "All sorted." With only skipped cards left: "Skipped {title}. 3 skipped. Sort them now?" The deck card then takes focus (`@AccessibilityFocusState`).
 - The drag gesture stays on but isn't announced; the swipe overlays are hidden from VoiceOver.
 
-**Action row.** Labels "Shred", "Undo last swipe" (value: the title it would bring back), "File". Undo when disabled: "Undo, nothing to undo". Voice Control names via `.accessibilityInputLabels`: ["Shred"], ["Undo"], ["File"].
+**Action row.** Labels "Shred", "Undo last swipe" (value: the title it would bring back), "Skip" (hint "Sets this card aside to sort later."), "File". Undo when disabled: "Undo, nothing to undo". Voice Control names via `.accessibilityInputLabels`: ["Shred"], ["Undo"], ["Skip"], ["File"].
 
-**Focus order on Sort.** Title, subtitle, bulk file prompt, Scan, avatar, card, Shred, Undo, File, outbox accessory, tab bar, search. Set with `.accessibilitySortPriority` where the visual order differs (the toolbar buttons come after the subtitle).
+**Skipped set.** The chip reads "3 skipped" with the hint "Shows the cards you skipped." Each sheet row is one element ("{title}. {issuer} · {date}") whose default action and custom action "Sort now" put it on top of the deck. "Sort skipped" announces "3 cards back on the deck."; "Sort now" announces "{title} is on top of the deck."
+
+**Focus order on Sort.** Title, subtitle, skipped chip, bulk file prompt, Scan, avatar, card, Shred, Undo, Skip, File, outbox accessory, tab bar, search. Set with `.accessibilitySortPriority` where the visual order differs (the toolbar buttons come after the subtitle).
 
 **Sheets.** The check-fields sheet gets focus on its title when it opens. Radio rows are `Button`s with `.accessibilityAddTraits(.isSelected)` on the chosen one and a value of "likely" or "possible".
 

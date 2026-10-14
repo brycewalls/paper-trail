@@ -74,3 +74,16 @@ nonisolated enum PileFormat {
     /// "1 day" / "3 days".
     static func days(_ n: Int) -> String { n == 1 ? "1 day" : "\(n) days" }
 }
+
+extension FiledDoc {
+    /// The form name a row thumbnail prints (A5's "1099-INT", "W-2 2025"): a word with both
+    /// letters and digits, over the title's year when it has one. Plain titles get "", so the
+    /// thumbnail draws lines only and nothing is cut off mid-word.
+    nonisolated var thumbnailLabel: String {
+        let words = title.split(whereSeparator: { $0 == " " || $0 == "," }).map(String.init)
+        guard let form = words.first(where: { w in w.contains(where: \.isLetter) && w.contains(where: \.isNumber) }),
+              form.count <= 8 else { return "" }
+        let year = words.first { $0.count == 4 && Int($0) != nil }
+        return [form, year].compactMap { $0 }.joined(separator: "\n")
+    }
+}

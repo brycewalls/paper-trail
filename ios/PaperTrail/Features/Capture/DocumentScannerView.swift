@@ -92,7 +92,7 @@ struct CameraOffView: View {
                 }
                 .buttonStyle(.borderedProminent)
             }
-            .background(CaptureStyle.background)
+            .background(Palette.background)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel", action: onClose)

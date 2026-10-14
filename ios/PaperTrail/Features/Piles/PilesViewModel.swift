@@ -106,12 +106,15 @@ final class PilesViewModel {
 
     /// The Waiting pill: "{n} days" / "1 day" / "Today", or "Checking" while the Drive check runs.
     func waitingPill(_ doc: FiledDoc) -> String {
-        switch shredState(doc) {
-        case .holding(let until):
-            let days = PileFormat.daysUntil(until, now: now())
-            return days == 0 ? "Today" : PileFormat.days(days)
-        default: return "Checking"
-        }
+        guard let days = waitingDaysLeft(doc) else { return "Checking" }
+        return days == 0 ? "Today" : PileFormat.days(days)
+    }
+
+    /// Whole days of hold left for the shared StatusPill's Waiting kind, or nil while the Drive
+    /// check runs (its Checking kind).
+    func waitingDaysLeft(_ doc: FiledDoc) -> Int? {
+        guard case .holding(let until) = shredState(doc) else { return nil }
+        return PileFormat.daysUntil(until, now: now())
     }
 
     /// Why a Waiting row is waiting.

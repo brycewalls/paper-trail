@@ -34,8 +34,10 @@ struct DeckCardView: View {
             if largeType {
                 ScrollView { cardBody }.scrollBounceBehavior(.basedOnSize)
             } else {
+                // The body always shows in full; the well gives up height instead (#52).
                 cardBody
-                Spacer(minLength: 0)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .layoutPriority(1)
             }
         }
         // minHeight 0: a peek takes the top card's size even when its own content is taller,
@@ -75,7 +77,11 @@ struct DeckCardView: View {
                 page
             }
         }
-        .frame(height: wellHeight)
+        // The spec height (236, or 96 with unsure fields) when the deck has room. When something
+        // sits above the deck, such as the Reconnect Drive banner (4.16), the well shrinks toward
+        // the unsure height so the body below never gets cut off (#52).
+        .frame(minHeight: largeType ? wellHeight : min(wellHeight, Metrics.scanWellUnsure),
+               idealHeight: wellHeight, maxHeight: wellHeight)
         .frame(maxWidth: .infinity)
         .overlay(alignment: .topTrailing) {
             // At accessibility sizes the pills and page count move into the scrolling body:
@@ -109,6 +115,8 @@ struct DeckCardView: View {
                 .frame(maxHeight: min(196, maxHeight))
                 .overlay(Rectangle().strokeBorder(Palette.separator, lineWidth: 0.5))
                 .shadow(color: .black.opacity(0.12), radius: 2, y: 1)
+                // 20 above and below, so a well that shrinks (#52) still frames the page.
+                .padding(.vertical, 20)
         } else {
             Image(systemName: "doc.text")
                 .font(.system(size: min(48, maxHeight * 0.5)))

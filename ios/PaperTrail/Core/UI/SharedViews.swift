@@ -164,3 +164,42 @@ extension Section where Parent == CapsHeader, Footer == EmptyView, Content: View
         self.init(content: content, header: { CapsHeader(title: title) })
     }
 }
+
+// MARK: - Reconnect Drive banner (3.9, 4.16)
+
+/// "Drive needs reconnecting." on screens that aren't lists (Sort). Lists use auth's
+/// ReconnectDriveBanner so it lines up with the rows. The caller owns the state and the action.
+struct ReconnectDriveCard: View {
+    let isWorking: Bool
+    let failed: Bool
+    let reconnect: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.s) {
+            HStack(alignment: .firstTextBaseline, spacing: Space.m) {
+                Image(systemName: "exclamationmark.icloud.fill")
+                    .foregroundStyle(Palette.danger)
+                    .accessibilityHidden(true)
+                Text("\(Text("Drive needs reconnecting.").bold()) Your scans are safe on this phone and upload once it's back.")
+                    .font(.subheadline)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Button(action: reconnect) {
+                if isWorking { ProgressView() } else { Text("Reconnect Drive") }
+            }
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.capsule)
+            .controlSize(.small)
+            .disabled(isWorking)
+            if failed {
+                Text("Drive didn't reconnect. Try again in a minute.")
+                    .font(.footnote)
+                    .foregroundStyle(Palette.danger)
+            }
+        }
+        .padding(Space.l)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Palette.dangerSoft, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .accessibilityElement(children: .contain)
+    }
+}

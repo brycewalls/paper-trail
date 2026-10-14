@@ -36,6 +36,15 @@ struct RootView: View {
         }
         .environment(router)
         .task { if await OutboxDemo.prepare(env: env) { router.openOutbox() } }  // outbox: simulator screenshots only
+        .onAppear { if let tab = Self.launchTab { router.tab = tab } }
+    }
+
+    /// Sample mode only: `-PTSample -PTTab piles|paperless|search` opens on that tab, so every
+    /// tab can be screenshotted in the simulator without a tap.
+    private static var launchTab: AppTab? {
+        let args = ProcessInfo.processInfo.arguments
+        guard args.contains("-PTSample"), let i = args.firstIndex(of: "-PTTab"), i + 1 < args.count else { return nil }
+        return ["sort": .sort, "piles": .piles, "paperless": .paperless, "search": .search][args[i + 1]]
     }
 
     private var isSignedIn: Bool {

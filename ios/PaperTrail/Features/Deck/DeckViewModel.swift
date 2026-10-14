@@ -80,7 +80,36 @@ final class DeckViewModel {
 
     func load() async {
         refresh()
-        if !hasHistory && env.isSample && !isLoading { await loadSample() }
+        guard !hasHistory, env.isSample, !isLoading else { return }
+        // Sample-mode seam for the empty states' UI tests and screenshots (#79):
+        // `-PTDeckState first` skips the sample deck (Scan your first stack), and
+        // `-PTDeckState sorted` loads it already decided (All sorted).
+        switch Self.sampleDeckState {
+        case "first": return
+        case "sorted":
+            await loadSample()
+            markSampleSorted()
+        default:
+            await loadSample()
+        }
+    }
+
+    private static var sampleDeckState: String? {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let at = arguments.firstIndex(of: "-PTDeckState"), at + 1 < arguments.count else { return nil }
+        return arguments[at + 1]
+    }
+
+    /// `-PTDeckState sorted`: every sample card logged as shredded today, so Sort shows "All sorted".
+    private func markSampleSorted() {
+        for item in cards {
+            item.decision = .shredOnly
+            item.decidedAt = .now
+            item.filedAt = .now
+            item.stage = .filed
+        }
+        try? context.save()
+        refresh()
     }
 
     /// Simulator and sample mode: run the capture seam and read every sample.

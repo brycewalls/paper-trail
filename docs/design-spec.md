@@ -180,6 +180,7 @@ SwiftUI `.sensoryFeedback` where a value changes; UIKit generators where the tri
 | Uploads verified | `UINotificationFeedbackGenerator` `.success` | Once when the last in-flight upload of a batch verifies (Drive checksum and page count match). App in the foreground only. Never once per document. |
 | Upload needs attention | `UINotificationFeedbackGenerator` `.warning` | Once per item when it moves into Needs attention (automatic retries used up, or Drive needs reconnecting). Foreground only. |
 | Undo, sheet open, Keep original confirm, Mark as shredded, tab switches | none | |
+| Cut or join in the scan review or the page viewer (4.11.1) | none | Splitting is editing, not a decision. |
 
 ### 2.7 Animation
 
@@ -196,6 +197,9 @@ SwiftUI springs (`.spring(duration:bounce:)`). Read `@Environment(\.accessibilit
 | Next card promotion | Scale 0.96 to 1, offset 22 to 0, `.spring(duration: 0.35, bounce: 0.15)` | Cross-fade 0.2 s |
 | Undo return | Card enters from the side it left, `.spring(duration: 0.45, bounce: 0.2)` | Fade in 0.2 s |
 | Accessory state change | `.contentTransition(.numericText())` for counts, `.smooth` for the ring | Counts change without transition |
+| Page viewer open and close (4.11.1) | `.navigationTransition(.zoom)` out of the page's thumbnail and back into the thumbnail of the page showing | System (cross-fade) |
+| Page viewer double-tap zoom | To 2.5x around the tap, or back to fit, with the promotion spring `.spring(duration: 0.35, bounce: 0.15)` | Jumps, no animation |
+| Page viewer swipe down | Page follows the finger and shrinks slightly; closes past 120 pt (or a flick past 240); otherwise snap-back spring | Follows without shrinking; snap-back as `.easeOut(duration: 0.2)` |
 
 ## 3. Components
 
@@ -366,10 +370,12 @@ All rows: `HStack(spacing: 12)`, min height 52 (system), thumbnail 36 x 46 on `C
 
 All `ContentUnavailableView`.
 
+**Every scan entry point is the Scan menu (#79).** The toolbar's Scan, both Sort empty states and the review's "Scan more" / "Add more" are one shared component, `ScanMenu` (capture, `Features/Capture/CaptureFlow.swift`): a tap opens "Scan document", "Import from Files", "Import from Photos", in that order, with no `primaryAction`. Only the label changes per entry point. No screen builds its own scan or import button.
+
 | Where | Symbol | Title | Description | Actions |
 |---|---|---|---|---|
-| Sort, first time | `doc.viewfinder` | "Scan your first stack" | "Claude reads each document and gets it ready to file." | "Scan" (`.borderedProminent`), "Import" (`.bordered`, a menu: Files, Photos) |
-| Sort, all done | `checkmark.circle` | "All sorted" | "14 filed today. The outbox is handling the uploads." | "Scan more" |
+| Sort, first time | `doc.viewfinder` | "Scan your first stack" | "Claude reads each document and gets it ready to file." | "Scan" (`.borderedProminent`), the Scan menu (#79) |
+| Sort, all done | `checkmark.circle` | "All sorted" | "14 filed today. The outbox is handling the uploads." | "Scan more" (`.bordered`), the Scan menu (#79) |
 | Sort, reading | `ProgressView` | "Reading 3 documents" | "They show up here as soon as Claude is done." | none |
 | Outbox, empty | `tray` | "Nothing in the outbox" | "Filed documents upload from here." | none |
 | Piles, Shred | `checkmark.circle` | "Nothing to shred" | "Documents you file show up here once their Drive copy is confirmed." | none |
@@ -526,7 +532,7 @@ When on: on launch and after 5 minutes in the background, the app content is cov
 
 **Review screen** (full-screen cover, `NavigationStack`):
 
-1. Toolbar: leading "Cancel" (glass, system), trailing "Scan more" (`AccentColor`, semibold), which reopens the scanner and appends pages.
+1. Toolbar: leading "Cancel" (glass, system), trailing "Scan more" (`AccentColor`, semibold), which opens the Scan menu (#79). From the review, Scan document appends the pages to the last document of a scan (a scan added to an import is its own document); Files and Photos add documents as on Sort.
 2. Title block (not a nav title, so it can be two lines): "{p} pages, {d} documents" (`.title.bold()`), subtitle "Tap between pages to split or join" (`.subheadline` `.secondary`).
 3. Optional session row (#26, v2.2): "Session" · "Box 1, drawer A" (text field with recent sessions as suggestions).
 4. One group per proposed document (inset grouped style, `surface`, radius from the system):
@@ -534,10 +540,24 @@ When on: on launch and after 5 minutes in the background, the app content is cov
    - Duplicate line when #2 matches (3.12).
    - Page thumbnails, 66 x 86, horizontal `ScrollView`. Between two pages of the same document: a 44 pt tap target with `scissors` ("Split here"). Between two groups: a "Join" capsule (`link`), which merges the group into the one above.
    - For a two-page group from the ID card mode (#28): toggle "Front and back on one page".
-   - Long press a page: "Rotate", "Delete page".
+   - Tap a page: the full-screen page viewer (4.11.1). Long press a page: "Rotate", "Delete page".
 5. Bottom, pinned (`safeAreaInset(edge: .bottom)`): primary button "Send {d} to the deck" (`AccentFill`), then the footnote "Saved on your phone. Nothing is lost if you close the app."
 
 Behavior: the split comes from `ClassifyService.proposeSplit` (fallback: one document). Groups are classified as they form; "Send" is enabled as soon as pages are saved (documents still reading go to the deck when ready). Cancel asks: `.confirmationDialog` title "Discard {p} pages?", buttons "Discard" (destructive), "Keep editing". Closing the app mid-review keeps the pages; on next launch the review screen reopens.
+
+### 4.11.1 Page viewer (`PageViewerScreen` + `PageViewerModel`, capture), serves #78
+
+Opens when a page thumbnail in the scan review is tapped, as a `.fullScreenCover` with a zoom transition out of that thumbnail. It holds every page of the review in order, across documents.
+
+1. Background `background`. Each page aspect fit with 16 pt margins and a soft neutral shadow (no card, no radius).
+2. Inline nav title: "Page 3 of 8 · Document 2" (page across the whole review, document = its group). Trailing "Done" (system glass).
+3. Paging: horizontal, one page per screen (`ScrollView` + `LazyHStack` + `.scrollTargetBehavior(.paging)`). Pinch zooms up to 4x; double-tap zooms to 2.5x around the tap, or back to fit (2.7). A zoomed page pans instead of paging; a page swiped away goes back to fit.
+4. Bottom, floating over the page: up to two glass capsule buttons (`.buttonStyle(.glass)` in one `GlassEffectContainer`, `AccentColor` `.subheadline.weight(.semibold)` label with its symbol, 44 tall). Leading, only when a document starts at this page: "Join with page 2" (`link`), which removes the cut before it. Trailing: "Cut after page 3" (`scissors`) when the page isn't the last of its document, or "Join with page 4" (`link`) when the next page starts a new document. Each calls the review's own split and join, so the review behind updates at once.
+5. Close: "Done" or a swipe down (2.7). It closes back into the thumbnail of the page showing; the review's strip scrolls to that page while paging, so the thumbnail is on screen.
+
+Pages load at full resolution (a scanned or photo page's own JPEG; PDF and turned pages drawn at up to 2800 px on the long side), only for the page showing and one either side; the strip's thumbnail shows until the full page arrives. So a 20-plus page pile never holds every page at full size.
+
+Accessibility: each page is one image element, "Page 3 of 8, document 2", with custom actions in the bottom bar's order plus "Next page" and "Previous page". Cut and join announce what changed ("Cut after page 3. The next page starts document 3."). The review's thumbnails read "Page {n}" with the hint "Opens the page full screen." and the actions Rotate and Delete page. No haptics (2.6).
 
 ### 4.12 Senders list (`SenderRulesScreen`, classify), serves #21, #27
 
@@ -583,7 +603,7 @@ From the Scan menu or the empty state's Import menu.
 
 - "Choose from Files": `.fileImporter(allowedContentTypes: [.pdf, .image], allowsMultipleSelection: true)`. Each file is one document; PDFs keep their bytes.
 - "Choose from Photos": `PhotosPicker(selection:, matching: .images)`, multiple. Photos picked together start as one document.
-- Both land on the review screen (4.11) with the title "{n} files, {d} documents" or "{n} photos, 1 document", so the split and join controls work the same way. "Scan more" is replaced by "Add more" for imports.
+- Both land on the review screen (4.11) with the title "{n} files, {d} documents" or "{n} photos, 1 document", so the split and join controls work the same way. "Scan more" is labeled "Add more" for imports; both open the Scan menu (#79).
 - Unsupported types: alert in 3.12.
 
 ### 4.16 Reconnect Drive (auth + outbox), serves #15
@@ -663,7 +683,7 @@ The six build agents. "Owns" means builds it and keeps it matching this spec. Sh
 ### capture
 
 - Screens: scanner cover, 4.11 Scan review and splitting, 4.15 Import from Files and Photos, camera-denied state
-- Components: `ScanMenuButton`, page thumbnails with split and join controls, duplicate line (#2), ID card toggle (#28, later), session row (#26, later), Settings "Shutter" row (#32, later)
+- Components: `ScanMenu` (every scan entry point, #79) and its toolbar form `ScanMenuButton`, page thumbnails with split and join controls, the page viewer (4.11.1, #78), duplicate line (#2), ID card toggle (#28, later), session row (#26, later), Settings "Shutter" row (#32, later)
 - Issues: #19, #32, #28, #2, #26 (session capture), #17 (local save)
 
 ### classify

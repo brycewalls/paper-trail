@@ -271,10 +271,10 @@ struct DeckScreen: View {
             } description: {
                 Text("Claude reads each document and gets it ready to file.")
             } actions: {
-                ScanNowButton(title: "Scan")
+                // capture's shared Scan menu: Scan document, Import from Files, Import from Photos (#79).
+                ScanMenu("Scan")
                     .buttonStyle(.borderedProminent)
-                ImportMenuButton()   // capture
-                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("sort.scanFirst")
             }
         } else {
             ContentUnavailableView {
@@ -284,8 +284,9 @@ struct DeckScreen: View {
                      : model.filedToday > 1 ? "\(model.filedToday) filed today. The outbox is handling the uploads."
                      : "The outbox is handling the uploads.")
             } actions: {
-                ScanNowButton(title: "Scan more")
+                ScanMenu("Scan more")   // capture, #79: the same three choices as the toolbar's Scan
                     .buttonStyle(.bordered)
+                    .accessibilityIdentifier("sort.scanMore")
             }
         }
     }
@@ -564,17 +565,5 @@ private struct ActionRow: View {
         .fixedSize()
         .padding(.horizontal, Space.m)
         .frame(minHeight: Metrics.actionHeight - 16)
-    }
-}
-
-/// Starts a scan through capture's controller (spec 3.11 empty-state buttons). Reads the controller
-/// from the environment, which `.captureFlow` provides to everything inside the Sort screen.
-private struct ScanNowButton: View {
-    let title: String
-    @Environment(CaptureController.self) private var capture: CaptureController?
-
-    var body: some View {
-        Button(title) { Task { await capture?.scan() } }
-            .disabled(capture == nil)
     }
 }

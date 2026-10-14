@@ -8,43 +8,61 @@ struct ScanReviewScreen: View {
     let model: ScanReviewViewModel
     let controller: CaptureController
     @State private var confirmingDiscard = false
+    /// The page viewer zooms out of, and back into, its page's thumbnail (#78).
+    @Namespace private var pages
 
     var body: some View {
         NavigationStack {
-            List {
-                titleBlock
-                if showsSplitRow {
-                    Section { SplitRow(model: model) }
-                }
-                ForEach(Array(model.groups.enumerated()), id: \.element.id) { index, group in
-                    Section {
-                        GroupCard(model: model, group: group)
-                    } header: {
-                        if index > 0 { JoinButton { model.join(group.id) } }
+            ScrollViewReader { strip in
+                List {
+                    titleBlock
+                    if showsSplitRow {
+                        Section { SplitRow(model: model) }
+                    }
+                    ForEach(Array(model.groups.enumerated()), id: \.element.id) { index, group in
+                        Section {
+                            GroupCard(model: model, group: group, pages: pages)
+                        } header: {
+                            if index > 0 { JoinButton { model.join(group.id) } }
+                        }
                     }
                 }
-            }
-            .listStyle(.insetGrouped)
-            .listSectionSpacing(12)
-            .scrollContentBackground(.hidden)
-            .background(Palette.background)
-            .safeAreaInset(edge: .bottom) { sendBar }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { confirmingDiscard = true }
+                // Paging in the viewer keeps its page's thumbnail on screen, so closing zooms back into it.
+                .onChange(of: model.viewer?.current) { _, page in
+                    if let page { strip.scrollTo(page, anchor: .center) }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(model.moreTitle) { Task { await controller.addMore() } }
-                        .fontWeight(.semibold)
-                        .tint(Color(.accent))
+                .listStyle(.insetGrouped)
+                .listSectionSpacing(12)
+                .scrollContentBackground(.hidden)
+                .background(Palette.background)
+                .safeAreaInset(edge: .bottom) { sendBar }
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { confirmingDiscard = true }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        // The shared Scan menu (#79): Scan document, Import from Files, Import from Photos.
+                        ScanMenu(model.moreTitle)
+                            .fontWeight(.semibold)
+                            .tint(Color(.accent))
+                            .accessibilityIdentifier("review.more")
+                    }
                 }
-            }
-            .confirmationDialog(model.discardTitle, isPresented: $confirmingDiscard, titleVisibility: .visible) {
-                Button("Discard", role: .destructive) { controller.discard() }
-                Button("Keep editing", role: .cancel) {}
+                .confirmationDialog(model.discardTitle, isPresented: $confirmingDiscard, titleVisibility: .visible) {
+                    Button("Discard", role: .destructive) { controller.discard() }
+                    Button("Keep editing", role: .cancel) {}
+                }
+                .fullScreenCover(item: viewerShown) { viewer in
+                    PageViewerScreen(model: viewer) { model.closeViewer() }
+                        .navigationTransition(.zoom(sourceID: viewer.current, in: pages))
+                }
             }
         }
+    }
+
+    private var viewerShown: Binding<PageViewerModel?> {
+        Binding(get: { model.viewer }, set: { if $0 == nil { model.closeViewer() } })
     }
 
     /// Stack mode (#19): the offer, its progress, then what Claude found.
@@ -92,11 +110,12 @@ struct ScanReviewScreen: View {
 private struct GroupCard: View {
     let model: ScanReviewViewModel
     let group: ReviewGroup
+    let pages: Namespace.ID
 
     var body: some View {
         let state = model.state(group)
         let header = model.header(group)
-        let pages = model.pages(in: group)
+        let groupPages = model.pages(in: group)
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(header.text)
@@ -115,10 +134,13 @@ private struct GroupCard: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 0) {
-                    ForEach(Array(pages.enumerated()), id: \.element.id) { index, page in
+                    ForEach(Array(groupPages.enumerated()), id: \.element.id) { index, page in
                         PageThumbnail(data: model.thumbnails[page.id], number: index + 1,
+                                      open: { model.openViewer(at: page.id) },
                                       rotate: { model.rotate(page.id) }, delete: { model.deletePage(page.id) })
-                        if index < pages.count - 1 {
+                            .matchedTransitionSource(id: page.id, in: pages)
+                            .id(page.id)
+                        if index < groupPages.count - 1 {
                             SplitButton(afterPage: index + 1) { model.split(group.id, after: index) }
                         }
                     }
@@ -165,14 +187,31 @@ private struct DuplicateLine: View {
     }
 }
 
-/// A 66 x 86 page thumbnail. Long press: Rotate, Delete page.
+/// A 66 x 86 page thumbnail. Tap: the full-screen page viewer (#78). Long press: Rotate, Delete page.
 private struct PageThumbnail: View {
     let data: Data?
     let number: Int
+    let open: () -> Void
     let rotate: () -> Void
     let delete: () -> Void
 
     var body: some View {
+        Button(action: open) { picture }
+            .buttonStyle(.plain)
+            .contextMenu {
+                Button("Rotate", systemImage: "rotate.right", action: rotate)
+                Button("Delete page", systemImage: "trash", role: .destructive, action: delete)
+            }
+            .accessibilityElement()
+            .accessibilityLabel("Page \(number)")
+            .accessibilityHint("Opens the page full screen.")
+            .accessibilityAddTraits([.isImage, .isButton])
+            .accessibilityAction(named: "Rotate", rotate)
+            .accessibilityAction(named: "Delete page", delete)
+            .accessibilityIdentifier("review.page")
+    }
+
+    private var picture: some View {
         ZStack {
             Color(.cardWell)
             if let data, let image = UIImage(data: data) {
@@ -188,15 +227,7 @@ private struct PageThumbnail: View {
         .frame(width: 66, height: 86)
         .clipShape(.rect(cornerRadius: 6, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5))
-        .contextMenu {
-            Button("Rotate", systemImage: "rotate.right", action: rotate)
-            Button("Delete page", systemImage: "trash", role: .destructive, action: delete)
-        }
-        .accessibilityElement()
-        .accessibilityLabel("Page \(number)")
-        .accessibilityAddTraits(.isImage)
-        .accessibilityAction(named: "Rotate", rotate)
-        .accessibilityAction(named: "Delete page", delete)
+        .contentShape(.rect(cornerRadius: 6, style: .continuous))
     }
 }
 

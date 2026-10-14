@@ -1,6 +1,7 @@
 // Capture: PDF assembly and the text layer (#22), imported bytes kept, hashing and the duplicate
 // check (#2), and the review's split, join, skip and send (#19).
 import CoreGraphics
+import ImageIO
 import Foundation
 import PDFKit
 import SwiftData
@@ -311,6 +312,166 @@ struct CaptureTests {
         let review = try #require(controller.review)
         #expect(review.title == "2 photos, 1 document")
         controller.discard()
+    }
+
+    // MARK: - Scan menu from an open review (#79)
+
+    @Test func scanDocumentFromAnOpenReviewAddsToIt() async throws {
+        let env = environment()
+        let controller = CaptureController(env: env, scannerAvailable: false, cameraAccess: { true })
+        await controller.scan()
+        let review = try #require(controller.review)
+        let first = review.session.id
+        // The review's Scan more is the full Scan menu now: Scan document lands in the same review.
+        await controller.scan()
+        #expect(controller.review === review)
+        #expect(review.session.id == first)
+        #expect(review.pageCount == SampleData.pageTexts.count * 2)
+        #expect(review.documentCount == 1)
+        #expect(controller.phase == .review)
+        controller.discard()
+    }
+
+    @Test func importsFromAnOpenReviewJoinIt() async throws {
+        let env = environment()
+        let controller = CaptureController(env: env, scannerAvailable: false, cameraAccess: { true })
+        await controller.scan()
+        let review = try #require(controller.review)
+        // Both imports on the review's menu go to the review's own pickers.
+        controller.importFromFiles()
+        #expect(controller.filesPicker == .review)
+        controller.filesPicker = nil
+        controller.importFromPhotos()
+        #expect(controller.photosPicker == .review)
+        let photos = try SampleData.pageTexts.prefix(2).map { try SampleScanSource.drawPage($0) }
+        await controller.photosPicked(photos, host: .review)
+        #expect(controller.review === review)
+        #expect(review.documentCount == 2)
+        #expect(review.pageCount == SampleData.pageTexts.count + 2)
+        controller.discard()
+    }
+
+    @Test func aScanAddedToAnImportIsItsOwnDocument() async throws {
+        let env = environment()
+        let controller = CaptureController(env: env, scannerAvailable: false, cameraAccess: { true })
+        await controller.photosPicked([try SampleScanSource.drawPage(SampleData.pageTexts[0])], host: .sort)
+        let review = try #require(controller.review)
+        await controller.scan()
+        #expect(review.documentCount == 2)
+        #expect(review.groups[0].pageIDs.count == 1)
+        controller.discard()
+    }
+
+    // MARK: - The full-screen page viewer (#78)
+
+    @Test func viewerTitleCountsPagesAndDocuments() throws {
+        let env = environment()
+        let model = try scanReview(env: env, pages: 8)
+        model.split(model.groups[0].id, after: 1)        // pages 1-2 | 3-8
+        let third = model.orderedPageIDs[2]
+        model.openViewer(at: third)
+        let viewer = try #require(model.viewer)
+        #expect(viewer.title == "Page 3 of 8 · Document 2")
+        #expect(viewer.accessibilityLabel(for: third) == "Page 3 of 8, document 2")
+        viewer.showPrevious()
+        #expect(viewer.title == "Page 2 of 8 · Document 1")
+        viewer.show(model.orderedPageIDs[7])
+        #expect(viewer.title == "Page 8 of 8 · Document 2")
+        #expect(!viewer.hasNext)
+        model.discard()
+    }
+
+    @Test func viewerCutsAndJoinsThroughTheReview() throws {
+        let env = environment()
+        let model = try scanReview(env: env, pages: 4)
+        let ids = model.orderedPageIDs
+        model.openViewer(at: ids[1])
+        let viewer = try #require(model.viewer)
+        // Page 2 of one four-page document: scissors, no joins.
+        #expect(viewer.canCut && !viewer.hasCutBefore && !viewer.hasCutAfter)
+        #expect(viewer.cutTitle == "Cut after page 2")
+        let said = viewer.cut()
+        #expect(model.groups.map(\.pageIDs) == [Array(ids[0...1]), Array(ids[2...3])])
+        #expect(said == "Cut after page 2. The next page starts document 2.")
+        // The cut is right after it now: the scissors turn into Join with page 3.
+        #expect(viewer.hasCutAfter && !viewer.canCut)
+        #expect(viewer.joinAfterTitle == "Join with page 3")
+        // The same cut seen from page 3 is a cut before it.
+        viewer.showNext()
+        #expect(viewer.title == "Page 3 of 4 · Document 2")
+        #expect(viewer.hasCutBefore && viewer.joinBeforeTitle == "Join with page 2")
+        viewer.joinBefore()
+        #expect(model.documentCount == 1)
+        #expect(viewer.title == "Page 3 of 4 · Document 1")
+        // Join after from page 2 undoes a cut too, and the last page has nothing to cut.
+        viewer.showPrevious()
+        viewer.cut()
+        viewer.joinAfter()
+        #expect(model.groups.map(\.pageIDs) == [ids])
+        viewer.show(ids[3])
+        #expect(!viewer.canCut && !viewer.hasCutAfter)
+        #expect(viewer.cut().isEmpty)
+        model.discard()
+    }
+
+    @Test func aOnePageDocumentCanJoinEitherWay() throws {
+        let env = environment()
+        let model = try scanReview(env: env, pages: 3)
+        let ids = model.orderedPageIDs
+        model.split(model.groups[0].id, after: 0)
+        model.split(model.groups[1].id, after: 0)          // 1 | 2 | 3
+        model.openViewer(at: ids[1])
+        let viewer = try #require(model.viewer)
+        #expect(viewer.hasCutBefore && viewer.hasCutAfter && !viewer.canCut)
+        viewer.joinAfter()
+        #expect(model.groups.map(\.pageIDs) == [[ids[0]], [ids[1], ids[2]]])
+        viewer.joinBefore()
+        #expect(model.groups.map(\.pageIDs) == [ids])
+        model.discard()
+    }
+
+    @Test func viewerHoldsOnlyTheNearbyPagesAtFullSize() async throws {
+        let env = environment()
+        let model = try scanReview(env: env, pages: 22)
+        let ids = model.orderedPageIDs
+        model.openViewer(at: ids[10])
+        let viewer = try #require(model.viewer)
+        await viewer.waitForImages()
+        #expect(Set(viewer.images.keys) == Set(ids[9...11]))
+        // A scanned page shows its own JPEG, byte for byte: full resolution.
+        let page = try #require(model.session.page(ids[10]))
+        #expect(viewer.images[ids[10]] == (try env.files.read(try #require(page.image))))
+        viewer.show(ids[21])
+        await viewer.waitForImages()
+        #expect(Set(viewer.images.keys) == Set(ids[20...21]))
+        // Closing lets every page go and hands back the page it was on, for the strip.
+        #expect(model.closeViewer() == ids[21])
+        #expect(model.viewer == nil)
+        #expect(viewer.images.isEmpty)
+        model.discard()
+    }
+
+    @Test func aTurnedPageIsDrawnUprightAtFullSize() async throws {
+        let env = environment()
+        let model = try scanReview(env: env, pages: 1)
+        let id = model.orderedPageIDs[0]
+        model.rotate(id)
+        let data = try #require(await model.fullImage(id))
+        let source = try #require(CGImageSourceCreateWithData(data as CFData, nil))
+        let image = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        // A portrait page turned a quarter is landscape, and still well past thumbnail size.
+        #expect(image.width > image.height)
+        #expect(image.width > 1000)
+        model.discard()
+    }
+
+    @Test func sendAndDiscardCloseTheViewer() throws {
+        let env = environment()
+        let model = try scanReview(env: env, pages: 2)
+        model.openViewer(at: model.orderedPageIDs[0])
+        #expect(model.viewer != nil)
+        model.discard()
+        #expect(model.viewer == nil)
     }
 
     // MARK: - Helpers

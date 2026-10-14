@@ -48,9 +48,9 @@ final class CaptureController {
 
     // MARK: - The Scan menu
 
-    /// "Scan document".
+    /// "Scan document". From an open review (its Scan menu, #79) the new pages join that review.
     func scan() async {
-        await openScanner(appending: false)
+        await openScanner(appending: review != nil && phase == .review)
     }
 
     /// "Import from Files".
@@ -59,7 +59,9 @@ final class CaptureController {
     /// "Import from Photos".
     func importFromPhotos() { photosPicker = phase == .review ? .review : .sort }
 
-    /// "Scan more" / "Add more" in the review.
+    /// More of the review's own kind: the scanner for a scan, the Files or Photos picker for an
+    /// import. The review's "Scan more" / "Add more" is the full Scan menu since #79; this stays
+    /// for callers that want the old one-tap path.
     func addMore() async {
         guard let review else { return }
         switch review.session.kind {
@@ -81,7 +83,8 @@ final class CaptureController {
         let session = review?.session.id ?? UUID()
         let pages = await Self.savePages(jpegs, session: session, files: env.files)
         if appending, let review {
-            review.add(pages, placement: .appendToLast)
+            // Onto the end of a scanned pile; a scan added to an import is its own document.
+            review.add(pages, placement: review.session.kind == .scan ? .appendToLast : .oneGroup)
             phase = .review
         } else {
             open(ReviewSession(id: session, kind: .scan, pages: pages, groups: [ReviewGroup(pageIDs: pages.map(\.id))]))

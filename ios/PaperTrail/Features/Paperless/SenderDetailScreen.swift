@@ -6,6 +6,12 @@ struct SenderDetailScreen: View {
     let senderID: String
 
     var body: some View {
+        // The ledger's own .task stops while this screen covers it, so the detail keeps the
+        // listener running itself; otherwise its own writes never show here (#57).
+        content.task { await model.watch() }
+    }
+
+    @ViewBuilder private var content: some View {
         if let sender = model.sender(id: senderID) {
             Form {
                 Section(caps: "Status") {

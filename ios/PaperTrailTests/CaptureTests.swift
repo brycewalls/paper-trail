@@ -238,53 +238,7 @@ struct CaptureTests {
         #expect(ReviewStore.latest(files: env.files) == nil)
     }
 
-    @Test func splitProposalsMustCoverEveryPageInOrder() {
-        #expect(ScanReviewViewModel.isValid([[0], [1, 2], [3]], pageCount: 4))
-        #expect(!ScanReviewViewModel.isValid([[0], [2, 1], [3]], pageCount: 4))
-        #expect(!ScanReviewViewModel.isValid([[0], [], [1]], pageCount: 2))
-        #expect(!ScanReviewViewModel.isValid([[0, 1]], pageCount: 3))
-    }
-
-    @Test func aProposedSplitIsApplied() async throws {
-        let env = environment()
-        let session = try scanSession(env: env, pages: 3)
-        let model = ScanReviewViewModel(session: session, env: env) { texts in
-            #expect(texts.count == 3)
-            return [[0], [1, 2]]
-        }
-        model.start()
-        await model.waitUntilIdle()
-        #expect(model.groups.map(\.pageIDs.count) == [1, 2])
-        model.discard()
-    }
-
-    @Test func anEditDuringTheProposalWins() async throws {
-        let env = environment()
-        let session = try scanSession(env: env, pages: 3)
-        let model = ScanReviewViewModel(session: session, env: env) { _ in
-            try? await Task.sleep(for: .milliseconds(300))
-            return [[0], [1], [2]]
-        }
-        model.start()
-        model.split(model.groups[0].id, after: 1)
-        await model.waitUntilIdle()
-        #expect(model.groups.map(\.pageIDs.count) == [2, 1])
-        model.discard()
-    }
-
-    @Test func sendingWhileTheProposalRunsKeepsOneDocument() async throws {
-        let env = environment()
-        let session = try scanSession(env: env, pages: 2)
-        let model = ScanReviewViewModel(session: session, env: env) { _ in
-            try? await Task.sleep(for: .milliseconds(200))
-            return [[0], [1]]
-        }
-        model.start()
-        model.send()
-        await model.waitUntilIdle()
-        let items = try env.modelContainer.mainContext.fetch(FetchDescriptor<PipelineItem>())
-        #expect(items.map(\.pageCount) == [2])
-    }
+    // Stack mode's "Split into documents" (#19) is tested in StackSplitTests.
 
     // MARK: - Controller: the Scan menu and the simulator seam
 

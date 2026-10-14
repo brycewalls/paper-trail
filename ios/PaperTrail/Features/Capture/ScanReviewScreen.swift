@@ -13,6 +13,9 @@ struct ScanReviewScreen: View {
         NavigationStack {
             List {
                 titleBlock
+                if showsSplitRow {
+                    Section { SplitRow(model: model) }
+                }
                 ForEach(Array(model.groups.enumerated()), id: \.element.id) { index, group in
                     Section {
                         GroupCard(model: model, group: group)
@@ -41,6 +44,14 @@ struct ScanReviewScreen: View {
                 Button("Discard", role: .destructive) { controller.discard() }
                 Button("Keep editing", role: .cancel) {}
             }
+        }
+    }
+
+    /// Stack mode (#19): the offer, its progress, then what Claude found.
+    private var showsSplitRow: Bool {
+        switch model.splitState {
+        case .idle, .failed: model.offersSplit
+        case .splitting, .done: !model.isSent
         }
     }
 
@@ -236,5 +247,68 @@ private struct JoinButton: View {
         .frame(maxWidth: .infinity)
         .textCase(nil)
         .accessibilityHint("Joins this document with the one above.")
+    }
+}
+
+/// "Split into documents" (#19), under the title: the offer, "Finding where each document starts"
+/// while Claude works, then what it found (or a way to try again).
+private struct SplitRow: View {
+    let model: ScanReviewViewModel
+
+    var body: some View {
+        switch model.splitState {
+        case .idle:
+            Button(action: model.splitIntoDocuments) {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Image(systemName: "rectangle.split.3x1")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(Color(.accent))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(model.splitTitle)
+                            .font(.headline)
+                            .foregroundStyle(Color(.accent))
+                        Text(model.splitDetail)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.vertical, 4)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isButton)
+        case .splitting:
+            HStack(spacing: 12) {
+                ProgressView().controlSize(.small)
+                Text(model.splitDetail)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.vertical, 4)
+            .accessibilityElement(children: .combine)
+        case .done:
+            Label {
+                Text(model.splitDetail).font(.subheadline)
+            } icon: {
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(Color(.file))
+            }
+            .padding(.vertical, 4)
+        case .failed:
+            VStack(alignment: .leading, spacing: 8) {
+                Label {
+                    Text(model.splitDetail).font(.subheadline)
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color(.unsure))
+                }
+                Button("Try again", action: model.splitIntoDocuments)
+                    .font(.subheadline.weight(.semibold))
+                    .tint(Color(.accent))
+                    .frame(minHeight: 44)
+            }
+            .padding(.top, 4)
+        }
     }
 }

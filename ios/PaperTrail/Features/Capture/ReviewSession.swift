@@ -25,6 +25,8 @@ nonisolated struct ReviewGroup: Codable, Sendable, Hashable, Identifiable {
     var skipped: Bool = false
     /// Already added to the deck. A review reopened after a relaunch leaves these out.
     var sent: Bool = false
+    /// Claude's short name for the document from a stack split (#19), shown until its card is read.
+    var label: String?
 }
 
 nonisolated struct ReviewSession: Codable, Sendable, Hashable, Identifiable {

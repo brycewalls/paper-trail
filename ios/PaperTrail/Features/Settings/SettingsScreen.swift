@@ -17,7 +17,9 @@ struct SettingsScreen: View {
                     Section { AccountRow(model: account) }           // auth
                     DriveSettingsSection(model: account)             // auth
                 }
-                // Section "Sorting": classify, piles and deck add their rows here.
+                Section("Sorting") {
+                    SenderRulesSettingsRow(docs: env.docs)   // classify (#21)
+                }
                 // Section "Scanning and privacy": capture and auth add their rows here.
                 Section {
                 } footer: {

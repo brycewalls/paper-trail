@@ -66,6 +66,11 @@ final class PipelineItem {
     // Reading
     var card: DocumentCard?
     var model: String?
+    /// The card's fields below CardConfidence.fieldUnsureBelow, in sheet order (#20). Set by the
+    /// reading queue; cleared field by field as the check-fields sheet or card detail confirms them.
+    var unsureFields: [String] = []
+    /// The ClassifyErrorCode of the last failed read, so the deck can offer Try again only when it helps.
+    var readErrorCode: String?
 
     // Decision (Deck)
     var decisionRaw: String?

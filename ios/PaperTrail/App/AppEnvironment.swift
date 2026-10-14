@@ -48,7 +48,7 @@ final class AppEnvironment {
         let files = FileStore.appDefault()
         return AppEnvironment(
             auth: LiveAuthService.live(),            // auth
-            classify: FakeClassifyService(),         // classify: replace with the live ClassifyService
+            classify: LiveClassifyService(),         // classify: the classify callable (#20, #21)
             drive: FakeDriveService(),               // outbox: replace with the live DriveService
             docs: FakeDocStore(),                    // piles/outbox: replace with the Firestore DocStore
             capture: LiveCaptureService(files: files), // capture: live (Vision OCR, PDF text layer, SHA-256)

@@ -101,6 +101,13 @@ Stages (`PipelineStage`, stored as a string, never rename one):
 
 `decision` is `file` (swipe right), `shredOnly` (swipe left: log as shred, no Drive copy) or `later`. Files are deleted from disk once an item is `verified`, or `filed` with `shredOnly`, and after the shred hold. Add new properties only with a default value, so SwiftData migrates lightly, and list them here.
 
+Added properties:
+
+| Property | Owner | Meaning |
+|---|---|---|
+| `unsureFields: [String] = []` | classify | Card fields below `CardConfidence.fieldUnsureBelow`, in sheet order (#20). Set by `ReadingQueue`; emptied when the check-fields sheet (or the card detail) confirms them |
+| `readErrorCode: String?` | classify | The `ClassifyErrorCode` of the last failed read, so the failed card can offer "Try again" only when it helps (`ClassifyCopy.offersTryAgain`) |
+
 ## Firestore data model
 
 Everything is under `users/{uid}/`, readable and writable only by that signed-in, allowlisted user (`firebase/firestore.rules`). Dates are ISO 8601 strings, as the web app writes them. Swift types are in `Core/Models/FirestoreModels.swift`.
@@ -122,7 +129,7 @@ A doc filed by the app counts as safe to shred only when `verifiedAt` is set (`F
 
 **`paperless/{slug(issuer)}`** (`PaperlessSender`). Existing: `issuer`, `how`, `status`, `firstSeen`, `doneAt`. Status values keep the web strings and add two: `todo` (To do), `requested`, `waiting_cycle`, `done` (Confirmed), `skip` (Can't stop). So the old `todo/done/skip` need no migration. New, optional (#23): `requestedAt`, `checkBackAt`, `steps [String]`, `stillMailingAt` (a new doc arrived from a sender already requested, waiting or confirmed), `lastSeen`.
 
-**`senders/{slug(issuer)}`** (`SenderRule`, #21, new): `key`, `issuer`, optional `folder`, `filenamePattern` (tokens `{date}`, `{yyyy}`, `{mm}`), `verdict`, `docType`, and `updatedAt`.
+**`senders/{slug(issuer)}`** (`SenderRule`, #21, new): `key`, `issuer`, optional `folder`, `filenamePattern` (tokens `{date}`, `{yyyy}`, `{mm}`, `{issuer}`, `{type}`; the last two are the slugs of the sender and document type), `verdict`, `docType`, and `updatedAt`. Written by the check-fields sheet's "Remember for this sender" (a confirmed filename's date becomes `{date}`) and edited or forgotten in Settings › Sender rules.
 
 **`config/drive`** (`DriveFolderCache`, unchanged): `root`, `folders {name: id}`, `updatedAt`. The app reads and refreshes the same cache the web app writes.
 
@@ -136,9 +143,14 @@ The existing 2nd gen callable `classify` (us-central1, 300 s, `functions/lib.js`
 
 Request (`ClassifyRequest`): `kind` (`"pdf"` or `"images"`), `pdf` (base64) or `images [{type, data}]` (up to 10, JPEG/PNG/WebP, base64), `totalPages`. Same sizing rule as the web app: a PDF of up to 10 pages and about 9 MB goes whole, anything else goes as the first 10 pages at 1568 px on the long side. New, optional: `ocrText` (first ~20,000 characters), `senderHints [SenderRule]`, `wantConfidence`.
 
-Response (`ClassifyResponse`): `{ result: DocumentCard, model }`. New, optional on `result`: `confidence {overall, fields}` (#20) and `appliedRule` (#21, the sender key used).
+Response (`ClassifyResponse`): `{ result: DocumentCard, model }`. New, optional on `result`: `confidence {overall, fields}` and `alternatives` (#20), and `appliedRule` (#21, the sender key used).
 
-Errors: `HttpsError` with `details.code` in `ClassifyErrorCode` (`signed_out`, `not_allowed`, `bad_request`, `too_large`, `api_key`, `rate_limited`, `timeout`, `overloaded`, `refused`, `invalid_json`, `unknown`). The app picks its own copy per code and retries only `isRetryable` codes, with backoff. Two reads at a time.
+- **Confidence (#20).** Only when `wantConfidence` is true: the system prompt gains a short addendum and the schema two required fields. `fields` scores `issuer`, `docDate`, `folder`, `title`, `filename`, `verdict` from 0 to 1 (a missing or bad score counts as 0); `overall` is the lowest field score. `alternatives` holds up to two other guesses per field (not `verdict`), best first, cleaned like the field and never repeating the chosen value. A field below `CardConfidence.fieldUnsureBelow` (0.75) is "Not sure". `DocumentCard.isConfident` means confidence came back and no field is "Not sure", so the deck's "ready to file" count and the "2 to check" pill always agree; a card without confidence is never confident.
+- **Sender rules (#21).** `senderHints` are the user's `senders` docs. Claude sees the known sender names so it spells them the same way; then the function applies the rule whose `key` equals `slug(result.issuer)`, deterministically: the rule's issuer spelling, then its folder, verdict, docType and filename pattern, each only if set. Fields a rule set get confidence 1 and no alternatives. `functions/lib.js applySenderRule()` and `SenderRuleEngine.apply` are twins with the same test cases; the app applies the rule itself when a reply has no `appliedRule` (an older function).
+- **OCR (#22).** `ocrText` goes into the user turn as a hint, capped at 20,000 characters.
+- Bad extras are ignored, never refused. With none of them, the request to Claude and the reply are byte for byte what the web app gets today (tested).
+
+Errors: `HttpsError` with `details.code` in `ClassifyErrorCode` (`signed_out`, `not_allowed`, `bad_request`, `too_large`, `api_key`, `rate_limited`, `timeout`, `overloaded`, `refused`, `invalid_json`, `unknown`). The app picks its own copy per code (`ClassifyCopy`) and retries only `isRetryable` codes, with backoff (three attempts, 2 s and 8 s apart). Two reads at a time (`ReadingQueue`). Use `ReadingQueue(env:)` so sender rules are sent and applied; `ReadingQueue(classify:files:)` still works but sends no hints.
 
 Every new field is optional on both sides: the live web app must keep working against the extended function, and the app must work against today's function.
 

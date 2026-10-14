@@ -202,7 +202,13 @@ nonisolated enum OutboxSummary {
         return isOnline ? OutboxCopy.nextInLine : OutboxCopy.waitingForConnection
     }
 
-    /// "1 of 1 pages confirmed in Drive · 10:12 AM" for the first row, shorter after it.
+    /// The row that gets the long "confirmed in Drive" wording: the newest row with a Drive copy.
+    /// Shred-only rows have no Drive copy, so they never take it (#59).
+    static func firstConfirmedID(_ entries: [OutboxEntry]) -> OutboxEntry.ID? {
+        entries.first { $0.decision != .shredOnly }?.id
+    }
+
+    /// "1 of 1 pages confirmed in Drive · 10:12 AM" for the first confirmed row, shorter after it.
     static func filedSubtitle(_ entry: OutboxEntry, isFirst: Bool) -> String {
         let time = (entry.filedAt ?? entry.verifiedAt ?? .now).formatted(date: .omitted, time: .shortened)
         if entry.decision == .shredOnly { return "Logged as shredded · \(time)" }

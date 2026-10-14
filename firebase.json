@@ -16,6 +16,10 @@
   "hosting": {
     "public": "public",
     "cleanUrls": true,
+    "rewrites": [
+      { "source": "/oauth/callback", "function": { "functionId": "oauthCallback", "region": "us-central1" } },
+      { "source": "/oauth/redeem", "function": { "functionId": "oauthRedeem", "region": "us-central1" } }
+    ],
     "ignore": ["firebase.json", "**/.*"],
     "headers": [
       { "source": "/", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },

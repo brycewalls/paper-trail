@@ -13,6 +13,15 @@ service cloud.firestore {
     match /users/{uid}/{document=**} {
       allow read, write: if allowed() && request.auth.uid == uid;
     }
+    // Server-only Google sign-in state for the iPhone app (#14, #15): the Drive refresh tokens and
+    // the two-minute sign-in handoffs. Only Cloud Functions (Admin SDK, which skips these rules)
+    // touch them; no client, the owner included, may read or write either one.
+    match /oauthTokens/{sub} {
+      allow read, write: if false;
+    }
+    match /oauthHandoffs/{id} {
+      allow read, write: if false;
+    }
     match /{document=**} {
       allow read, write: if false;
     }

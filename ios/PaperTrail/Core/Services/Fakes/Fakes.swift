@@ -10,6 +10,9 @@ import UIKit
 final class FakeAuthService: AuthService {
     var state: AuthState
     var drive: DriveLink = .connected
+    var driveConsentPending = false
+    /// Set to make signIn and reconnectDrive fail with this.
+    var failure: AuthFailure?
 
     init(signedIn: Bool = true) {
         let bryce = Account(uid: "fake-uid", email: "bryce.evan.walls@gmail.com", displayName: "Bryce Walls")
@@ -17,10 +20,16 @@ final class FakeAuthService: AuthService {
     }
 
     func signIn() async throws {
+        if let failure { throw failure }
         state = .signedIn(Account(uid: "fake-uid", email: "bryce.evan.walls@gmail.com", displayName: "Bryce Walls"))
         drive = .connected
+        driveConsentPending = false
     }
-    func reconnectDrive() async throws { drive = .connected }
+    func reconnectDrive() async throws {
+        if let failure { throw failure }
+        drive = .connected
+        driveConsentPending = false
+    }
     func signOut() throws { state = .signedOut }
     func driveAccessToken() async throws -> String {
         if drive != .connected { throw DriveError.unauthorized }

@@ -49,20 +49,23 @@ struct FlowLayout: Layout {
 }
 
 /// Determinate ring for the outbox accessory (3.7): 30 pt, 3 pt stroke, accent over a separator track.
+/// The stroke sits inside the frame, and a started upload always shows a sliver of progress.
 struct ProgressRing: View {
     var value: Double
     var diameter: CGFloat = 30
     var lineWidth: CGFloat = 3
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
             Circle().stroke(Palette.separator, lineWidth: lineWidth)
             Circle()
-                .trim(from: 0, to: max(0, min(1, value)))
+                .trim(from: 0, to: max(0.02, min(1, value)))
                 .stroke(Color(.accent), style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-                .animation(.smooth, value: value)
+                .animation(reduceMotion ? nil : .smooth, value: value)
         }
+        .padding(lineWidth / 2)
         .frame(width: diameter, height: diameter)
         .accessibilityElement()
         .accessibilityValue("\(Int((value * 100).rounded())) percent")
@@ -70,8 +73,11 @@ struct ProgressRing: View {
 }
 
 /// A document's first page, 36 x 46 on CardWell with radius 6 (3.10). Pass the rendered image.
+/// Without one it draws a printed form: `label` (a form name like "W-2" over its year) when there
+/// is one, then a few lines.
 struct DocThumbnail: View {
     var image: CGImage?
+    var label: String?
     var size: CGSize = Metrics.thumbnailSize
 
     var body: some View {
@@ -82,12 +88,33 @@ struct DocThumbnail: View {
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .padding(3)
+            } else if let label {
+                formLines(label: label)
             } else {
                 Image(systemName: "doc.text").foregroundStyle(.secondary).imageScale(.small)
             }
         }
         .frame(width: size.width, height: size.height)
         .accessibilityHidden(true)
+    }
+
+    private func formLines(label: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            if !label.isEmpty {
+                Text(label)
+                    .font(.system(size: 7, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.6)
+            } else {
+                Capsule().fill(Color(.tertiaryLabel)).frame(width: 14, height: 3)
+            }
+            ForEach(0..<3, id: \.self) { _ in
+                Capsule().fill(Color(.tertiaryLabel).opacity(0.5)).frame(height: 2)
+            }
+        }
+        .padding(5)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 
@@ -110,8 +137,23 @@ struct Banner<Trailing: View>: View {
                 trailing
             }
         }
-        .listRowBackground(fill)
+        .bannerBackground(fill)
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// A banner row with its own layout (3.9): put it in its own Section. Soft fill, never glass.
+struct BannerContent<Content: View>: View {
+    let fill: Color
+    @ViewBuilder let content: Content
+
+    var body: some View { content.bannerBackground(fill) }
+}
+
+extension View {
+    /// The inset grouped row look every banner shares (3.9).
+    func bannerBackground(_ fill: Color) -> some View {
+        padding(.vertical, Space.xs).listRowBackground(fill)
     }
 }
 

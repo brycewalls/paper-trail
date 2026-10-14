@@ -1,29 +1,7 @@
-// Owner: auth. Small views the auth screens share: the spec's colors this feature needs, the Google
-// button, the avatar and the status dot.
-//
-// AuthPalette holds design spec 2.1's values for the colors auth uses. The shared asset catalog
-// color sets (Core/UI, built first by deck) aren't on `ios` yet; once they land, each of these
-// becomes `Color(.danger)` and so on, and this enum goes away.
+// Owner: auth. Small views the auth screens share: the Google button, the primary button and the
+// account avatar. Colors come from Core/UI (spec 2.1).
 import SwiftUI
 import UIKit
-
-enum AuthPalette {
-    static let accent = pair(0x2346B8, 0x8EA7FF)       // AccentColor
-    static let accentFill = pair(0x2346B8, 0x3D5FD6)   // AccentFill
-    static let accentSoft = pair(0xE8EDFB, 0x1B2547)   // AccentSoft
-    static let file = pair(0x17773F, 0x5FD393)         // File
-    static let danger = pair(0xC4271B, 0xFF8A7F)       // Danger (same as Shred)
-    static let dangerSoft = pair(0xFDECEA, 0x3A1A18)   // ShredSoft
-    static let background = Color(.systemGroupedBackground)
-
-    private static func pair(_ light: UInt32, _ dark: UInt32) -> Color {
-        Color(UIColor { traits in
-            let hex = traits.userInterfaceStyle == .dark ? dark : light
-            return UIColor(red: CGFloat((hex >> 16) & 0xff) / 255, green: CGFloat((hex >> 8) & 0xff) / 255,
-                           blue: CGFloat(hex & 0xff) / 255, alpha: 1)
-        })
-    }
-}
 
 /// Google's standard "Sign in with Google" button: white with a gray stroke in light mode, near
 /// black in dark mode, the four-color G, pill shaped (Google's branding guidelines).
@@ -73,7 +51,7 @@ struct AuthPrimaryButton: View {
             }
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity, minHeight: 52)
-            .background(Capsule().fill(AuthPalette.accentFill))
+            .background(Capsule().fill(Color(.accentFill)))
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -88,9 +66,9 @@ struct AccountAvatar: View {
     var body: some View {
         Text(initials)
             .font(.system(size: size * 0.4, weight: .semibold))
-            .foregroundStyle(AuthPalette.accent)
+            .foregroundStyle(Color(.accent))
             .frame(width: size, height: size)
-            .background(Circle().fill(AuthPalette.accentSoft))
+            .background(Circle().fill(Color(.accentSoft)))
             .accessibilityHidden(true)
     }
 }
@@ -104,7 +82,7 @@ struct AppIconImage: View {
             if let icon = Self.icon {
                 Image(uiImage: icon).resizable().interpolation(.high)
             } else {
-                RoundedRectangle(cornerRadius: 22, style: .continuous).fill(AuthPalette.accentSoft)
+                RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color(.accentSoft))
             }
         }
         .frame(width: size, height: size)

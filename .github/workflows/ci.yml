@@ -7,6 +7,8 @@
 #   scanner    drives Scan document with a fake camera (a generated video of a tilted page): edges
 #              found, the page flattened, Done adds one item that files as one PDF, Cancel adds none
 #   functions  the classify function's unit tests, Claude stood in
+#   ios        the iPhone app (ios/): xcodegen, a simulator build and the unit tests. macOS minutes
+#              cost 10x on a private repo, so it runs only when ios/ changed or the PR targets ios.
 # Pushing a tag like v1.2 publishes a Release with a zip of the site attached.
 name: CI
 
@@ -57,6 +59,66 @@ jobs:
           cache-dependency-path: functions/package-lock.json
       - run: npm ci --prefix functions
       - run: node --test functions/test/*.test.mjs
+
+  changes:
+    name: What changed
+    runs-on: ubuntu-latest
+    outputs:
+      ios: ${{ steps.filter.outputs.ios }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Did ios/ or this workflow change
+        id: filter
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ -n "$BASE_REF" ]; then RANGE="origin/$BASE_REF...HEAD"
+          elif [ -n "$BEFORE" ] && git cat-file -e "$BEFORE" 2>/dev/null; then RANGE="$BEFORE..HEAD"
+          else RANGE="HEAD~1..HEAD"; fi
+          if git diff --name-only "$RANGE" | grep -qE '^(ios/|\.github/workflows/ci\.yml$)'; then CHANGED=true; else CHANGED=false; fi
+          echo "Range $RANGE, ios changed: $CHANGED"
+          echo "ios=$CHANGED" >> "$GITHUB_OUTPUT"
+
+  ios:
+    name: iPhone app build and tests
+    needs: changes
+    if: needs.changes.outputs.ios == 'true' || github.base_ref == 'ios'
+    runs-on: macos-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pick the newest Xcode on the runner
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_*.app | grep -v -i beta | sort -V | tail -1)
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: ios/.spm
+          key: spm-${{ runner.os }}-${{ hashFiles('ios/project.yml') }}
+          restore-keys: spm-${{ runner.os }}-
+      - name: Generate the project
+        run: xcodegen
+      - name: Build and run the unit tests
+        run: |
+          DEVICE=$(xcrun simctl list devices available -j | jq -r '[.devices | to_entries[] | select(.key | test("iOS")) | .value[] | select(.name | test("^iPhone"))] | last | .udid')
+          echo "Simulator: $DEVICE"
+          set -o pipefail
+          xcodebuild test \
+            -project PaperTrail.xcodeproj -scheme PaperTrail \
+            -destination "id=$DEVICE" \
+            -clonedSourcePackagesDirPath .spm \
+            -skipPackagePluginValidation -skipMacroValidation \
+            CODE_SIGNING_ALLOWED=NO | tee xcodebuild.log | grep -E "error:|Test.*(passed|failed)|\*\* (TEST|BUILD)"
 
   release:
     name: Publish release

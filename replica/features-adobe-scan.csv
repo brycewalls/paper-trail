@@ -1,0 +1,61 @@
+feature,area,priority,original,clone,notes
+Auto-capture when a page is detected and still,capture,must,yes,no,"Default on, toggleable. Reviews say it can fire too early. Add a stability check. Sources 4, 2"
+Live edge detection with corner dots,capture,must,yes,no,Blue corner dots in Adobe. Browser path: OpenCV.js or jscanify in a worker. Source 4
+Plain capture status lines (looking / hold steady / can't find edges),capture,must,yes,no,"Adobe: Looking for document, Capturing hold steady, No document found Capture manually. Source 4"
+Manual shutter fallback,capture,must,yes,no,Source 4
+Keep scanning / Retake after each page,capture,must,yes,no,Multi-page documents from one session. Source 4
+Stack mode: continuous capture with no tap between pages,capture,must,yes,no,Adobe High-Speed Scan is Premium only. Exactly the box-of-paper case. Sources 5 8
+Split a stack into separate documents,review,should,no,no,Gap. Adobe makes one PDF per session. Claude could propose split points by page content
+Perspective crop with draggable handles and Auto-Detect,capture,must,yes,no,Source 4
+Auto straighten curled or folded pages,capture,could,yes,no,Adobe applies it automatically since Nov 2025. Perspective first; curvature is a stretch. Sources 1 10
+Filters (Auto-color Grayscale Light text Original),capture,should,yes,no,iOS has 9 filters. Auto-color as default keeps PDFs small and legible. Sources 5 6
+Apply filter to all pages,capture,should,yes,no,Sources 5 6
+Default filter preference,capture,could,yes,no,Source 6
+Brightness and contrast sliders,capture,could,yes,no,Source 5
+Cleanup eraser (fill with surrounding color),capture,could,yes,no,Free in Adobe. Low value for a shred-or-file app
+Magic eraser for fingers stains creases,capture,could,yes,no,Premium generative cleanup. Out of scope for now. Sources 1 3
+Flash control (on off auto),capture,could,yes,no,Web torch support is limited on iOS Safari. Source 5
+Book mode (two pages split on a center line),capture,could,yes,no,Rare in a paperwork box. Source 4
+ID card two-sided capture combined on one page,capture,should,yes,no,Front then prompt for back. Insurance and benefit cards. Source 4
+Business card to contacts,capture,could,yes,no,Native Contacts write is not available to a web app. Source 7
+Import from camera roll,capture,must,yes,no,Paper Trail already picks files. Source 7
+Smart library: surface document photos before other photos,capture,should,yes,no,"Adobe: Show More Documents, Show All Photos. Sources 3 7 19"
+Resume an interrupted scan (Continue / Save now),sync,must,yes,no,"Adobe shows Scan in progress. For Paper Trail: persist captures and swipes in IndexedDB. Source 6"
+Reorder delete and add pages in review,review,must,yes,no,Source 5
+OCR to searchable text,reading,must,yes,no,Claude reads the page; keep the extracted text. Free OCR capped at 5 pages per scan in Adobe. Source 3
+Multi-language OCR,reading,could,yes,no,English plus 18 languages. Source 5
+Document type recognition (receipt bill statement ID etc),reading,must,partial,no,Adobe mostly relies on the user-picked mode; receipt detection claimed but no fields documented. Paper Trail already has type from Claude. Sources 4 20
+Field extraction (issuer date amount),reading,must,no,no,Gap. Adobe extracts business card contacts only. Paper Trail already does this
+AI summary of a document,reading,could,yes,no,Generative summary (Aug 2025). Source 10
+Ask questions about a scan,reading,could,yes,no,AI Assistant with citations (May 2025). Source 10
+Text quick actions (call email open link),reading,should,yes,no,Tie to the go-paperless tip so the sender's site is one tap. Sources 4 7
+Default file name per document type with date,filing,must,yes,no,"Adobe: Adobe Scan + date, ID card + date. Paper Trail names from content already. Source 4"
+Filename suggestion chips from recognized text,filing,should,partial,no,Documented in 2020 notes; Adobe staff in 2021 and 2024 said not available. Status unknown. Sources 7 12 13
+Editable default name template,filing,could,yes,no,Preference with suggestion chips. Source 12
+Custom folders,filing,must,yes,no,Claimed on marketing and Play; not in help docs. Paper Trail uses 11 fixed Drive folders. Sources 3 11
+Recent vs All views with sort by name or date,filing,should,yes,no,Source 7
+Multi-select for batch actions,filing,should,yes,no,Source 7
+Search by file name,search,must,yes,no,Source 7
+Search by content (full text),search,must,yes,no,Store Claude's extracted text in Firestore. Source 7
+Search filters by document type and date range,search,should,yes,no,Source 7
+Find within an open document,search,could,yes,no,Source 7
+Keep / shred verdict per document,retention,must,no,no,Gap. Adobe has no verdict. Paper Trail core
+Retention period per document,retention,must,no,no,Gap
+Shred pile and originals-to-keep lists,retention,must,no,no,Gap
+Sensitive document flag,security,must,no,no,Gap. Adobe offers password protection only
+Senders to switch to paperless,paperless,must,no,no,Gap. Adobe pitches paper to digital in general only
+Go-paperless tip per document,paperless,must,no,no,Gap
+Primary store in user's Google Drive,sync,must,partial,no,Adobe only copies to Drive; primary store is Document Cloud. Sources 3 9
+Works without forced cloud upload or sign-in to see local work,sync,must,no,no,"Adobe anti-pattern: staff say the app cannot function without uploading. Sources 14 17"
+Upload queue with retry and visible status,sync,must,partial,no,Adobe has upload status but users report stuck in progress and slow uploads. Source 14
+Save a copy to device,sync,should,yes,no,Source 9
+Share via link or email,sync,could,yes,no,Source 9
+Files app / OS file provider,sync,could,yes,no,Native only. Users report an auth loop. Source 18
+Siri or voice shortcut to start a scan,ux,could,yes,no,Native only. A Home Screen shortcut to the camera route covers it. Source 9
+Password-protect a PDF,security,could,yes,no,Premium. Source 8
+Encryption in transit and at rest,security,must,yes,no,Drive and Firestore already provide this. Source 11
+Delete account and data,security,should,yes,no,Source 9
+Export to Word Excel PowerPoint,other,could,yes,no,Premium. Not needed to clear a box. Source 8
+Combine and compress PDFs,other,could,yes,no,Premium. Source 8
+Fill and sign forms,other,could,yes,no,Hands off to Acrobat Reader. Source 4
+Subscription paywall,other,could,yes,no,Not applicable to a personal app. Top complaint area for Adobe. Sources 1 3

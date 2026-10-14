@@ -36,6 +36,7 @@ struct OutboxAccessory: View {
         .accessibilityLabel("Outbox")
         .accessibilityValue(state.title)
         .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("outbox.accessory")
         .sensoryFeedback(.success, trigger: env.outbox.status.batchesVerified)
         .sensoryFeedback(.warning, trigger: env.outbox.status.itemsNeedingAttention)
         // Spec 2.6: Drive needing a reconnect counts as needing attention too, once.

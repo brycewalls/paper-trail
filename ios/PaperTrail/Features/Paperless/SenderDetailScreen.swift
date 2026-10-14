@@ -15,6 +15,7 @@ struct SenderDetailScreen: View {
                         ForEach(PaperlessStatus.allCases, id: \.self) { Text($0.label).tag($0) }
                     }
                     .pickerStyle(.menu)
+                    .accessibilityIdentifier("paperless.status")
                 }
                 Section(caps: "How to stop paper") {
                     let steps = model.steps(sender)

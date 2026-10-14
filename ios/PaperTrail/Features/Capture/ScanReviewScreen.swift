@@ -84,6 +84,7 @@ struct ScanReviewScreen: View {
             }
             .buttonStyle(.plain)
             .disabled(!model.canSend)
+            .accessibilityIdentifier("review.send")
             Text("Saved on your phone. Nothing is lost if you close the app.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)

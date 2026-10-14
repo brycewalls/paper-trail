@@ -109,6 +109,7 @@ private struct PaperlessContent: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("paperless.sender.\(sender.id)")
         .swipeActions(edge: .trailing) {
             ForEach(model.swipeChoices(sender), id: \.self) { choice in
                 Button(choice.label) { Task { await model.setStatus(sender, to: choice) } }

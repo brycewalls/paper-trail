@@ -134,6 +134,7 @@ private struct SearchContent: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("search.result")
         .contextMenu {
             if let url = model.driveURL(for: doc) {
                 Link(destination: url) { Label("Open in Drive", systemImage: "arrow.up.forward.square") }

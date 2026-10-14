@@ -87,6 +87,23 @@ targets:
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/PaperTrail.app/PaperTrail"
         BUNDLE_LOADER: "$(TEST_HOST)"
 
+  # XCUITest walk-through of the whole app in sample mode (-PTSample), the way Bryce taps it.
+  # Run with the PaperTrailUI scheme; screenshots are test attachments (see PaperTrailUITests/README.md).
+  PaperTrailUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: PaperTrailUITests
+    dependencies:
+      - target: PaperTrail
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.brycewalls.papertrail.uitests
+        GENERATE_INFOPLIST_FILE: "YES"
+        TEST_TARGET_NAME: PaperTrail
+        # XCTest's own isolation, not the app's MainActor default.
+        SWIFT_DEFAULT_ACTOR_ISOLATION: nonisolated
+
 schemes:
   PaperTrail:
     build:
@@ -101,3 +118,14 @@ schemes:
       config: Debug
     archive:
       config: Release
+
+  # The UI walk-through, separate so `xcodebuild test -scheme PaperTrail` stays the fast unit run.
+  PaperTrailUI:
+    build:
+      targets:
+        PaperTrail: all
+        PaperTrailUITests: [test]
+    test:
+      targets:
+        - PaperTrailUITests
+      gatherCoverageData: false

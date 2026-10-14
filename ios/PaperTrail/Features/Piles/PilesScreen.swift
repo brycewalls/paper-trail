@@ -57,6 +57,7 @@ struct PilesScreen: View {
                 Text("All filed \(model.filedCount)").tag(PilesViewModel.Segment.all)
             }
             .pickerStyle(.segmented)
+            .accessibilityIdentifier("piles.segment")
             .listRowInsets(EdgeInsets())
             .listRowBackground(Color.clear)
         }
@@ -227,6 +228,7 @@ struct PilesScreen: View {
         }
         .buttonStyle(.glass)
         .buttonBorderShape(.capsule)
+        .accessibilityIdentifier("piles.markShredded")
         .padding(.bottom, 12)
         .confirmationDialog(model.markConfirmTitle, isPresented: $confirmMark, titleVisibility: .visible) {
             Button(model.markTitle) { Task { await model.markSafeShredded() } }

@@ -12,7 +12,7 @@ The contract every agent and every PR into `ios` follows. If you need to change 
 
 ## Presentation is separate from logic
 
-**The UI design is not decided yet.** Bryce is choosing a direction and a design spec will land at `docs/design-spec.md`. Until then every screen is a plain functional stand-in, and `Core/UI/Theme.swift` is a placeholder token set (the web app's palette) that will be replaced wholesale.
+**The UI design is decided:** Direction A, "Glass", specified in `docs/design-spec.md`. Shared tokens and components are in `Core/UI` (built by deck); screens not yet rebuilt to the spec are still plain functional stand-ins.
 
 So the code is split so the views can be rebuilt without touching anything else:
 
@@ -43,7 +43,7 @@ ios/
       Models/                 DocumentCard, ClassifyContract, FirestoreModels
       Persistence/            PipelineItem (SwiftData), PipelineStore, FileStore
       Services/               ServiceProtocols, FirebaseBootstrap, Fakes/
-      UI/                     Theme (placeholder until the design spec)
+      UI/                     Design tokens and shared components (docs/design-spec.md sections 2, 3)
     Features/
       Auth/ Capture/ Classify/ Deck/ Outbox/ Piles/ Search/ Paperless/ Settings/
     Resources/                Assets.xcassets (AppIcon from tools/make_icons.mjs)
@@ -61,15 +61,20 @@ The app icon is drawn by `tools/make_icons.mjs` (the three piles, same as the we
 
 ## Navigation
 
-A `TabView` with five tabs, fixed here so features don't collide:
+Direction A (docs/design-spec.md, section 0) replaced the scaffold's five tabs. A `TabView` with three tabs plus the search island, fixed here so features don't collide:
 
 | Tab | Root screen | Owner | Holds |
 |---|---|---|---|
-| Sort | `DeckScreen` | deck | The swipe deck. Capture actions (Scan, Files, Photos) live in its toolbar and are built by capture. |
-| Outbox | `OutboxScreen` | outbox | Uploads in flight, failures with Retry, history. |
-| Piles | `PilesScreen` | piles | Shred pile, keep originals, all filed, stats, and the paperless ledger (#23) as a section or pushed screen. |
-| Search | `SearchScreen` | piles | On-device search (#22). Uses the system search tab role. |
-| Settings | `SettingsScreen` | shared, see owners | Account and Drive (auth), Senders (classify), shred hold (outbox). |
+| Sort | `DeckScreen` | deck | The swipe deck. Scan, Files and Photos live in its toolbar menu next to the avatar and are built by capture. |
+| Piles | `PilesScreen` | piles | Shred pile, keep originals, all filed, stats. |
+| Paperless | `PaperlessScreen` | piles | The paperless ledger (#23). A stand-in in `RootView` until piles lands it. |
+| Search (`Tab(role: .search)`) | `SearchScreen` | piles | On-device search (#22). |
+
+Not tabs:
+- **Outbox:** `OutboxAccessory` (outbox) in `.tabViewBottomAccessory`; tapping it pushes `OutboxScreen` onto the current tab's stack through `AppRouter.openOutbox()`.
+- **Settings:** a sheet from the avatar (`AvatarButton` in `Core/UI`, which sets `AppRouter.showSettings`).
+
+`App/AppRouter.swift` holds the selected tab, one `NavigationPath` per tab and the Settings sheet. `RootView` owns one `NavigationStack` per tab, so **tab screens never wrap themselves in a `NavigationStack`**; they declare `.navigationDestination(for:)` for their own route types. A screen that owns the bottom edge (card detail's Shred / File bar) hides the accessory by adding itself to `AppRouter.accessoryHiders`.
 
 Push detail screens with `NavigationStack` inside the tab. Sheets for capture and edits. If the design spec changes the tabs, it updates this table.
 
@@ -81,6 +86,10 @@ Push detail screens with `NavigationStack` inside the tab. Sheets for capture an
 - `AppEnvironment.live()`: configures Firebase and holds the live services. **Each feature agent replaces only its own line** (marked with its owner) when its live service lands, so parallel PRs don't conflict. `isSample` flips to false once no fakes remain, and the outbox switches the model container to on-disk.
 
 Protocols (all in `Core/Services/ServiceProtocols.swift`): `AuthService`, `ClassifyService`, `DriveService`, `DocStore`, `CaptureService`, `OutboxService`. `OutboxService` also exposes `status` (`OutboxStatus`: online, needs reconnect, haptic counters, last upload) and `sendBack(_:)`. `DocStore` has `settings()` / `saveSettings(_:)` for `config/settings`; the Firestore `DocStore` (piles) implements them. When you add a method, add it to the fake in `Core/Services/Fakes/Fakes.swift` in the same PR so everyone else still builds.
+
+Added by deck (#20, #33):
+- `ClassifyService.checkFields(for:) -> CheckFieldsData`: the unsure fields for the check-fields sheet, in the spec's order (sender, date, folder, title, filename, verdict), each with Claude's best value and up to two alternatives. A protocol extension supplies the default (fields under `CheckFieldsData.unsureBelow = 0.75` from `card.confidence`, no alternatives), so classify only overrides it to add `alternatives`. `CardField` names the six fields with the card's own keys.
+- `OutboxService.sendBack(_:) -> Bool`: the deck's late Undo and the Outbox's "Send back to the deck". Cancels the upload, or trashes the Drive copy and removes the Firestore record if it finished. Same signature as the outbox branch.
 
 ## Local persistence (SwiftData)
 
@@ -239,7 +248,7 @@ Each agent stays inside its folders. Shared files take minimal, listed edits (sa
 | `ios/project.yml` | scaffold | Shared: add a package or Info.plist key only with a reason in the PR |
 | `ios/ARCHITECTURE.md` | scaffold | Shared: anyone extending the contract edits it |
 | `ios/GoogleService-Info.plist` | scaffold | Regenerate with `firebase apps:sdkconfig IOS 1:814219266285:ios:34d37913b8aa6eb662e4e4` |
-| `App/PaperTrailApp.swift`, `App/RootView.swift` | scaffold | Shared: tab content only via the feature's screen |
+| `App/PaperTrailApp.swift`, `App/RootView.swift` | scaffold | Shared: tab content only via the feature's screen. Tabs per "Navigation" |
 | `App/AppEnvironment.swift` | scaffold | Each feature edits only its own line in `live()` |
 | `Core/Models/*` | scaffold | Shared contract: add optional fields only, record them here |
 | `Core/Persistence/PipelineItem.swift` | scaffold | Shared: add defaulted properties for your stage only |
@@ -247,7 +256,8 @@ Each agent stays inside its folders. Shared files take minimal, listed edits (sa
 | `Core/Services/ServiceProtocols.swift` | scaffold | Each protocol's owner may add methods, plus the fake |
 | `Core/Services/Fakes/*` | scaffold | Anyone adding a protocol method updates its fake |
 | `Core/Services/FirebaseBootstrap.swift` | auth | |
-| `Core/UI/Theme.swift` | scaffold, then the design spec | Placeholder until `docs/design-spec.md` |
+| `Core/UI/` | deck (spec section 7) | Tokens (`Palette`, `Space`, `Radius`, `Metrics`, `Motion`, `CardShadow`), `VerdictBadge` (the only place a verdict is drawn), pills and chips, `StatusPill`, `ProgressRing`, `DocThumbnail`, `Banner`, `FlowLayout`, `AvatarButton`. Colors are asset catalog color sets used as `Color(.shred)`. `Theme.swift` is gone |
+| `App/AppRouter.swift` | scaffold | Shared: tabs, per-tab paths, Settings sheet |
 | `Features/Auth/` | auth | Live `AuthService`, sign-in screen, Settings account and Drive rows |
 | `Features/Capture/` | capture | Live `CaptureService`, scanner, importers, OCR, PDF, hashing, `CaptureIntake` |
 | `Features/Classify/` | classify | `ReadingQueue`, live `ClassifyService`, sender rules, "Not this?" picker, Settings Senders list |

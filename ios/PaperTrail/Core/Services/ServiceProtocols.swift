@@ -56,6 +56,73 @@ extension AuthService {
 protocol ClassifyService: AnyObject {
     /// Throws ClassifyFailure.
     func classify(_ request: ClassifyRequest) async throws -> ClassifyResponse
+    /// What the check-fields sheet (design spec 3.8) shows for a card: the unsure fields, in the
+    /// spec's order, each with Claude's best value and up to two alternatives. The deck hosts the
+    /// sheet; classify fills it. The default (below) reads `card.confidence` only.
+    func checkFields(for card: DocumentCard) -> CheckFieldsData
+}
+
+extension ClassifyService {
+    func checkFields(for card: DocumentCard) -> CheckFieldsData { CheckFieldsData.fromConfidence(card) }
+}
+
+// MARK: - Check fields [classify fills, deck hosts]
+
+/// A card field the user can be asked to check. Raw values are DocumentCard / CardConfidence keys.
+/// `allCases` is the order the spec draws them in: sender, date, folder, title, filename, verdict.
+nonisolated enum CardField: String, Sendable, Hashable, CaseIterable {
+    case issuer, docDate, folder, title, filename, verdict
+}
+
+/// One unsure field: Claude's best value first, then up to two other guesses (best first).
+/// Values use the card's own encoding: docDate is YYYY-MM-DD, folder is "06 Home", verdict is the raw value.
+nonisolated struct FieldCheck: Sendable, Hashable {
+    var field: CardField
+    var best: String
+    var alternatives: [String]
+}
+
+nonisolated struct CheckFieldsData: Sendable, Hashable {
+    var fields: [FieldCheck]
+
+    /// A field below this confidence is "Not sure" (design spec section 0).
+    static let unsureBelow = 0.75
+
+    /// Fields whose confidence is under `unsureBelow`, with classify's alternatives (up to two). A card without
+    /// confidence data has no unsure fields (it just never counts as confident).
+    static func fromConfidence(_ card: DocumentCard) -> CheckFieldsData {
+        guard let scores = card.confidence?.fields else { return CheckFieldsData(fields: []) }
+        let fields = CardField.allCases.compactMap { field -> FieldCheck? in
+            guard let score = scores[field.rawValue], score < unsureBelow else { return nil }
+            let others = (card.alternatives?[field.rawValue] ?? []).filter { $0 != card.value(of: field) }
+            return FieldCheck(field: field, best: card.value(of: field), alternatives: Array(others.prefix(2)))
+        }
+        return CheckFieldsData(fields: fields)
+    }
+}
+
+extension DocumentCard {
+    nonisolated func value(of field: CardField) -> String {
+        switch field {
+        case .issuer: issuer
+        case .docDate: docDate
+        case .folder: folder
+        case .title: title
+        case .filename: filename
+        case .verdict: verdict.rawValue
+        }
+    }
+
+    nonisolated mutating func set(_ field: CardField, to value: String) {
+        switch field {
+        case .issuer: issuer = value
+        case .docDate: docDate = value
+        case .folder: folder = value
+        case .title: title = value
+        case .filename: filename = value
+        case .verdict: verdict = Verdict(rawValue: value) ?? verdict
+        }
+    }
 }
 
 // MARK: - Drive [outbox]

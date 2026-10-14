@@ -229,20 +229,28 @@ final class FakeOutboxService: OutboxService {
         if item.decision == .file { item.verifiedAt = .now }
     }
 
-    func sendBack(_ item: PipelineItem) async -> Bool {
-        item.decision = nil
-        item.decidedAt = nil
-        item.stage = .ready
-        item.driveFileID = nil
-        item.verifiedAt = nil
-        item.filedAt = nil
-        return true
-    }
-
     func retry(_ item: PipelineItem) async {
         item.stage = .queued
         await enqueue(item)
     }
 
     func resumePending() async {}
+
+    private(set) var sentBack: [UUID] = []
+    /// Tests: act like a verified item whose local file is already gone.
+    var refuseSendBack = false
+
+    @discardableResult func sendBack(_ item: PipelineItem) async -> Bool {
+        sentBack.append(item.id)
+        if refuseSendBack { return false }
+        item.decision = nil
+        item.decidedAt = nil
+        item.stage = .ready
+        item.driveFileID = nil
+        item.driveURL = nil
+        item.verifiedAt = nil
+        item.filedAt = nil
+        item.firestoreDocID = nil
+        return true
+    }
 }

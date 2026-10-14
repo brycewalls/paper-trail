@@ -9,8 +9,7 @@ struct PilesScreen: View {
     }
 
     var body: some View {
-        NavigationStack {
-            List {
+        List {
                 Section("Shred pile (\(model.toShred.count))") {
                     ForEach(model.toShred) { doc in
                         HStack {
@@ -27,11 +26,11 @@ struct PilesScreen: View {
                 }
                 Section {
                     Text("\(model.shreddedCount) shredded so far")
-                        .foregroundStyle(Theme.muted)
+                        .foregroundStyle(.secondary)
                 }
             }
             .navigationTitle("Piles")
-        }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { AvatarButton() } }
         .task { await model.watch() }
     }
 }

@@ -71,7 +71,7 @@ final class ScanReviewViewModel {
         self.files = env.files
         self.container = env.modelContainer
         self.context = env.modelContainer.mainContext
-        self.reader = ReadingQueue(classify: env.classify, files: env.files)
+        self.reader = ReadingQueue(env: env)   // classify: sends and applies sender rules (#21)
         self.docs = env.docs
         self.proposeSplit = proposeSplit
     }

@@ -1,32 +1,40 @@
-// Owner: settings is shared. auth owns the Account and Drive sections, classify owns Senders,
-// outbox owns the shred hold. FUNCTIONAL STAND-IN, not the design.
+// Owner: settings is shared; auth owns the shell (design spec 4.9). Each owner adds its own section
+// view from its own folder and one line here: classify "Sender rules", piles "Shred hold", deck
+// "Offer to file confident cards together", capture "Shutter", auth "Lock with Face ID".
+// Presented as a sheet from the avatar (deck's RootView), with its own NavigationStack.
 import SwiftUI
 
 struct SettingsScreen: View {
     @Environment(AppEnvironment.self) private var env
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.isPresented) private var isPresented
+    @State private var account: AccountSettingsModel?
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("Account") {
-                    switch env.auth.state {
-                    case .signedIn(let account): LabeledContent("Signed in", value: account.email)
-                    case .notAllowed(let account): LabeledContent("Not allowed", value: account.email)
-                    case .signedOut: Text("Signed out")
-                    }
-                    LabeledContent("Google Drive", value: env.auth.drive == .connected ? "Connected" : "Needs reconnecting")
+                if let account {
+                    Section { AccountRow(model: account) }           // auth
+                    DriveSettingsSection(model: account)             // auth
                 }
-                if env.isSample {
-                    Section {
-                        Text("This build runs on sample data. Nothing is sent to Claude, Drive or Firestore.")
-                            .foregroundStyle(Theme.muted)
-                    }
-                }
-                Section("About") {
-                    LabeledContent("Version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")
+                // Section "Sorting": classify, piles and deck add their rows here.
+                // Section "Scanning and privacy": capture and auth add their rows here.
+                Section {
+                } footer: {
+                    Text(AccountSettingsModel.versionLine)
+                        .frame(maxWidth: .infinity)
                 }
             }
             .navigationTitle("Settings")
+            .toolbar {
+                if isPresented {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { dismiss() }
+                    }
+                }
+            }
         }
+        .tint(AuthPalette.accent)   // AccentColor (spec 2.1) until the shared color sets land
+        .onAppear { if account == nil { account = AccountSettingsModel(env: env) } }
     }
 }

@@ -47,7 +47,7 @@ final class AppEnvironment {
         FirebaseBootstrap.configure()
         let files = FileStore.appDefault()
         return AppEnvironment(
-            auth: FakeAuthService(),                 // auth: replace with the live AuthService
+            auth: LiveAuthService.live(),            // auth
             classify: FakeClassifyService(),         // classify: replace with the live ClassifyService
             drive: FakeDriveService(),               // outbox: replace with the live DriveService
             docs: FakeDocStore(),                    // piles/outbox: replace with the Firestore DocStore

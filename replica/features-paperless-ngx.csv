@@ -1,0 +1,61 @@
+feature,area,priority,original,clone,notes
+Stay signed in across opens (persistent session),security,must,yes,no,Paperless session cookie defaults to 2 weeks with remember-session on. Fixes Paper Trail's sign-in check on every open
+Long-lived Drive connection via server-held refresh token,sync,must,yes,no,Paperless does this for Gmail and Outlook mail OAuth ("refreshing tokens will be handled automatically"). Fixes Drive disconnects from hour-long access tokens
+Upload from phone camera or file picker,capture,must,yes,no,Paperless: web upload and drag-drop; phone scanning only via community apps (Swift Paperless). Paper Trail already has this
+Watched consumption folder,capture,could,yes,no,Core Paperless ingestion. Paper Trail equivalent would be a Drive inbox folder it sweeps; low value for a phone flow
+Email ingestion with mail rules,capture,could,yes,no,IMAP or OAuth; rules by folder/sender/attachment; actions delete/read/flag/move/tag. Later: forward e-statements into the archive
+Folder names become tags on import,capture,could,yes,no,CONSUMER_SUBDIRS_AS_TAGS; useful for migrating an existing Drive tree
+Barcode separator sheets and ASN labels,capture,could,yes,no,ADF-oriented; Bryce scans by phone
+Double-sided scan collation,capture,could,yes,no,Only for single-sided ADF scanners
+Page count recorded and shown per document,capture,must,no,no,Gap. Reddit user lost a page to a double feed after shredding. Show count on the card and compare with the Drive copy
+Duplicate detection by file checksum,capture,must,yes,no,Paperless v3 flags duplicates (Duplicates tab and list filter) instead of rejecting. Paper Trail should warn before a second Drive upload
+Password-protected PDF unlock,capture,could,yes,no,Workflow action tries a password list and stores a decrypted version
+OCR with text layer,reading,could,yes,no,Tesseract plus optional Azure. Claude already reads page images; a text layer in the Drive PDF would help Drive search
+LLM title and metadata suggestions,reading,must,yes,no,Built in since 3.0 (opt-in) plus paperless-ai and paperless-gpt. Paper Trail already does this with Claude
+Created date with alternative date candidates,reading,should,yes,no,Paperless shows other dates as clickable suggestions; docs admit date parsing fails with multiple dates
+Prefer existing folders and senders in AI suggestions,reading,must,yes,no,3.1.0 change; keeps Claude's issuer names consistent with what is already filed
+Custom field extraction (amounts account numbers due dates),reading,should,add-on,no,paperless-gpt Append/Update/Replace modes; Monetary and Date field types in core
+Link related documents by cited reference numbers,reading,could,add-on,no,paperless-gpt links reminders to invoices by number; leaves ambiguous matches unlinked
+Store every barcode or QR value,reading,could,yes,no,Optional; searchable. Low value for Bryce
+Correspondent (sender) as a first-class entity,filing,must,yes,no,Paper Trail has issuer per document; promote to a sender list that powers paperless switching and rules
+Document type taxonomy,filing,should,yes,no,Paperless users struggle to design one; Paper Trail ships a fixed starter set via Claude
+Storage path templates (folder plus filename pattern),filing,should,yes,no,Jinja templates like {{ created_year }}/{{ correspondent }}/{{ title }}; Paper Trail's 11 folders plus a fixed filename pattern per folder
+Rule-based matching per sender (exact any regex fuzzy),filing,should,yes,no,Paperless matching algorithms; Paper Trail version: remember Bryce's folder override per issuer and pass it to Claude
+Learns from corrections over time,filing,should,yes,no,Auto matching retrains hourly; suffers a cold-start problem per Reddit. Claude plus stored overrides avoids it
+Multiple tags per document,filing,could,yes,no,Tags over folders is Paperless's core idea; Drive file can live in one folder so tags would be Firestore-only
+Nested tags,filing,could,yes,no,Up to 5 levels (v2.19)
+Archive serial number for kept originals,filing,must,yes,no,Recommended workflow: number the paper you keep and store one binder sorted by ASN. Maps directly to keep_original
+Document versions (several files one record),filing,could,yes,no,Merge as versions (3.1.0); useful for rescans
+PDF page editor (rotate delete reorder split merge),filing,could,yes,no,Paperless edits the original; Paper Trail should keep originals untouched
+Inbox state for unreviewed documents,review,must,yes,no,Inbox tag on every new document; removed after review. Paper Trail's deck is already an inbox
+Auto-apply confident results and queue uncertain ones,review,must,add-on,no,paperless-gpt auto vs manual tags; Reddit wish "Apply what you are confident about. Show me the uncertain parts."
+Dedicated review queue to approve or edit AI suggestions,review,must,add-on,no,paperless-gpt manual review UI and paperless-ai /manual page
+Bulk edit selection,review,should,yes,no,Tags correspondents types custom fields permissions in one action
+Needs-action (todo) flag and list,review,should,yes,no,Docs recommend a todo tag plus a dashboard saved view
+Saved views on a dashboard,ux,should,yes,no,Filter sets shown as dashboard widgets; Paper Trail piles are fixed views today
+Document notes,review,could,yes,no,Per-document notes; searchable
+Full-text search over extracted text,search,should,yes,no,Most praised feature across Reddit and App Store reviews; word-order and accent insensitive
+Field search syntax (type: tag: correspondent: date ranges),search,could,yes,no,Power-user syntax; Paper Trail could offer filter chips instead
+More like this similar documents,search,could,yes,no,Embedding or classifier based
+Ask the archive chat with source links,search,could,yes,no,Built in since 3.0 with the LLM index; answers link to source documents. Also paperless-ai RAG chat
+Retention date with scheduled reminder,retention,should,partial,no,Scheduled workflow trigger on a date custom field with day offset; no named retention feature. Paper Trail already stores retention so it can compute shred-by dates
+Trash with delayed permanent delete,retention,should,yes,no,30 days default; restorable. Paper Trail analog: hold period before an item counts as safe to shred
+Shred pile and shred verdict,retention,must,no,no,Gap. Paperless says throw away what has no ASN but tracks nothing about physical disposal
+Safe-to-shred check (Drive copy verified),retention,must,no,no,Gap. Confirm the Drive file opens and page count matches before shredding
+Senders to switch to paperless list,paperless,must,no,no,Gap. No equivalent in Paperless-ngx; Paper Trail's differentiator
+Go-paperless tip per sender,paperless,should,no,no,Gap
+Plain files with readable names and export,sync,must,yes,no,Originals never modified; checksums and sanity checker; exporter. Paper Trail: originals byte for byte in Drive
+Integrity check of stored originals,sync,could,yes,no,Scheduled sanity checker compares checksums
+Webhook and email workflow actions,sync,could,yes,no,Send document or JSON on triggers
+Workflow engine (triggers and actions),other,could,yes,no,Powerful but users find it confusing ("thinking about how Paperless internally processes documents")
+Public share links with expiry,sync,could,yes,no,Drive sharing covers this
+REST API and MCP access,sync,could,yes,no,Reddit user had Claude check for missing pages via MCP
+Multi-user permissions and groups,security,could,yes,no,Not needed for a one-person app
+Two-factor and SSO,security,could,yes,no,Google sign-in already covers this
+Audit history per document,security,could,yes,no,History tab records every change and the actor
+Sensitive flag that limits what goes to the LLM,security,should,partial,no,AI is opt-in and docs warn about remote providers; no per-document sensitive flag. Paper Trail has a sensitive flag already
+Local-only processing option,security,could,yes,no,Ollama and local embeddings; Paper Trail uses Claude via a Cloud Function
+Starter taxonomy presets,ux,should,no,no,Reddit complaint: empty taxonomy on day one. Paper Trail ships 11 folders already
+Progress and celebration of the pile shrinking,ux,should,no,no,Reddit user on scanning a box: watching the pile disappear was satisfying. Make the box-to-zero progress visible
+Dark mode and mobile layout,ux,must,yes,no,Paperless supports dark mode and a mobile web layout; native feel comes from community apps
+Free and open source,other,could,yes,no,GPL-3.0 core; MIT add-ons; no paid tier

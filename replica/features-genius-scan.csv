@@ -1,0 +1,47 @@
+feature,area,priority,original,clone,notes
+Batch capture of many pages into one PDF,capture,must,yes,no,Batch is Genius Scan's default; shutter shows a page counter and ✓ ends the batch (src 8). A box of paper is a stack job
+Live document edge detection,capture,should,yes,no,Orange edge overlay; tips stress contrast and four corners in frame (src 8 10). Web version could use the iPhone's own scanner via file input or an open library
+Auto-capture when the page is steady,capture,could,yes,no,Can be turned off in Settings (src 8). Hard to do well in a mobile browser
+Timed per-page preview with retake recrop rotate,capture,should,yes,no,1-second preview with magic wand (src 9). Keeps a batch moving without opening each page
+Perspective shadow and curvature cleanup,capture,could,yes,no,Engine is proprietary (src 3 32); reviews complain curvature is per page (src 5)
+Import photos and PDFs from the phone,capture,must,yes,no,Photos get enhanced; PDFs left as is (src 17). Paper Trail already picks files
+Share into the app from Mail or Gmail,capture,could,yes,no,Share sheet target (src 17). A web app needs the Web Share Target API on Android; iOS support is limited
+Revert crop to the full photo,capture,could,yes,no,Recrop then Maximize (src 8)
+On-device OCR text layer in the PDF,reading,should,yes,no,Makes Drive full-text search work on the filed PDF (src 1 16)
+AI name suggestion from document content,reading,must,yes,no,Genius Renaming button; iOS only (src 12). Paper Trail's Claude read already produces title and filename
+Suggestion chips for renaming,reading,should,yes,no,Chips from content and other docs' names plus a date picker (src 13). Good way to edit Claude's filename
+Classify type issuer and date,reading,must,no,no,Genius Scan never says what a document is. Paper Trail's core
+Receipt and expense extraction,reading,skip,yes,no,Ultra iOS feature; users report wrong numbers (src 5 34). Different job
+Business card to contacts,reading,skip,yes,no,Not Bryce's flow (src 28)
+Reprocess old documents with a newer reader,reading,should,yes,no,"Process old documents" backfills OCR (src 16). Re-run Claude when the prompt or folders change
+Filename template with live sample,filing,must,yes,no,Date time location and text tokens with preview (src 11). Lock in a consistent Drive filename pattern
+Nested folders,filing,could,yes,no,In-app folders (src 31). Paper Trail's folders are the 11 Drive folders already
+Multiple tags per document,filing,should,yes,no,Unlimited tags and tag filter (src 15). Useful for tax year or person
+Write metadata into PDF properties,filing,should,yes,no,Tags go into PDF keywords (src 15). Stamp issuer type date retention verdict before upload
+Merge and split documents,filing,could,yes,no,No unmerge (src 18). Handy when one envelope holds two documents
+Rules mapping tag or name to a Drive folder,filing,should,yes,no,Auto-export rules (src 20). Lets Bryce override Claude's folder choice by rule
+Swipe deck to file or shred,review,must,no,no,Paper Trail's own loop; no equivalent in Genius Scan
+Per-document notes,review,could,no,no,Requested by a reviewer (src 5)
+Search by title tags and content,search,must,yes,no,All documents vs current folder (src 14)
+Sort by date name or relevance,search,could,yes,no,Android pertinence tab (src 14)
+Retention schedule per document,retention,must,no,no,Not in Genius Scan. Paper Trail's own
+Delete only after confirmed upload,retention,must,yes,no,Delete document on success fires only on provider confirmation (src 24). Gate the shred pile on Drive confirmation
+Offload local copies after upload,retention,could,yes,no,Offloads after 30 days unused (src 30). Paper Trail keeps nothing heavy on the phone anyway
+Track senders to switch to paperless,paperless,must,no,no,Not in Genius Scan. Paper Trail's own
+Connect Drive once and stay connected,sync,must,yes,no,Accounts stay listed after first Login (src 20 21). Needs a server-held refresh token in a Cloud Function
+Export outbox with per-doc status and retry,sync,must,yes,no,Grey icon on error and "Exported to..." history (src 22 23). Fixes silent filing failures
+Re-export with same name after an edit,sync,should,yes,no,One-way sync (src 20). Rename or move the Drive file when Bryce edits after filing
+Multiple Google accounts,sync,could,yes,no,Multi-account per service (src 21)
+Shared drives as a destination,sync,could,yes,no,Option on shortcuts (src 21)
+Upload on Wi-Fi only toggle,sync,skip,yes,no,Default Wi-Fi only (src 20). PDFs are small; not worth the setting
+Many export destinations,sync,skip,yes,no,20 plus services (src 2). Bryce needs only Drive
+Built-in cloud and web app,sync,skip,yes,no,Genius Cloud (src 29). Drive is the archive
+Export history with Drive link,sync,should,yes,no,"Exported to..." screen (src 22). Store the Drive file link on each item
+Overall sync badge with pending list,sync,should,yes,no,Check clock or warning badge (src 23). One glance shows if anything is stuck
+No sign-in gate on open,security,must,yes,no,Genius Scan opens straight to the list; lock is opt-in (src 25). Persist Firebase auth silently
+Optional biometric lock,security,should,yes,no,Face ID or passcode with fallback (src 25). Web version via a passkey (WebAuthn)
+Data stays private by default,security,should,yes,no,"only stored on your device by default" and uploads go straight to the provider (src 26 27). Paper Trail sends pages to Claude so say plainly what leaves the phone
+PDF password encryption,security,skip,yes,no,RC4 128-bit (src 25). Weak; rely on Drive permissions
+Two-factor on the account,security,could,no,no,Missing in Genius Scan and called out by a subscriber (src 5). Google sign-in already covers it
+No paywall trial or review pop-ups,ux,should,no,no,Top complaint category (src 5). Personal app; keep zero interruptions
+Hands-free volume button shutter,ux,skip,yes,no,Volume up triggers the shutter (src 8). Not available to a web page

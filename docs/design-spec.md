@@ -457,7 +457,7 @@ Interactions: rows per 3.10. "Send back to the deck" cancels the upload (or tras
 
 Large title "Piles", avatar trailing. `.tabBarMinimizeBehavior(.onScrollDown)`.
 
-1. Segmented `Picker` (`.segmented`): "Shred 9", "Keep 3", "All filed 64" (counts as `Text` with `.secondary`, inside the segment labels).
+1. Segmented `Picker` (`.segmented`): "Shred 9", "Keep 3", "All filed 64". The counts use the segment's normal label style. The system segmented control flattens per-run styling, so `.secondary` counts aren't possible without a custom control, and that isn't worth it (Bryce, 2026-10-14, #58).
 2. **Shred segment:**
    - Safe-to-shred banner (3.9) when any are safe.
    - Section "Safe to shred": rows with `StatusPill` Safe. More than three: the first three, then a "{n} more" row that expands in place.
@@ -471,7 +471,7 @@ Tap any row: push the document view (4.7's document view, read-only card detail 
 
 ### 4.6 A6: Search (`SearchScreen`, search), serves #22
 
-The search island tab (`Tab(role: .search)`). Selecting it turns the tab bar into a bottom search field (system behavior with `.searchable` on this tab's `NavigationStack`); A6's leading round button returns to Sort. Large title "Search". Field prompt: "Documents, senders, text".
+The search island tab (`Tab(role: .search)`). Selecting it turns the tab bar into a bottom search field (system behavior with `.searchable` on this tab's `NavigationStack`); A6's leading round button closes Search and returns to the tab you came from, which is the system behavior (Bryce, 2026-10-14, #61). Large title "Search". Field prompt: "Documents, senders, text".
 
 1. Filter chips (`FilterChip`, horizontal `ScrollView`): document types present in the library (e.g. "Tax forms"), years found in the query or recent docs ("2023"), "Sensitive", "Keep originals". Typing a year or a known type turns its chip on.
 2. Before typing: section "Recent" with the last 8 queries (rows per 3.10) and, under it, "Suggested" chips for the three most common senders.

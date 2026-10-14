@@ -119,6 +119,17 @@ final class AppWalkthroughUITests: PaperTrailUITestCase {
         let mark = waitFor(element("piles.markShredded"), 10, "No Mark as shredded button on the Shred pile")
         pause(0.8)
         shot("20-piles-shred")
+        // #64: scrolled to the end, the last row rests above the button instead of under it.
+        let list = app.collectionViews.firstMatch
+        for _ in 0..<4 { list.swipeUp() }
+        pause(0.8)
+        shot("20b-piles-shred-end")
+        if let last = list.cells.allElementsBoundByIndex.last(where: { $0.isHittable }) {
+            XCTAssertLessThanOrEqual(last.frame.maxY, mark.frame.minY + 1,
+                                     "The last Shred row sits under Mark as shredded (#64)")
+        }
+        for _ in 0..<4 { list.swipeDown() }
+        pause(0.5)
         let markTitle = mark.label
         XCTAssertTrue(markTitle.hasPrefix("Mark ") && markTitle.hasSuffix(" as shredded"), "Button reads \(markTitle)")
         mark.tap()
@@ -186,14 +197,9 @@ final class AppWalkthroughUITests: PaperTrailUITestCase {
         shot("41-paperless-sender")
         picker.tap()
         waitFor(app.buttons["Requested"], 5, "Status menu didn't open").tap()
-        if !eventually(5, { self.app.buttons["It's confirmed"].exists }) {
-            // Known: #57, the detail doesn't hear its own write. The ledger check below still runs.
-            continueAfterFailure = true
-            XCTExpectFailure("#57: sender detail doesn't update when the status changes") {
-                XCTFail("Requested should switch the button to It's confirmed")
-            }
-            continueAfterFailure = false
-        }
+        // #57: the detail has to hear its own write.
+        XCTAssertTrue(eventually(5, { self.app.buttons["It's confirmed"].exists }),
+                      "Requested should switch the button to It's confirmed (#57)")
         shot("42-paperless-sender-requested")
         goBack()
         XCTAssertTrue(eventually {

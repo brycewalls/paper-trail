@@ -1,7 +1,9 @@
 // Owner: piles (search UI, #22). Design spec 4.6 (A6): the search island tab.
 //
-// No NavigationStack here: RootView owns one per tab. `.searchable` attaches to that stack, so in
-// the search-role tab the tab bar turns into the bottom search field (A6).
+// No NavigationStack and no `.searchable` here. RootView owns one stack per tab, and it owns the
+// search field too: `.searchable` around this tab's stack plus `.tabViewSearchActivation(
+// .searchTabSelection)` on the TabView is what gives the separate island and the bottom field
+// (A6). The field's text is `AppRouter.searchText`, mirrored both ways into SearchViewModel.query.
 import SwiftUI
 
 struct SearchScreen: View {
@@ -17,6 +19,7 @@ private struct SearchContent: View {
     @State private var opened: FiledDoc?
     @State private var attempt = 0
     @Environment(\.openURL) private var openURL
+    @Environment(AppRouter.self) private var router
 
     init(env: AppEnvironment) {
         _model = State(initialValue: SearchViewModel(env: env))
@@ -80,8 +83,11 @@ private struct SearchContent: View {
         }
         .navigationTitle("Search")
         .navigationDestination(item: $opened) { FiledDocumentView(doc: $0, highlight: model.highlightWords) }
-        .searchable(text: $model.query, prompt: "Documents, senders, text")
-        .onSubmit(of: .search) { model.remember() }
+        .onAppear { if model.query != router.searchText { model.query = router.searchText } }
+        .onChange(of: router.searchText) { _, text in if model.query != text { model.query = text } }
+        // Chips and recents rewrite the query; send that back to the field.
+        .onChange(of: model.query) { _, text in if router.searchText != text { router.searchText = text } }
+        .onChange(of: router.searchSubmits) { model.remember() }
         .task(id: attempt) { await model.watch() }
     }
 

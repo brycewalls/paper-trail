@@ -23,9 +23,20 @@ struct RootView: View {
                 stack(.paperless) { PaperlessScreen() }  // piles (#23)
             }
             Tab(value: AppTab.search, role: .search) {
+                // `.searchable` wraps the search tab's NavigationStack: inside the stack, iOS 27 shows
+                // no field; on the whole TabView, every tab's nav bar gets a field under its title.
                 stack(.search) { SearchScreen() }  // piles (#22)
+                    .searchable(text: $router.searchText, prompt: "Documents, senders, text")
+                    .onSubmit(of: .search) { router.searchSubmits += 1 }
+                    // Keep the "Search" large title while the field is active, as A6 draws it.
+                    .searchPresentationToolbarBehavior(.avoidHidingContent)
             }
         }
+        // The search island (A1, A6): with `.searchTabSelection`, iOS 26 and later draw the search
+        // tab as a separate circle beside the tab bar, and selecting it turns the bar into a bottom
+        // search field. Without it (the earlier code), iOS 27 kept Search as a fourth tab in the bar
+        // and showed no field at all.
+        .tabViewSearchActivation(.searchTabSelection)
         .tabBarMinimizeBehavior(.onScrollDown)
         .modifier(OutboxAccessoryHost(isEnabled: isSignedIn && router.showsAccessory) {
             OutboxAccessory { router.openOutbox() }

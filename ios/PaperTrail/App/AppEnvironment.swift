@@ -46,15 +46,19 @@ final class AppEnvironment {
     static func live() -> AppEnvironment {
         FirebaseBootstrap.configure()
         let files = FileStore.appDefault()
+        // outbox: the live outbox needs auth, docs and the container, so they're named first.
+        let auth: any AuthService = LiveAuthService.live()  // auth
+        let docs: any DocStore = FakeDocStore()        // piles: replace with the Firestore DocStore
+        let container = PipelineStore.container(inMemory: false)  // outbox: on disk, survives a relaunch
+        let drive = LiveDriveService(auth: auth, docs: docs)      // outbox
         return AppEnvironment(
-            auth: LiveAuthService.live(),            // auth
+            auth: auth,
             classify: LiveClassifyService(),         // classify: the classify callable (#20, #21)
-            drive: FakeDriveService(),               // outbox: replace with the live DriveService
-            docs: FakeDocStore(),                    // piles/outbox: replace with the Firestore DocStore
+            drive: drive,
+            docs: docs,
             capture: LiveCaptureService(files: files), // capture: live (Vision OCR, PDF text layer, SHA-256)
-            outbox: FakeOutboxService(),             // outbox: replace with the live OutboxService
-            // outbox: switch to inMemory: false with the live outbox, so the pipeline survives a relaunch.
-            files: files, modelContainer: PipelineStore.container(inMemory: true),
+            outbox: LiveOutboxService(auth: auth, drive: drive, docs: docs, files: files, container: container), // outbox
+            files: files, modelContainer: container,
             isSample: true)                          // set to false once no fakes remain above
     }
 

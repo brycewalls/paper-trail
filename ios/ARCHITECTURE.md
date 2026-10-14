@@ -80,7 +80,7 @@ Push detail screens with `NavigationStack` inside the tab. Sheets for capture an
 - `AppEnvironment.sample()`: all fakes, in memory. Used by unit tests (automatically), SwiftUI previews and the simulator when launched with `-PTSample`.
 - `AppEnvironment.live()`: configures Firebase and holds the live services. **Each feature agent replaces only its own line** (marked with its owner) when its live service lands, so parallel PRs don't conflict. `isSample` flips to false once no fakes remain, and the outbox switches the model container to on-disk.
 
-Protocols (all in `Core/Services/ServiceProtocols.swift`): `AuthService`, `ClassifyService`, `DriveService`, `DocStore`, `CaptureService`, `OutboxService`. When you add a method, add it to the fake in `Core/Services/Fakes/Fakes.swift` in the same PR so everyone else still builds.
+Protocols (all in `Core/Services/ServiceProtocols.swift`): `AuthService`, `ClassifyService`, `DriveService`, `DocStore`, `CaptureService`, `OutboxService`. `OutboxService` also exposes `status` (`OutboxStatus`: online, needs reconnect, haptic counters, last upload) and `sendBack(_:)`. `DocStore` has `settings()` / `saveSettings(_:)` for `config/settings`; the Firestore `DocStore` (piles) implements them. When you add a method, add it to the fake in `Core/Services/Fakes/Fakes.swift` in the same PR so everyone else still builds.
 
 ## Local persistence (SwiftData)
 
@@ -107,6 +107,11 @@ Added properties:
 |---|---|---|
 | `unsureFields: [String] = []` | classify | Card fields below `CardConfidence.fieldUnsureBelow`, in sheet order (#20). Set by `ReadingQueue`; emptied when the check-fields sheet (or the card detail) confirms them |
 | `readErrorCode: String?` | classify | The `ClassifyErrorCode` of the last failed read, so the failed card can offer "Try again" only when it helps (`ClassifyCopy.offersTryAgain`) |
+| `nextRetryAt: Date?` | outbox | When the next automatic retry runs (#17). Nil on a `failed` item means the retries are used up and it needs attention |
+| `filedAt: Date?` | outbox | When the outbox finished with it |
+| `reuploads: Int = 0` | outbox | Automatic re-uploads after a checksum mismatch, one allowed (#18) |
+
+The outbox keeps a finished item's PDF for 10 minutes before deleting it, so the deck's late Undo can still send the card back.
 
 ## Firestore data model
 
@@ -133,7 +138,7 @@ A doc filed by the app counts as safe to shred only when `verifiedAt` is set (`F
 
 **`config/drive`** (`DriveFolderCache`, unchanged): `root`, `folders {name: id}`, `updatedAt`. The app reads and refreshes the same cache the web app writes.
 
-**`config/settings`** (`AppSettings`, new): `shredHoldDays`.
+**`config/settings`** (`AppSettings`, new): `shredHoldDays` (0, 1, 3 or 7; set from Settings, Sorting, Shred hold, built by outbox as `ShredHoldRow`).
 
 **Server-only Drive tokens (#15).** Refresh tokens never live under `users/`. They go in top-level `oauthTokens/{googleSub}` (`refreshToken`, `email`, `scope`, `updatedAt`, `revokedAt`), and the sign-in handoff in `oauthHandoffs/{random}` (short-lived). The rules' catch-all already denies every client read and write there; only Cloud Functions (Admin SDK) touch them. The auth agent adds a `tools/rules-check.mjs` case proving a signed-in owner cannot read either collection.
 
@@ -162,6 +167,12 @@ Every new field is optional on both sides: the live web app must keep working ag
 - `startUpload(name:folderID:mimeType:size:)`: `POST upload/drive/v3/files?uploadType=resumable&fields=id,webViewLink,md5Checksum,size`, returns the session URI. The outbox PUTs the file with a **background** `URLSession` (survives the app being suspended or killed), resuming from `bytesSent` with `Content-Range` after a failure.
 - `metadata(fileID:)`: `id, name, md5Checksum, size, webViewLink` for verification (#18).
 - `search(_:)`: Drive full-text search inside the app's folders (#22), for documents the app doesn't have locally.
+- `ensureYearFolder(_:in:)`: the year subfolder for 02 Taxes, 03 Money & Banking and 05 Medical only (Bryce's decision 2; the year is docDate's, else the filing date's), found or created on demand. Cached in `config/drive` `folders` under the key `"02 Taxes/2025"`; the web app only checks its 11 names, so extra keys are invisible to it, and a web rebuild that drops them is harmless because the next lookup finds the existing folder first.
+- `download(fileID:)` reads the bytes back to count pages when the checksum doesn't match, and `trash(fileID:)` (`files.update` with `trashed: true`) backs Send back to the deck and a late Undo.
+
+**Outbox engine** (`LiveOutboxService`): one item at a time, oldest decision first. `queued` gets the folder, the local MD5 and a resumable session; `uploading` PUTs through `BackgroundUploader` (a background `URLSession`, tasks tagged with the item's UUID). Any session made earlier is asked where it stands first (`Content-Range: bytes */total`) so a relaunch or dropped connection resumes from Drive's offset; an expired session is replaced once. Then the Firestore record and paperless sender (`filed`), then Drive's `md5Checksum` against the local MD5 (`verified`, `verifiedAt` and `verifiedPages` written to the doc). A mismatch trashes the copy and uploads again once ("Drive has 1 of 2 pages. Uploading it again."), then needs attention. Failures back off 1, 2, 5 and 15 minutes. A 401 sets `OutboxStatus.needsReconnect` and pauses without using a retry; no network sets `isOnline = false` and waits. `PaperTrailApp` handles `.backgroundTask(.urlSession(BackgroundUploader.identifier))`.
+
+**Undo hold.** `UndoWindow.hold` (10 s). The deck calls `enqueue` when it releases a decision; that starts at once. On relaunch, `resumePending` leaves `queued` items decided less than 10 s ago alone until the window ends. `sendBack(_:)` cancels the upload or trashes the Drive copy and deletes the Firestore record, and puts the card back on top of the deck.
 
 Files go up as `filename + ".pdf"`. A 401 refreshes the token once, then surfaces `DriveError.unauthorized` (Reconnect Drive).
 

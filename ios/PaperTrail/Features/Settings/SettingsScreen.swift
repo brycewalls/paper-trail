@@ -19,6 +19,7 @@ struct SettingsScreen: View {
                 }
                 Section("Sorting") {
                     SenderRulesSettingsRow(docs: env.docs)   // classify (#21)
+                    ShredHoldRow()                           // outbox
                 }
                 // Section "Scanning and privacy": capture and auth add their rows here.
                 Section {

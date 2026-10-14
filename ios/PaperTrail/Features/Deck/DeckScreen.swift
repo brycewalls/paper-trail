@@ -96,6 +96,7 @@ struct DeckScreen: View {
             }
             .captureFlow { model.refresh() }  // capture: scanner, imports, review
             .task { await model.load() }
+            .task { await autoDecideForChecks() }  // sample mode only: -PTAutoFile
             .task(id: model.cards.prefix(3).map(\.id)) { await loadThumbnails() }
             .onChange(of: router.tab) { _, tab in
                 if tab != .sort { model.releaseHeld() }
@@ -338,6 +339,19 @@ struct DeckScreen: View {
         }
         flyOff(item, side: side, from: start)
         announce(model.announcement(after: side, title: title))
+    }
+
+    /// Simulator seam, sample mode only: `-PTSample -PTAutoFile` taps File, Shred and File again
+    /// through the same path as the action row, then lets the undo hold release to the outbox, so
+    /// a crash on File (#44) shows up without a tap.
+    private func autoDecideForChecks() async {
+        guard model.isSample, ProcessInfo.processInfo.arguments.contains("-PTAutoFile") else { return }
+        try? await Task.sleep(for: .seconds(2))
+        for side in [DeckSide.file, .shred, .file] {
+            guard let top = model.top else { return }
+            decide(side, top, fromButton: true)
+            try? await Task.sleep(for: .seconds(1))
+        }
     }
 
     private func flyOff(_ item: PipelineItem, side: DeckSide, from start: CGSize) {

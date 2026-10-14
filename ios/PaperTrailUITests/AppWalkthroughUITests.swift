@@ -395,4 +395,123 @@ final class AppWalkthroughUITests: PaperTrailUITestCase {
         element("review.send").tap()
         XCTAssertTrue(eventually { !self.element("review.send").exists }, "Send didn't close the review")
     }
+
+    // MARK: Every scan entry point is the Scan menu (#79)
+
+    /// Asserts the three-choice Scan menu is open, and that the tap didn't start a scan on its own.
+    private func assertScanMenu(_ origin: String, file: StaticString = #filePath, line: UInt = #line) {
+        waitFor(app.buttons["Scan document"], 5, "\(origin) should open the Scan menu", file: file, line: line)
+        XCTAssertTrue(app.buttons["Import from Files"].exists, "\(origin): no Import from Files (#79)", file: file, line: line)
+        XCTAssertTrue(app.buttons["Import from Photos"].exists, "\(origin): no Import from Photos (#79)", file: file, line: line)
+    }
+
+    /// The bug in #79: "Scan more" under "All sorted" went straight into the scanner.
+    func testAllSortedScanMoreOpensTheScanMenu() {
+        launch(["-PTDeckState", "sorted"])
+        waitFor(app.staticTexts["All sorted"], 20, "The sorted sample deck should show All sorted")
+        let scanMore = waitFor(element("sort.scanMore"), 5, "No Scan more under All sorted")
+        pause(0.5)
+        shot("70-sort-all-sorted")
+        scanMore.tap()
+        assertScanMenu("Scan more under All sorted")
+        XCTAssertFalse(element("review.send").exists, "Scan more started a scan instead of opening the menu (#79)")
+        shot("71-sort-all-sorted-scan-menu")
+        app.buttons["Scan document"].tap()
+        waitFor(element("review.send"), 15, "Scan document from the empty state didn't open the review")
+        element("review.send").tap()
+        XCTAssertTrue(eventually { !self.element("review.send").exists }, "Send didn't close the review")
+    }
+
+    func testFirstRunScanOpensTheScanMenu() {
+        launch(["-PTDeckState", "first"])
+        waitFor(app.staticTexts["Scan your first stack"], 20)
+        element("sort.scanFirst").tap()
+        assertScanMenu("Scan on the first-time empty state")
+        XCTAssertFalse(element("review.send").exists, "Scan started a scan instead of opening the menu (#79)")
+        shot("72-sort-first-scan-menu")
+    }
+
+    func testReviewScanMoreOpensTheScanMenu() {
+        launch()
+        waitFor(card, 20)
+        element("sort.scan").tap()
+        waitFor(app.buttons["Scan document"], 5).tap()
+        waitFor(element("review.send"), 15, "Scan didn't open the review screen")
+        XCTAssertTrue(eventually { self.app.staticTexts["4 pages, 1 document"].exists })
+        element("review.more").tap()
+        assertScanMenu("The review's Scan more")
+        shot("73-review-scan-menu")
+        app.buttons["Scan document"].tap()
+        XCTAssertTrue(eventually(15) { self.app.staticTexts["8 pages, 1 document"].exists },
+                      "Scan document from the review should add to the same review")
+        element("review.send").tap()
+        XCTAssertTrue(eventually { !self.element("review.send").exists }, "Send didn't close the review")
+    }
+
+    // MARK: The full-screen page viewer (#78)
+
+    func testPageViewerZoomCutJoinAndClose() {
+        launch(["-PTScanStack"])
+        waitFor(card, 20)
+        element("sort.scan").tap()
+        waitFor(app.buttons["Scan document"], 5).tap()
+        waitFor(element("review.send"), 15, "Scan didn't open the review screen")
+        XCTAssertTrue(eventually { self.app.staticTexts["6 pages, 1 document"].exists })
+        let thumbnails = app.descendants(matching: .any).matching(identifier: "review.page")
+        XCTAssertTrue(eventually { thumbnails.count == 6 }, "The review should show six page thumbnails")
+
+        // Tap page 3: the viewer opens on it.
+        thumbnails.element(boundBy: 2).tap()
+        let done = waitFor(element("pager.done"), 5, "Tapping a page should open the viewer")
+        let title = { (text: String) in self.app.navigationBars.staticTexts[text].firstMatch }
+        waitFor(title("Page 3 of 6 · Document 1"), 5, "The viewer should open on the page tapped")
+        pause(1)
+        shot("74-page-viewer")
+
+        // The scissors cut after this page; the review behind follows at once.
+        element("pager.cut").tap()
+        waitFor(element("pager.joinAfter"), 5, "After a cut the scissors become Join with page 4")
+        XCTAssertEqual(element("pager.joinAfter").label, "Join with page 4")
+
+        // Swipe to page 4: it starts document 2, so it offers Join with page 3.
+        app.swipeLeft()
+        waitFor(title("Page 4 of 6 · Document 2"), 5, "Swiping left should show page 4 in document 2")
+        waitFor(element("pager.joinBefore"), 5)
+        pause(0.8)
+        shot("75-page-viewer-after-cut")
+
+        // Double-tap zooms in; a second double-tap zooms back out.
+        let page = app.descendants(matching: .any).matching(identifier: "pager.page").element(boundBy: 0)
+        app.windows.firstMatch.doubleTap()
+        pause(0.8)
+        shot("76-page-viewer-zoomed")
+        app.windows.firstMatch.doubleTap()
+        pause(0.6)
+        XCTAssertTrue(page.exists)
+
+        // Join with page 3 removes the cut again.
+        element("pager.joinBefore").tap()
+        waitFor(title("Page 4 of 6 · Document 1"), 5, "Join should put page 4 back in document 1")
+        element("pager.cut").tap()
+        waitFor(title("Page 4 of 6 · Document 1"), 5)
+
+        // Done closes back on the review, which kept the cut made in the viewer.
+        done.tap()
+        XCTAssertTrue(eventually { !self.element("pager.done").exists }, "Done didn't close the viewer")
+        XCTAssertTrue(eventually { self.app.staticTexts["6 pages, 2 documents"].exists },
+                      "The review should show the cut made in the viewer")
+        pause(0.8)
+        shot("77-review-after-viewer")
+
+        // A swipe down closes it too.
+        thumbnails.element(boundBy: 0).tap()
+        waitFor(element("pager.done"), 5)
+        waitFor(title("Page 1 of 6 · Document 1"), 5)
+        let middle = app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4))
+        middle.press(forDuration: 0.05, thenDragTo: middle.withOffset(CGVector(dx: 0, dy: 500)),
+                     withVelocity: .fast, thenHoldForDuration: 0)
+        XCTAssertTrue(eventually { !self.element("pager.done").exists }, "A swipe down should close the viewer")
+        element("review.send").tap()
+        XCTAssertTrue(eventually { !self.element("review.send").exists }, "Send didn't close the review")
+    }
 }

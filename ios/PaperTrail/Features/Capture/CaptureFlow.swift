@@ -6,8 +6,9 @@
 //     .captureFlow { model.refresh() }
 //
 // `captureFlow` owns the CaptureController and attaches the scanner and review cover, the Files
-// and Photos pickers and the unsupported-file alert. `ScanMenuButton` finds the controller in the
-// environment, so any screen inside the flow (the Sort empty state too) can start a capture.
+// and Photos pickers and the unsupported-file alert. `ScanMenu` (and `ScanMenuButton`, its toolbar
+// form) finds the controller in the environment, so any screen inside the flow (the Sort empty
+// states too) opens the same three-choice menu (#79).
 import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
@@ -19,37 +20,81 @@ extension View {
     }
 }
 
-/// The Scan button (decision 1, #74): a tap opens the menu with all three sources. No `primaryAction`,
-/// because that made a tap scan at once and hid both imports behind a long press nobody found.
-struct ScanMenuButton: View {
+/// The one Scan menu (#74, #79). Every scan entry point is this menu: the Scan button on Sort, the
+/// Sort empty states, and the review's "Scan more" / "Add more". A tap opens all three sources; there
+/// is no `primaryAction`, because that made a tap scan at once and hid both imports. Only the label
+/// differs between entry points, so the choices can't drift apart again.
+///
+/// It finds the CaptureController in the environment: `.captureFlow` provides it to Sort, and the
+/// capture cover provides it to the review. From an open review, each choice adds to that review.
+struct ScanMenu<MenuLabel: View>: View {
     @Environment(CaptureController.self) private var capture: CaptureController?
+    private let label: MenuLabel
+
+    init(@ViewBuilder label: () -> MenuLabel) {
+        self.label = label()
+    }
 
     var body: some View {
         Menu {
-            Button("Scan document", systemImage: "doc.viewfinder") { Task { await capture?.scan() } }
-            Button("Import from Files", systemImage: "folder") { capture?.importFromFiles() }
-            Button("Import from Photos", systemImage: "photo.on.rectangle") { capture?.importFromPhotos() }
+            ForEach(ScanSource.allCases) { source in
+                Button(source.title, systemImage: source.symbol) { start(source) }
+            }
         } label: {
-            Label("Scan", systemImage: "doc.viewfinder")
+            label
         }
         .disabled(capture == nil)
-        .accessibilityLabel("Scan")
         .accessibilityHint("Scan a document, or import from Files or Photos.")
-        .accessibilityInputLabels(["Scan", "Scan document"])
-        .accessibilityIdentifier("sort.scan")
+    }
+
+    private func start(_ source: ScanSource) {
+        switch source {
+        case .scan: Task { await capture?.scan() }
+        case .files: capture?.importFromFiles()
+        case .photos: capture?.importFromPhotos()
+        }
     }
 }
 
-/// The "Import" menu for the Sort empty state (spec 3.11): Files and Photos.
-struct ImportMenuButton: View {
-    @Environment(CaptureController.self) private var capture: CaptureController?
+extension ScanMenu where MenuLabel == Text {
+    /// A text label: "Scan", "Scan more", "Add more".
+    init(_ title: String) {
+        self.init { Text(title) }
+    }
+}
 
-    var body: some View {
-        Menu("Import") {
-            Button("Import from Files", systemImage: "folder") { capture?.importFromFiles() }
-            Button("Import from Photos", systemImage: "photo.on.rectangle") { capture?.importFromPhotos() }
+/// The three choices on the Scan menu, in order (decision 1).
+enum ScanSource: CaseIterable, Identifiable {
+    case scan, files, photos
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .scan: "Scan document"
+        case .files: "Import from Files"
+        case .photos: "Import from Photos"
         }
-        .disabled(capture == nil)
+    }
+
+    var symbol: String {
+        switch self {
+        case .scan: "doc.viewfinder"
+        case .files: "folder"
+        case .photos: "photo.on.rectangle"
+        }
+    }
+}
+
+/// The Scan button in Sort's toolbar (decision 1): the shared ScanMenu with the `doc.viewfinder` label.
+struct ScanMenuButton: View {
+    var body: some View {
+        ScanMenu {
+            Label("Scan", systemImage: "doc.viewfinder")
+        }
+        .accessibilityLabel("Scan")
+        .accessibilityInputLabels(["Scan", "Scan document"])
+        .accessibilityIdentifier("sort.scan")
     }
 }
 
@@ -106,6 +151,8 @@ private struct CaptureCover: View {
             }
         }
         .modifier(CapturePickers(controller: controller, host: .review))
+        // The review's "Scan more" / "Add more" is the shared ScanMenu, which reads this (#79).
+        .environment(controller)
     }
 }
 

@@ -292,11 +292,119 @@ final class ScanReviewViewModel {
         }
     }
 
+    // MARK: - The full-screen page viewer (#78)
+
+    /// Where a page sits: "Page 3 of 8 · Document 2". All 1-based.
+    struct PagePosition: Equatable {
+        /// The page's number across the whole review, and how many pages there are.
+        let page: Int
+        let pages: Int
+        /// The document (group) it's in, and its place inside that document.
+        let document: Int
+        let pageInDocument: Int
+        let documentPages: Int
+    }
+
+    /// The page viewer open over the review, if any.
+    private(set) var viewer: PageViewerModel?
+
+    /// Every page in reading order, across all documents.
+    var orderedPageIDs: [UUID] { session.groups.flatMap(\.pageIDs) }
+
+    func position(of pageID: UUID) -> PagePosition? {
+        var before = 0
+        for (index, group) in session.groups.enumerated() {
+            if let at = group.pageIDs.firstIndex(of: pageID) {
+                return PagePosition(page: before + at + 1, pages: pageCount, document: index + 1,
+                                    pageInDocument: at + 1, documentPages: group.pageIDs.count)
+            }
+            before += group.pageIDs.count
+        }
+        return nil
+    }
+
+    /// Tapping a page thumbnail: opens the viewer on that page.
+    func openViewer(at pageID: UUID) {
+        guard !isSent, session.page(pageID) != nil else { return }
+        viewer = PageViewerModel(review: self, start: pageID)
+    }
+
+    /// Done, or a swipe down. Returns the page the viewer was on, so the strip can show it.
+    @discardableResult
+    func closeViewer() -> UUID? {
+        let last = viewer?.current
+        viewer?.releaseImages()
+        viewer = nil
+        return last
+    }
+
+    /// A cut is possible after this page: it isn't the last page of its document.
+    func canCut(after pageID: UUID) -> Bool {
+        guard !isSent, let spot = position(of: pageID) else { return false }
+        return spot.pageInDocument < spot.documentPages
+    }
+
+    /// A new document starts at this page (not the review's first page).
+    func hasCut(before pageID: UUID) -> Bool {
+        guard let spot = position(of: pageID) else { return false }
+        return spot.pageInDocument == 1 && spot.document > 1
+    }
+
+    /// A new document starts right after this page.
+    func hasCut(after pageID: UUID) -> Bool {
+        guard let spot = position(of: pageID) else { return false }
+        return spot.pageInDocument == spot.documentPages && spot.document < documentCount
+    }
+
+    /// The viewer's scissors: the same split as the strip's scissors between this page and the next.
+    func cut(after pageID: UUID) {
+        guard canCut(after: pageID), let spot = position(of: pageID) else { return }
+        split(session.groups[spot.document - 1].id, after: spot.pageInDocument - 1)
+    }
+
+    /// Removes the cut before this page: its document joins the one above (the strip's Join).
+    func join(before pageID: UUID) {
+        guard hasCut(before: pageID), let spot = position(of: pageID) else { return }
+        join(session.groups[spot.document - 1].id)
+    }
+
+    /// Removes the cut after this page: the next document joins this one.
+    func join(after pageID: UUID) {
+        guard hasCut(after: pageID), let spot = position(of: pageID) else { return }
+        join(session.groups[spot.document].id)
+    }
+
+    /// A page at full resolution for the viewer: a scanned or photo page's own JPEG when it isn't
+    /// turned, otherwise drawn upright at up to `fullPixels` on the long side. Off the main actor.
+    func fullImage(_ pageID: UUID) async -> Data? {
+        guard let page = session.page(pageID) else { return nil }
+        if let image = page.image, page.quarterTurns == 0 {
+            return await Self.readFile(image, files: files)
+        }
+        guard let source = source(for: page) else { return nil }
+        return await Self.render(source, maxPixel: Self.fullPixels)
+    }
+
+    /// Long side of a rendered PDF or turned page in the viewer: enough to read fine print at 4x zoom
+    /// on an iPhone, without the 4000 px a printed page could draw at.
+    nonisolated static let fullPixels = 2800
+
+    @concurrent
+    private nonisolated static func readFile(_ path: String, files: FileStore) async -> Data? {
+        try? files.read(path)
+    }
+
+    @concurrent
+    private nonisolated static func render(_ source: SourcePage, maxPixel: Int) async -> Data? {
+        DocumentBuilder.thumbnail(of: source, maxPixel: maxPixel)
+    }
+
     // MARK: - Send and discard
 
     /// "Send {d} to the deck". Read groups go in now; the rest go in as they finish.
     func send() {
         guard canSend else { return }
+        closeViewer()
         isSent = true
         proposalTask?.cancel()
         proposalTask = nil
@@ -318,6 +426,7 @@ final class ScanReviewViewModel {
 
     /// Cancel, then "Discard": nothing reaches the deck and every page is deleted.
     func discard() {
+        closeViewer()
         proposalTask?.cancel()
         proposalTask = nil
         undecided.removeAll()

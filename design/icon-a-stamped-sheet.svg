@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- A: Stamped sheet. Full-bleed ink-blue ground; the art stays inside the r=40 maskable circle. -->
+  <rect width="100" height="100" fill="#2346b8"/>
+  <path d="M29 19h31l11 11v43H29z" fill="#ffffff"/>
+  <path d="M60 19v11h11z" fill="#c9d3ef"/>
+  <path d="M36 32h18M36 40h28M36 48h22" stroke="#9fb0de" stroke-width="3.5" stroke-linecap="round"/>
+  <g transform="rotate(-9 57 66)">
+    <rect x="38" y="56" width="38" height="20" rx="3" fill="#ffffff" stroke="#b42318" stroke-width="3.2"/>
+    <rect x="42" y="60" width="30" height="12" rx="1.5" fill="none" stroke="#b42318" stroke-width="1.6"/>
+    <path d="M47 66h20" stroke="#b42318" stroke-width="4.5" stroke-linecap="round"/>
+  </g>
+</svg>

@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paper Trail icon directions</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=Public+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Issue #10, phase 1: three low-fi icon directions, side by side at every size they will ship at. */
+:root {
+  --bg: #eef1f4; --surface: #ffffff; --ink: #16202b; --muted: #5a6673; --line: #d8dee5; --accent: #2346b8;
+  --dark: #0f141a; --dark-surface: #172029; --dark-ink: #e6ebf0;
+  --f-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --f-body: "Public Sans", -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.45; }
+main { max-width: 1120px; margin: 0 auto; padding: 32px 16px 48px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-bottom: 24px; }
+h1 { font-family: var(--f-display); font-stretch: 85%; font-weight: 800; font-size: clamp(26px, 4vw, 38px); letter-spacing: -0.01em; margin: 0; }
+header p { margin: 0; color: var(--muted); }
+.mono { font-family: var(--f-mono); font-size: 12px; color: var(--muted); }
+
+.dir { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px; margin-bottom: 16px;
+  display: grid; grid-template-columns: minmax(0, 220px) auto auto minmax(0, 1fr); gap: 20px 28px; align-items: center; }
+.dir h2 { font-family: var(--f-display); font-stretch: 85%; font-weight: 800; font-size: 22px; margin: 0 0 6px; }
+.dir h2 .letter { display: inline-block; font-stretch: 75%; color: var(--accent); border: 3px double currentColor; border-radius: 5px; padding: 0 6px; margin-right: 6px; transform: rotate(-4deg); }
+.dir p { margin: 0; color: var(--muted); }
+figure { margin: 0; display: grid; justify-items: center; gap: 6px; }
+figcaption { font-family: var(--f-mono); font-size: 11px; color: var(--muted); }
+
+/* iOS-style tile: continuous-ish corner at 22.37% of the edge */
+.tile { width: 180px; height: 180px; border-radius: 40px; display: block; box-shadow: 0 1px 2px rgba(22,32,43,.12), 0 6px 18px rgba(22,32,43,.10); }
+/* Android maskable crop: a circle at the 80% safe zone */
+.mask { width: 120px; height: 120px; border-radius: 50%; display: block; }
+
+.grounds { display: grid; grid-template-columns: 1fr 1fr; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); min-width: 0; }
+.ground { padding: 14px 12px; display: grid; gap: 12px; justify-items: start; }
+.ground.light { background: #f6f8fa; color: var(--ink); }
+.ground.dark { background: var(--dark); color: var(--dark-ink); }
+.ground .lbl { font-family: var(--f-mono); font-size: 11px; opacity: .7; }
+.sizes { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.sizes img { display: block; }
+.s32 { width: 32px; height: 32px; border-radius: 7px; }
+.s16 { width: 16px; height: 16px; border-radius: 3px; }
+.zoom { width: 64px; height: 64px; image-rendering: pixelated; border-radius: 0; }
+/* a browser tab mock, since that is where 16px really lives */
+.tab { display: flex; align-items: center; gap: 7px; padding: 6px 10px; border-radius: 8px 8px 0 0; font-size: 12px; max-width: 100%; }
+.ground.light .tab { background: #ffffff; box-shadow: 0 0 0 1px #d8dee5; }
+.ground.dark .tab { background: var(--dark-surface); box-shadow: 0 0 0 1px #2a3541; }
+.tab span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+footer { margin-top: 20px; color: var(--muted); font-size: 13px; }
+
+@media (max-width: 900px) {
+  .dir { grid-template-columns: auto 1fr; }
+  .dir .about { grid-column: 1 / -1; }
+  .grounds { grid-column: 1 / -1; }
+}
+@media (max-width: 440px) {
+  .dir { grid-template-columns: 1fr; justify-items: center; }
+  .dir .about { justify-self: stretch; }
+  .grounds { justify-self: stretch; grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Paper Trail app icon, three directions</h1>
+    <p>Issue #10. Pick one and it gets finalized into the favicon, Home Screen icon and manifest.</p>
+  </header>
+
+  <section class="dir" data-icon="icon-a-stamped-sheet.svg">
+    <div class="about">
+      <h2><span class="letter">A</span>Stamped sheet</h2>
+      <p>A white page on ink blue with the app's double-bordered stamp slapped across its corner in Shred red.</p>
+    </div>
+    <figure><img class="tile" src="icon-a-stamped-sheet.svg" alt="Direction A at 180px"><figcaption>180, Home Screen</figcaption></figure>
+    <figure><img class="mask" src="icon-a-stamped-sheet.svg" alt="Direction A maskable crop"><figcaption>maskable, 80% safe zone</figcaption></figure>
+    <div class="grounds"></div>
+  </section>
+
+  <section class="dir" data-icon="icon-b-paper-trail.svg">
+    <div class="about">
+      <h2><span class="letter">B</span>Paper trail</h2>
+      <p>One ink-blue page mid-swipe, leaving a trail of smaller paper scraps behind it on the app's light ground.</p>
+    </div>
+    <figure><img class="tile" src="icon-b-paper-trail.svg" alt="Direction B at 180px"><figcaption>180, Home Screen</figcaption></figure>
+    <figure><img class="mask" src="icon-b-paper-trail.svg" alt="Direction B maskable crop"><figcaption>maskable, 80% safe zone</figcaption></figure>
+    <div class="grounds"></div>
+  </section>
+
+  <section class="dir" data-icon="icon-c-three-piles.svg">
+    <div class="about">
+      <h2><span class="letter">C</span>Three piles</h2>
+      <p>Three stacks of paper on dark ink, each topped with a stamp color: Shred, Scan + shred, Keep original.</p>
+    </div>
+    <figure><img class="tile" src="icon-c-three-piles.svg" alt="Direction C at 180px"><figcaption>180, Home Screen</figcaption></figure>
+    <figure><img class="mask" src="icon-c-three-piles.svg" alt="Direction C maskable crop"><figcaption>maskable, 80% safe zone</figcaption></figure>
+    <div class="grounds"></div>
+  </section>
+
+  <footer>Low-fi sketches, not final art. The 16px "actual pixels" box draws each icon onto a real 16 by 16 canvas and magnifies it, so it shows what a 1x browser tab gets.</footer>
+</main>
+
+<script>
+for (const dir of document.querySelectorAll(".dir")) {
+  const src = dir.dataset.icon;
+  const grounds = dir.querySelector(".grounds");
+  for (const tone of ["light", "dark"]) {
+    const g = document.createElement("div");
+    g.className = `ground ${tone}`;
+    g.innerHTML = `
+      <div class="lbl">${tone} ground</div>
+      <div class="sizes">
+        <img class="s32" src="${src}" alt="32px on ${tone}">
+        <img class="s16" src="${src}" alt="16px on ${tone}">
+        <canvas class="zoom" width="16" height="16" aria-label="16px actual pixels, magnified"></canvas>
+      </div>
+      <div class="tab"><img class="s16" src="${src}" alt=""><span>Paper Trail</span></div>`;
+    grounds.append(g);
+    const img = new Image();
+    img.onload = () => g.querySelector("canvas").getContext("2d").drawImage(img, 0, 0, 16, 16);
+    img.src = src;
+  }
+}
+</script>
+</body>
+</html>

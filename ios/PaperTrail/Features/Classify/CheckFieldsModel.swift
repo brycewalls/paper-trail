@@ -162,7 +162,7 @@ final class CheckFieldsModel {
         if card.paperless.issuer == original.issuer { card.paperless.issuer = card.issuer }
         if var confidence = card.confidence {
             for field in fields { confidence.fields[field] = 1 }
-            confidence.overall = CardConfidence.fieldOrder.map { confidence.fields[$0] ?? 1 }.min() ?? 1
+            confidence.overall = confidence.lowestScore
             card.confidence = confidence
         }
         if var alternatives = card.alternatives {

@@ -61,7 +61,15 @@ nonisolated struct CardConfidence: Codable, Sendable, Hashable {
     /// The lowest field score (the function computes it that way).
     var overall: Double
     /// Keyed by DocumentCard field name: "title", "folder", "filename", "verdict", "docDate", "issuer".
+    /// Since #75 the function sends only the fields Claude wasn't sure of (`sparse`); a field that
+    /// isn't here counts as sure (`score(_:)`).
     var fields: [String: Double]
+    /// New, optional (#75): true when `fields` lists only the fields Claude wasn't sure of. Missing
+    /// means sure either way, so older replies (every field scored) read the same.
+    var sparse: Bool? = nil
+
+    /// The score a field without one gets: sure.
+    static let assumedSure = 1.0
 
     /// Kept for source compatibility. A card is confident when it has confidence data and no field
     /// is below `fieldUnsureBelow` (DocumentCard.isConfident), so the deck's "ready to file" count
@@ -76,8 +84,14 @@ nonisolated struct CardConfidence: Codable, Sendable, Hashable {
     /// The fields below `fieldUnsureBelow`, in `fieldOrder`. A field the function didn't score
     /// isn't flagged.
     var unsureFields: [String] {
-        Self.fieldOrder.filter { (fields[$0] ?? 1) < Self.fieldUnsureBelow }
+        Self.fieldOrder.filter { score($0) < Self.fieldUnsureBelow }
     }
+
+    /// A field's score; one the function didn't list counts as sure (#75).
+    func score(_ field: String) -> Double { fields[field] ?? Self.assumedSure }
+
+    /// The lowest field score, the way the function computes `overall`.
+    var lowestScore: Double { Self.fieldOrder.map(score).min() ?? Self.assumedSure }
 }
 
 nonisolated struct DocumentCard: Codable, Sendable, Hashable {

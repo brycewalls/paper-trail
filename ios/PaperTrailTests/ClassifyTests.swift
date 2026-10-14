@@ -2,6 +2,7 @@
 // sender rules (the same cases as functions/test/confidence-and-senders.test.mjs), the error
 // mapping and copy, the check-fields sheet's model and the Sender rules list.
 import Foundation
+import UIKit
 import Testing
 @testable import PaperTrail
 
@@ -13,6 +14,8 @@ final class ScriptedClassifyService: ClassifyService {
     private(set) var requests: [ClassifyRequest] = []
     private(set) var running = 0
     private(set) var maxRunning = 0
+    /// How many calls were already running as each one started, in call order (#75).
+    private(set) var runningAtStart: [Int] = []
 
     init(_ answers: [Result<DocumentCard, ClassifyFailure>] = [], fallback: DocumentCard = SampleData.cascadeBill) {
         self.answers = answers
@@ -21,6 +24,7 @@ final class ScriptedClassifyService: ClassifyService {
 
     func classify(_ request: ClassifyRequest) async throws -> ClassifyResponse {
         requests.append(request)
+        runningAtStart.append(running)
         running += 1
         maxRunning = max(maxRunning, running)
         defer { running -= 1 }
@@ -121,6 +125,47 @@ struct ClassifyTests {
         #expect(reply.result.appliedRule == "cascade-power-light")
     }
 
+    /// #75: the function lists only the fields Claude wasn't sure of. A missing field is sure.
+    @Test func decodesASparseReplyWhereMissingMeansSure() throws {
+        let json = """
+        {"result":{"title":"T","docType":"Utility bill","issuer":"Cascade Power & Light","docDate":"2026-09-28","summary":"",
+        "folder":"06 Home","filename":"f","verdict":"scan_shred","verdictReason":"","retention":"","sensitive":false,
+        "paperless":{"possible":false,"issuer":"","how":""},
+        "confidence":{"overall":0.55,"fields":{"docDate":0.55,"folder":0.8},"sparse":true},
+        "alternatives":{"docDate":["2026-10-03"],"folder":["03 Money & Banking"]}},"model":"claude-opus-5-5"}
+        """
+        let card = try JSONDecoder().decode(ClassifyResponse.self, from: Data(json.utf8)).result
+        let confidence = try #require(card.confidence)
+        #expect(confidence.sparse == true)
+        #expect(confidence.unsureFields == ["docDate"])
+        #expect(confidence.score("issuer") == 1)
+        #expect(confidence.score("folder") == 0.8)
+        #expect(confidence.lowestScore == 0.55)
+        #expect(card.isConfident == false)
+        #expect(card.alternatives?["issuer"] == nil)
+        let data = CheckFieldsData.fromConfidence(card)
+        #expect(data.fields.map(\.field) == [.docDate])
+        #expect(data.fields.first?.alternatives == ["2026-10-03"])
+
+        let allSure = #"{"overall":1,"fields":{},"sparse":true}"#
+        var sure = card
+        sure.confidence = try JSONDecoder().decode(CardConfidence.self, from: Data(allSure.utf8))
+        #expect(sure.isConfident)
+        #expect(sure.confidence?.unsureFields == [])
+    }
+
+    @Test func aRuleOnASparseCardKeepsMissingFieldsSure() {
+        var card = SampleData.cascadeBill
+        card.issuer = "Cascade Power & Light"
+        card.confidence = CardConfidence(overall: 0.55, fields: ["docDate": 0.55, "issuer": 0.6], sparse: true)
+        let out = SenderRuleEngine.apply([Self.rule], to: card)
+        #expect(out.confidence?.fields["issuer"] == 1)
+        #expect(out.confidence?.overall == 0.55, "the date is still the least sure; unlisted fields count as 1, not 0")
+        var onlyRuleFields = card
+        onlyRuleFields.confidence = CardConfidence(overall: 0.6, fields: ["issuer": 0.6], sparse: true)
+        #expect(SenderRuleEngine.apply([Self.rule], to: onlyRuleFields).confidence?.overall == 1)
+    }
+
     @Test func unscoredFieldsAreNotFlagged() {
         #expect(CardConfidence(overall: 0.97, fields: [:]).unsureFields.isEmpty)
         #expect(SampleData.cards[1].confidence?.unsureFields == ["docDate", "verdict"])
@@ -165,6 +210,62 @@ struct ClassifyTests {
         #expect(service.requests.count == 5)
         #expect(service.maxRunning == 2)
         #expect(items.allSatisfy { $0.stage == .ready })
+    }
+
+    /// #75: with a cold prompt cache the first read goes alone, then two at a time. Before, every
+    /// read() call ran its own two workers, so the scan review's one-call-per-document reads all
+    /// started together and none could read the cache.
+    @Test func theFirstReadGoesAloneThenTwoAtATimeAcrossCallers() async throws {
+        let env = AppEnvironment.sample()
+        let service = ScriptedClassifyService()
+        service.delay = .milliseconds(40)
+        let items = try makeItems(env, count: 5)
+        let queue = ReadingQueue(classify: service, files: env.files, backoff: [])
+        // One call per document, like the scan review.
+        let calls = items.map { item in Task { await queue.read([item]) } }
+        for call in calls { await call.value }
+        #expect(service.requests.count == 5)
+        #expect(service.runningAtStart.prefix(2) == [0, 0], "the second read waited for the first answer")
+        #expect(service.maxRunning == 2, "never more than two at once, even across callers")
+        #expect(queue.peakInFlight == 2)
+        #expect(items.allSatisfy { $0.stage == .ready })
+
+        // The cache is warm now: the next batch starts two at once.
+        let more = try makeItems(env, count: 2)
+        await queue.read(more)
+        #expect(service.runningAtStart.suffix(2) == [0, 1])
+    }
+
+    @Test func eachCardIsReadyAsSoonAsItIsRead() async throws {
+        let env = AppEnvironment.sample()
+        let service = ScriptedClassifyService()
+        service.delay = .milliseconds(40)
+        let items = try makeItems(env, count: 3)
+        var seen: [(UUID, [PipelineStage])] = []
+        await ReadingQueue(classify: service, files: env.files, backoff: []).read(items) { done in
+            seen.append((done.id, items.map(\.stage)))
+        }
+        #expect(seen.first?.0 == items[0].id, "the first one asked for finishes first; the other two run side by side")
+        #expect(Set(seen.map(\.0)) == Set(items.map(\.id)))
+        let first = try #require(seen.first)
+        #expect(first.1 == [.ready, .reading, .reading], "the first card didn't wait for the rest")
+    }
+
+    @Test func eachReadIsTimed() async throws {
+        let env = AppEnvironment.sample()
+        let service = ScriptedClassifyService()
+        service.delay = .milliseconds(30)
+        let item = try makeItems(env, count: 1)[0]
+        item.ocrText = Self.longOCR
+        let queue = ReadingQueue(classify: service, files: env.files, backoff: [])
+        await queue.read([item])
+        let timing = try #require(queue.timings[item.id])
+        #expect(timing.call >= .milliseconds(30))
+        #expect(timing.total >= timing.call + timing.build)
+        #expect(timing.kind == "images")
+        #expect(timing.ocrPrimary)
+        #expect(timing.payloadBytes > 0)
+        #expect(ReadingQueue.ms(.milliseconds(1234)) == 1234)
     }
 
     @Test func retriesOnlyRetryableCodes() async throws {
@@ -214,6 +315,59 @@ struct ClassifyTests {
         #expect(images.images?.count == 10)
         #expect(images.totalPages == 12)
         #expect(images.images?.first?.type == "image/jpeg")
+    }
+
+    /// Enough OCR text for the OCR-first request (#75): well over `ClassifyPayload.minOCRChars`.
+    static let longOCR = """
+    CASCADE POWER & LIGHT
+    Statement date: September 28, 2026. Account ending 0412.
+    Electric service Aug 27 - Sep 25, 812 kWh. Amount due $96.40 by October 19, 2026.
+    Go paperless: Account settings, Billing, Paper bill off.
+    """
+
+    @Test func withOCRTextItSendsTheTextAndOneSmallFirstPage() async throws {
+        let files = FileStore.temporary()
+        let pdf = try files.write(FakeCaptureService.pdf(fromTexts: ["Cascade Power", "Page 2", "Page 3"]), id: UUID(), ext: "pdf")
+        let request = try await ClassifyPayload.request(pdfAt: files.url(for: pdf), pageCount: 3,
+                                                        ocrText: "\n  " + Self.longOCR + "  \n", senderHints: [Self.rule])
+        #expect(request.kind == .images)
+        #expect(request.ocrPrimary == true)
+        #expect(request.pdf == nil)
+        #expect(request.totalPages == 3)
+        #expect(request.wantConfidence == true)
+        #expect(request.ocrText == Self.longOCR.trimmingCharacters(in: .whitespacesAndNewlines))
+        #expect(request.senderHints?.first?.key == Self.rule.key)
+        let images = try #require(request.images)
+        #expect(images.count == 1)
+        #expect(images[0].type == "image/jpeg")
+        let picture = try #require(Data(base64Encoded: images[0].data).flatMap(UIImage.init(data:)))
+        #expect(max(picture.size.width, picture.size.height) * picture.scale == ClassifyPayload.previewLongEdge)
+    }
+
+    @Test func withoutEnoughTextItSendsThePagesAsBefore() async throws {
+        let files = FileStore.temporary()
+        let pdf = try files.write(FakeCaptureService.pdf(fromTexts: ["a", "b"]), id: UUID(), ext: "pdf")
+        let url = files.url(for: pdf)
+        let short = String(repeating: "x", count: ClassifyPayload.minOCRChars - 1)
+        for ocr in [nil, "", short, short + "      \n\n   "] as [String?] {
+            let request = try await ClassifyPayload.request(pdfAt: url, pageCount: 2, ocrText: ocr, senderHints: [])
+            #expect(request.kind == .pdf)
+            #expect(request.ocrPrimary == nil)
+            #expect(request.images == nil)
+        }
+        let enough = try await ClassifyPayload.request(pdfAt: url, pageCount: 2, ocrText: short + "y", senderHints: [])
+        #expect(enough.kind == .images && enough.ocrPrimary == true)
+    }
+
+    @Test func ocrPrimaryIsOnTheWireOnlyWhenSet() throws {
+        let image = ClassifyImage(type: "image/jpeg", data: "AAAA")
+        let primary = ClassifyRequest(kind: .images, pdf: nil, images: [image], totalPages: 4, ocrText: "text",
+                                      senderHints: nil, wantConfidence: true, ocrPrimary: true)
+        let json = try #require(String(data: JSONEncoder().encode(primary), encoding: .utf8))
+        #expect(json.contains("\"ocrPrimary\":true"))
+        #expect(json.contains("\"totalPages\":4"))
+        let old = ClassifyRequest(kind: .pdf, pdf: "AAAA", images: nil, totalPages: 1, ocrText: nil, senderHints: nil, wantConfidence: true)
+        #expect(try String(data: JSONEncoder().encode(old), encoding: .utf8)?.contains("ocrPrimary") == false)
     }
 
     // MARK: Errors

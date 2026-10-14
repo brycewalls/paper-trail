@@ -22,9 +22,13 @@ const GOOD = {
   verdict: "scan_shred", verdictReason: "Routine bill worth a record for a year.", retention: "Keep 1 year", sensitive: false,
   paperless: { possible: true, issuer: "Cascade Power & Light", how: "Account settings, then Billing, then Paper bill off." },
 };
-const SURE = { issuer: 0.6, docDate: 0.55, folder: 0.9, title: 0.97, filename: 0.92, verdict: 0.95 };
-const ALTS = { issuer: ["Cascade Natural Gas", "Cascade Power & Light"], docDate: ["2026-10-03", "Oct 3"], folder: [], title: [], filename: [] };
-const WITH_CONFIDENCE = { ...GOOD, confidence: SURE, alternatives: ALTS };
+// Claude's sparse answer (#75): only the two fields it isn't sure of. The other four count as sure.
+const UNSURE = [
+  { field: "issuer", confidence: 0.6, alternatives: ["Cascade Natural Gas", "Cascade Power & Light"] },
+  { field: "docDate", confidence: 0.55, alternatives: ["2026-10-03", "Oct 3"] },
+];
+const SURE = { issuer: 0.6, docDate: 0.55 };
+const WITH_CONFIDENCE = { ...GOOD, unsure: UNSURE };
 const PDF_B64 = Buffer.from("%PDF-1.4 fake").toString("base64");
 const auth = (email) => ({ uid: "u1", token: { email, email_verified: true } });
 const ctx = { model: "claude-opus-5-5", effort: "low", today: "2026-10-13" };
@@ -68,23 +72,35 @@ test("bad extras are ignored, never refused", () => {
 });
 
 // ---------- confidence (#20) ----------
-test("wantConfidence adds the confidence prompt and two required schema fields", () => {
+test("wantConfidence adds the confidence prompt and one required, sparse unsure list", () => {
   const req = lib.buildRequest(lib.validate({ kind: "pdf", pdf: PDF_B64, wantConfidence: true }), ctx);
   assert.equal(req.system[0].text, lib.SYSTEM_PROMPT + lib.CONFIDENCE_PROMPT);
   const schema = req.output_config.format.schema;
-  assert.ok(schema.required.includes("confidence") && schema.required.includes("alternatives"));
-  assert.deepEqual(schema.properties.confidence.required, lib.CONFIDENCE_FIELDS);
-  assert.equal(schema.properties.confidence.additionalProperties, false);
-  assert.deepEqual(schema.properties.alternatives.properties.folder.items.enum, lib.FOLDER_NAMES);
-  assert.equal(lib.RESULT_SCHEMA.properties.confidence, undefined, "the web schema is not mutated");
+  assert.deepEqual(schema.required, [...lib.RESULT_SCHEMA.required, "unsure"]);
+  assert.equal(schema.properties.confidence, undefined, "no per-field scores for sure fields (#75)");
+  assert.equal(schema.properties.alternatives, undefined);
+  const item = schema.properties.unsure.items;
+  assert.deepEqual(item.properties.field.enum, lib.CONFIDENCE_FIELDS);
+  assert.deepEqual(item.required, ["field", "confidence", "alternatives"]);
+  assert.equal(item.additionalProperties, false);
+  assert.match(lib.CONFIDENCE_PROMPT, /Leave out every field you are sure of/);
+  assert.equal(lib.RESULT_SCHEMA.properties.unsure, undefined, "the web schema is not mutated");
 });
 
-test("confidence comes back per field, overall is the lowest field", async () => {
+test("confidence comes back only for the listed fields, overall is the lowest, missing means sure", async () => {
   answer = reply(WITH_CONFIDENCE);
   const { result } = await run({ kind: "pdf", pdf: PDF_B64, wantConfidence: true });
-  assert.deepEqual(result.confidence.fields, SURE);
-  assert.equal(result.confidence.overall, 0.55);
+  assert.deepEqual(result.confidence, { overall: 0.55, fields: SURE, sparse: true });
+  assert.deepEqual(Object.keys(result.alternatives).sort(), ["docDate", "issuer"]);
+  assert.equal(result.unsure, undefined, "Claude's raw list never reaches the app");
   assert.equal(result.appliedRule, undefined);
+});
+
+test("an empty unsure list means every field is sure", async () => {
+  answer = reply({ ...GOOD, unsure: [] });
+  const { result } = await run({ kind: "pdf", pdf: PDF_B64, wantConfidence: true });
+  assert.deepEqual(result.confidence, { overall: 1, fields: {}, sparse: true });
+  assert.deepEqual(result.alternatives, {});
 });
 
 test("alternatives drop the chosen value, bad dates and extras beyond two", async () => {
@@ -92,18 +108,19 @@ test("alternatives drop the chosen value, bad dates and extras beyond two", asyn
   const { result } = await run({ kind: "pdf", pdf: PDF_B64, wantConfidence: true });
   assert.deepEqual(result.alternatives.issuer, ["Cascade Natural Gas"]);
   assert.deepEqual(result.alternatives.docDate, ["2026-10-03"]);
-  const { alternatives } = lib.normalizeConfidence({ alternatives: { folder: ["06 Home", "Bills", "04 Insurance", "11 Other", "02 Taxes"] } }, GOOD);
+  const { alternatives } = lib.normalizeConfidence({ unsure: [{ field: "folder", confidence: 0.5, alternatives: ["06 Home", "Bills", "04 Insurance", "11 Other", "02 Taxes"] }] }, GOOD);
   assert.deepEqual(alternatives.folder, ["04 Insurance", "11 Other"]);
+  assert.equal(lib.normalizeConfidence({ unsure: [{ field: "verdict", confidence: 0.5, alternatives: ["shred"] }] }, GOOD).alternatives.verdict, undefined, "no guesses for the verdict");
 });
 
-test("missing or out-of-range scores count as unsure, not sure", () => {
-  const { confidence } = lib.normalizeConfidence({ confidence: { issuer: 7, docDate: -1, title: "high" } }, GOOD);
-  assert.equal(confidence.fields.issuer, 1);
-  assert.equal(confidence.fields.docDate, 0);
-  assert.equal(confidence.fields.title, 0);
-  assert.equal(confidence.fields.verdict, 0);
+test("a listed field with a bad score counts as unsure; unknown fields and junk are dropped", () => {
+  const { confidence } = lib.normalizeConfidence({ unsure: [
+    { field: "issuer", confidence: 7 }, { field: "docDate", confidence: -1 }, { field: "title", confidence: "high" },
+    { field: "amount", confidence: 0.1 }, null, "x", { field: "title", confidence: 0.4 },
+  ] }, GOOD);
+  assert.deepEqual(confidence.fields, { issuer: 1, docDate: 0, title: 0 });
   assert.equal(confidence.overall, 0);
-  assert.equal(lib.normalizeConfidence(null, GOOD).confidence.overall, 0);
+  assert.deepEqual(lib.normalizeConfidence(null, GOOD).confidence, { overall: 1, fields: {}, sparse: true });
 });
 
 // ---------- sender rules (#21) ----------
@@ -135,6 +152,7 @@ test("a matching rule is applied deterministically and its fields become certain
   assert.equal(once.confidence.fields.verdict, 1);
   assert.equal(once.confidence.fields.docDate, 0.55, "the date is not the rule's to fix");
   assert.equal(once.confidence.overall, 0.55);
+  assert.equal(once.confidence.sparse, true);
   assert.deepEqual(once.alternatives.issuer, []);
   assert.deepEqual(once.alternatives.docDate, ["2026-10-03"]);
 });

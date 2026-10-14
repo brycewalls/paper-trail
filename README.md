@@ -53,6 +53,7 @@ These need Bryce in the Google and Firebase consoles. Claude did the rest: the p
 - **Run it locally with no Google account:** `node tools/serve.mjs`, then http://localhost:5178/public/index.html?fake=1. Firebase, Claude and Drive are swapped for in-memory stand-ins (`tools/fake/fake-backend.js`). Add `&as=stranger` for the private screen, `&signedout`, `&nodrive`, `&drive401` (Reconnect Drive), `&readfail` (Try again).
 - **Real sign-in locally:** http://localhost:5178/public/index.html (no `fake`) talks to the real project; localhost is an authorized domain by default. Preview channels can't do Google sign-in, so test auth here or on the live site.
 - **Tests:** `node --test functions/test/*.test.mjs` (the function, Claude stood in), `node tools/deck_test.mjs` (the deck end to end against the fake), `node tools/smoke_test.mjs` (every page, two widths), `node tools/rules-check.mjs` (the rules in the real rules engine, needs `firebase login`). The first two need `npm install --no-save playwright@1 && npx playwright install chromium`.
+- **App icons:** every icon in `public/` (favicon, Home Screen, manifest, maskable) is drawn once in `tools/make_icons.mjs`. Change the art there and run `node tools/make_icons.mjs`; never edit the PNGs by hand.
 - **Deploy:** `bash tools/deploy.sh` (rules, function, site) or `bash tools/deploy.sh --site` (rules and site only). Never `firebase init`; the config is hand-written. There is no CLI rollback for Hosting: roll back from the Firebase console's Hosting release history.
 
 ## The loop

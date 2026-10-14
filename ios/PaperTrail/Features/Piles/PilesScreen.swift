@@ -33,7 +33,7 @@ struct PilesScreen: View {
             if model.segment == .all {
                 ToolbarItem(placement: .topBarTrailing) { filterMenu }
             }
-            ToolbarItem(placement: .topBarTrailing) { PileKit.AvatarButton() }
+            ToolbarItem(placement: .topBarTrailing) { AvatarButton() }
         }
         .overlay(alignment: .bottom) { if showsMarkButton { markButton } }
         .navigationDestination(item: $opened) { FiledDocumentView(doc: $0) }

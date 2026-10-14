@@ -87,7 +87,7 @@ private struct PaperlessContent: View {
         .navigationTitle("Paperless")
         .navigationSubtitle(model.subtitle ?? "")
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) { PileKit.AvatarButton() }
+            ToolbarItem(placement: .topBarTrailing) { AvatarButton() }
         }
         .navigationDestination(item: $route) { route in
             switch route {

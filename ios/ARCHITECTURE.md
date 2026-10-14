@@ -12,7 +12,7 @@ The contract every agent and every PR into `ios` follows. If you need to change 
 
 ## Presentation is separate from logic
 
-**The UI design is not decided yet.** Bryce is choosing a direction and a design spec will land at `docs/design-spec.md`. Until then every screen is a plain functional stand-in, and `Core/UI/Theme.swift` is a placeholder token set (the web app's palette) that will be replaced wholesale.
+**The UI design is decided:** Direction A, "Glass", specified in `docs/design-spec.md`. Shared tokens and components are in `Core/UI` (built by deck); screens not yet rebuilt to the spec are still plain functional stand-ins.
 
 So the code is split so the views can be rebuilt without touching anything else:
 
@@ -43,7 +43,7 @@ ios/
       Models/                 DocumentCard, ClassifyContract, FirestoreModels
       Persistence/            PipelineItem (SwiftData), PipelineStore, FileStore
       Services/               ServiceProtocols, FirebaseBootstrap, Fakes/
-      UI/                     Theme (placeholder until the design spec)
+      UI/                     Design tokens and shared components (docs/design-spec.md sections 2, 3)
     Features/
       Auth/ Capture/ Classify/ Deck/ Outbox/ Piles/ Search/ Paperless/ Settings/
     Resources/                Assets.xcassets (AppIcon from tools/make_icons.mjs)
@@ -61,15 +61,20 @@ The app icon is drawn by `tools/make_icons.mjs` (the three piles, same as the we
 
 ## Navigation
 
-A `TabView` with five tabs, fixed here so features don't collide:
+Direction A (docs/design-spec.md, section 0) replaced the scaffold's five tabs. A `TabView` with three tabs plus the search island, fixed here so features don't collide:
 
 | Tab | Root screen | Owner | Holds |
 |---|---|---|---|
-| Sort | `DeckScreen` | deck | The swipe deck. Capture actions (Scan, Files, Photos) live in its toolbar and are built by capture. |
-| Outbox | `OutboxScreen` | outbox | Uploads in flight, failures with Retry, history. |
-| Piles | `PilesScreen` | piles | Shred pile, keep originals, all filed, stats, and the paperless ledger (#23) as a section or pushed screen. |
-| Search | `SearchScreen` | piles | On-device search (#22). Uses the system search tab role. |
-| Settings | `SettingsScreen` | shared, see owners | Account and Drive (auth), Senders (classify), shred hold (outbox). |
+| Sort | `DeckScreen` | deck | The swipe deck. Scan, Files and Photos live in its toolbar menu next to the avatar and are built by capture. |
+| Piles | `PilesScreen` | piles | Shred pile, keep originals, all filed, stats. |
+| Paperless | `PaperlessScreen` | piles | The paperless ledger (#23). A stand-in in `RootView` until piles lands it. |
+| Search (`Tab(role: .search)`) | `SearchScreen` | piles | On-device search (#22). |
+
+Not tabs:
+- **Outbox:** `OutboxAccessory` (outbox) in `.tabViewBottomAccessory`; tapping it pushes `OutboxScreen` onto the current tab's stack through `AppRouter.openOutbox()`.
+- **Settings:** a sheet from the avatar (`AvatarButton` in `Core/UI`, which sets `AppRouter.showSettings`).
+
+`App/AppRouter.swift` holds the selected tab, one `NavigationPath` per tab and the Settings sheet. `RootView` owns one `NavigationStack` per tab, so **tab screens never wrap themselves in a `NavigationStack`**; they declare `.navigationDestination(for:)` for their own route types. A screen that owns the bottom edge (card detail's Shred / File bar) hides the accessory by adding itself to `AppRouter.accessoryHiders`.
 
 Push detail screens with `NavigationStack` inside the tab. Sheets for capture and edits. If the design spec changes the tabs, it updates this table.
 
@@ -80,7 +85,11 @@ Push detail screens with `NavigationStack` inside the tab. Sheets for capture an
 - `AppEnvironment.sample()`: all fakes, in memory. Used by unit tests (automatically), SwiftUI previews and the simulator when launched with `-PTSample`.
 - `AppEnvironment.live()`: configures Firebase and holds the live services. **Each feature agent replaces only its own line** (marked with its owner) when its live service lands, so parallel PRs don't conflict. `isSample` flips to false once no fakes remain, and the outbox switches the model container to on-disk.
 
-Protocols (all in `Core/Services/ServiceProtocols.swift`): `AuthService`, `ClassifyService`, `DriveService`, `DocStore`, `CaptureService`, `OutboxService`. When you add a method, add it to the fake in `Core/Services/Fakes/Fakes.swift` in the same PR so everyone else still builds.
+Protocols (all in `Core/Services/ServiceProtocols.swift`): `AuthService`, `ClassifyService`, `DriveService`, `DocStore`, `CaptureService`, `OutboxService`. `OutboxService` also exposes `status` (`OutboxStatus`: online, needs reconnect, haptic counters, last upload) and `sendBack(_:)`. `DocStore` has `settings()` / `saveSettings(_:)` for `config/settings`; the Firestore `DocStore` (piles) implements them. When you add a method, add it to the fake in `Core/Services/Fakes/Fakes.swift` in the same PR so everyone else still builds.
+
+Added by deck (#20, #33):
+- `ClassifyService.checkFields(for:) -> CheckFieldsData`: the unsure fields for the check-fields sheet, in the spec's order (sender, date, folder, title, filename, verdict), each with Claude's best value and up to two alternatives. A protocol extension supplies the default (fields under `CheckFieldsData.unsureBelow = 0.75` from `card.confidence`, no alternatives), so classify only overrides it to add `alternatives`. `CardField` names the six fields with the card's own keys.
+- `OutboxService.sendBack(_:) -> Bool`: the deck's late Undo and the Outbox's "Send back to the deck". Cancels the upload, or trashes the Drive copy and removes the Firestore record if it finished. Same signature as the outbox branch.
 
 `DocStore` additions (piles): `settings()` / `saveSettings(_:)` for `config/settings` (the same two lines the outbox adds for the shred hold), `watchSettings()` (a live stream, so Piles follows a Shred hold change), and `syncError` (set when a Firestore listener fails, cleared when one delivers; screens show their load-failed state from it). The live `FirestoreDocStore` lives in `Features/Piles/` and re-attaches its listeners when the signed-in user changes.
 
@@ -103,6 +112,18 @@ Stages (`PipelineStage`, stored as a string, never rename one):
 
 `decision` is `file` (swipe right), `shredOnly` (swipe left: log as shred, no Drive copy) or `later`. Files are deleted from disk once an item is `verified`, or `filed` with `shredOnly`, and after the shred hold. Add new properties only with a default value, so SwiftData migrates lightly, and list them here.
 
+Added properties:
+
+| Property | Owner | Meaning |
+|---|---|---|
+| `unsureFields: [String] = []` | classify | Card fields below `CardConfidence.fieldUnsureBelow`, in sheet order (#20). Set by `ReadingQueue`; emptied when the check-fields sheet (or the card detail) confirms them |
+| `readErrorCode: String?` | classify | The `ClassifyErrorCode` of the last failed read, so the failed card can offer "Try again" only when it helps (`ClassifyCopy.offersTryAgain`) |
+| `nextRetryAt: Date?` | outbox | When the next automatic retry runs (#17). Nil on a `failed` item means the retries are used up and it needs attention |
+| `filedAt: Date?` | outbox | When the outbox finished with it |
+| `reuploads: Int = 0` | outbox | Automatic re-uploads after a checksum mismatch, one allowed (#18) |
+
+The outbox keeps a finished item's PDF for 10 minutes before deleting it, so the deck's late Undo can still send the card back.
+
 ## Firestore data model
 
 Everything is under `users/{uid}/`, readable and writable only by that signed-in, allowlisted user (`firebase/firestore.rules`). Dates are ISO 8601 strings, as the web app writes them. Swift types are in `Core/Models/FirestoreModels.swift`.
@@ -124,11 +145,11 @@ A doc filed by the app counts as safe to shred only when `verifiedAt` is set (`F
 
 **`paperless/{slug(issuer)}`** (`PaperlessSender`). Existing: `issuer`, `how`, `status`, `firstSeen`, `doneAt`. Status values keep the web strings and add two: `todo` (To do), `requested`, `waiting_cycle`, `done` (Confirmed), `skip` (Can't stop). So the old `todo/done/skip` need no migration. New, optional (#23): `requestedAt`, `checkBackAt`, `steps [String]`, `stillMailingAt` (a new doc arrived from a sender already requested, waiting or confirmed), `lastSeen`. Also `mailHandledAt` (piles, #23): when Bryce last dealt with a "Still mailing?" flag with Wait a cycle; paper filed before it no longer raises the flag. The app never creates paperless records, it only updates status fields, so the web app and the outbox stay the only writers of new senders.
 
-**`senders/{slug(issuer)}`** (`SenderRule`, #21, new): `key`, `issuer`, optional `folder`, `filenamePattern` (tokens `{date}`, `{yyyy}`, `{mm}`), `verdict`, `docType`, and `updatedAt`.
+**`senders/{slug(issuer)}`** (`SenderRule`, #21, new): `key`, `issuer`, optional `folder`, `filenamePattern` (tokens `{date}`, `{yyyy}`, `{mm}`, `{issuer}`, `{type}`; the last two are the slugs of the sender and document type), `verdict`, `docType`, and `updatedAt`. Written by the check-fields sheet's "Remember for this sender" (a confirmed filename's date becomes `{date}`) and edited or forgotten in Settings › Sender rules.
 
 **`config/drive`** (`DriveFolderCache`, unchanged): `root`, `folders {name: id}`, `updatedAt`. The app reads and refreshes the same cache the web app writes.
 
-**`config/settings`** (`AppSettings`, new): `shredHoldDays`.
+**`config/settings`** (`AppSettings`, new): `shredHoldDays` (0, 1, 3 or 7; set from Settings, Sorting, Shred hold, built by outbox as `ShredHoldRow`).
 
 **Server-only Drive tokens (#15).** Refresh tokens never live under `users/`. They go in top-level `oauthTokens/{googleSub}` (`refreshToken`, `email`, `scope`, `updatedAt`, `revokedAt`), and the sign-in handoff in `oauthHandoffs/{random}` (short-lived). The rules' catch-all already denies every client read and write there; only Cloud Functions (Admin SDK) touch them. The auth agent adds a `tools/rules-check.mjs` case proving a signed-in owner cannot read either collection.
 
@@ -138,9 +159,14 @@ The existing 2nd gen callable `classify` (us-central1, 300 s, `functions/lib.js`
 
 Request (`ClassifyRequest`): `kind` (`"pdf"` or `"images"`), `pdf` (base64) or `images [{type, data}]` (up to 10, JPEG/PNG/WebP, base64), `totalPages`. Same sizing rule as the web app: a PDF of up to 10 pages and about 9 MB goes whole, anything else goes as the first 10 pages at 1568 px on the long side. New, optional: `ocrText` (first ~20,000 characters), `senderHints [SenderRule]`, `wantConfidence`.
 
-Response (`ClassifyResponse`): `{ result: DocumentCard, model }`. New, optional on `result`: `confidence {overall, fields}` (#20) and `appliedRule` (#21, the sender key used).
+Response (`ClassifyResponse`): `{ result: DocumentCard, model }`. New, optional on `result`: `confidence {overall, fields}` and `alternatives` (#20), and `appliedRule` (#21, the sender key used).
 
-Errors: `HttpsError` with `details.code` in `ClassifyErrorCode` (`signed_out`, `not_allowed`, `bad_request`, `too_large`, `api_key`, `rate_limited`, `timeout`, `overloaded`, `refused`, `invalid_json`, `unknown`). The app picks its own copy per code and retries only `isRetryable` codes, with backoff. Two reads at a time.
+- **Confidence (#20).** Only when `wantConfidence` is true: the system prompt gains a short addendum and the schema two required fields. `fields` scores `issuer`, `docDate`, `folder`, `title`, `filename`, `verdict` from 0 to 1 (a missing or bad score counts as 0); `overall` is the lowest field score. `alternatives` holds up to two other guesses per field (not `verdict`), best first, cleaned like the field and never repeating the chosen value. A field below `CardConfidence.fieldUnsureBelow` (0.75) is "Not sure". `DocumentCard.isConfident` means confidence came back and no field is "Not sure", so the deck's "ready to file" count and the "2 to check" pill always agree; a card without confidence is never confident.
+- **Sender rules (#21).** `senderHints` are the user's `senders` docs. Claude sees the known sender names so it spells them the same way; then the function applies the rule whose `key` equals `slug(result.issuer)`, deterministically: the rule's issuer spelling, then its folder, verdict, docType and filename pattern, each only if set. Fields a rule set get confidence 1 and no alternatives. `functions/lib.js applySenderRule()` and `SenderRuleEngine.apply` are twins with the same test cases; the app applies the rule itself when a reply has no `appliedRule` (an older function).
+- **OCR (#22).** `ocrText` goes into the user turn as a hint, capped at 20,000 characters.
+- Bad extras are ignored, never refused. With none of them, the request to Claude and the reply are byte for byte what the web app gets today (tested).
+
+Errors: `HttpsError` with `details.code` in `ClassifyErrorCode` (`signed_out`, `not_allowed`, `bad_request`, `too_large`, `api_key`, `rate_limited`, `timeout`, `overloaded`, `refused`, `invalid_json`, `unknown`). The app picks its own copy per code (`ClassifyCopy`) and retries only `isRetryable` codes, with backoff (three attempts, 2 s and 8 s apart). Two reads at a time (`ReadingQueue`). Use `ReadingQueue(env:)` so sender rules are sent and applied; `ReadingQueue(classify:files:)` still works but sends no hints.
 
 Every new field is optional on both sides: the live web app must keep working against the extended function, and the app must work against today's function.
 
@@ -152,6 +178,12 @@ Every new field is optional on both sides: the live web app must keep working ag
 - `startUpload(name:folderID:mimeType:size:)`: `POST upload/drive/v3/files?uploadType=resumable&fields=id,webViewLink,md5Checksum,size`, returns the session URI. The outbox PUTs the file with a **background** `URLSession` (survives the app being suspended or killed), resuming from `bytesSent` with `Content-Range` after a failure.
 - `metadata(fileID:)`: `id, name, md5Checksum, size, webViewLink` for verification (#18).
 - `search(_:)`: Drive full-text search inside the app's folders (#22), for documents the app doesn't have locally.
+- `ensureYearFolder(_:in:)`: the year subfolder for 02 Taxes, 03 Money & Banking and 05 Medical only (Bryce's decision 2; the year is docDate's, else the filing date's), found or created on demand. Cached in `config/drive` `folders` under the key `"02 Taxes/2025"`; the web app only checks its 11 names, so extra keys are invisible to it, and a web rebuild that drops them is harmless because the next lookup finds the existing folder first.
+- `download(fileID:)` reads the bytes back to count pages when the checksum doesn't match, and `trash(fileID:)` (`files.update` with `trashed: true`) backs Send back to the deck and a late Undo.
+
+**Outbox engine** (`LiveOutboxService`): one item at a time, oldest decision first. `queued` gets the folder, the local MD5 and a resumable session; `uploading` PUTs through `BackgroundUploader` (a background `URLSession`, tasks tagged with the item's UUID). Any session made earlier is asked where it stands first (`Content-Range: bytes */total`) so a relaunch or dropped connection resumes from Drive's offset; an expired session is replaced once. Then the Firestore record and paperless sender (`filed`), then Drive's `md5Checksum` against the local MD5 (`verified`, `verifiedAt` and `verifiedPages` written to the doc). A mismatch trashes the copy and uploads again once ("Drive has 1 of 2 pages. Uploading it again."), then needs attention. Failures back off 1, 2, 5 and 15 minutes. A 401 sets `OutboxStatus.needsReconnect` and pauses without using a retry; no network sets `isOnline = false` and waits. `PaperTrailApp` handles `.backgroundTask(.urlSession(BackgroundUploader.identifier))`.
+
+**Undo hold.** `UndoWindow.hold` (10 s). The deck calls `enqueue` when it releases a decision; that starts at once. On relaunch, `resumePending` leaves `queued` items decided less than 10 s ago alone until the window ends. `sendBack(_:)` cancels the upload or trashes the Drive copy and deletes the Firestore record, and puts the card back on top of the deck.
 
 Files go up as `filename + ".pdf"`. A 401 refreshes the token once, then surfaces `DriveError.unauthorized` (Reconnect Drive).
 
@@ -166,19 +198,41 @@ Flow:
 4. From then on the app calls the `driveToken` callable (signed in, allowlisted) for a Drive access token. The function finds the refresh token by the caller's Google identity (`auth.token.firebase.identities["google.com"][0]`) and mints a token. `invalid_grant` marks the token revoked and returns `drive_revoked`, which shows Reconnect Drive (`AuthService.reconnectDrive()`, the same flow).
 5. Firebase Auth persists the user in the app's own keychain, so launch reads `Auth.auth().currentUser` synchronously and goes straight to the app: no sign-in check on open (#14).
 
+As built (#14, #15):
+- **State and verifier.** `state` is `<nonce>.<challenge>`, where `challenge` is base64url(SHA-256(verifier)) and the 43-character verifier never leaves the phone. `oauthRedeem` takes `{handoff, state, verifier}` and checks all three, so the `papertrail://` redirect alone can't redeem a handoff. A handoff is deleted on its first read, whatever the outcome.
+- **Endpoints.** `oauthCallback` (GET) and `oauthRedeem` (POST) are 2nd gen HTTPS functions behind Hosting rewrites at `/oauth/callback` and `/oauth/redeem` (`firebase.json`); `driveToken` is a callable. All in us-central1, in `functions/oauth.js` (logic) and `functions/index.js` (wiring). Config: `GOOGLE_OAUTH_CLIENT_ID` and `OAUTH_REDIRECT_URI` in `functions/.env`, the client secret as the `GOOGLE_OAUTH_CLIENT_SECRET` Functions secret. `driveToken` errors carry `details.code`: `signed_out`, `not_allowed`, `drive_revoked`, `drive_unavailable` (retryable).
+- **Callback errors** come back as `papertrail://auth?error=canceled|not_allowed|failed&state=...` (`not_allowed` adds `email`). The app ignores any callback whose `state` isn't its own.
+- **`AuthService.driveConsentPending`** (new, default `false`): signed in, but the first consent came back without Drive. The sign-in screen stays up with "Connect Google Drive" (spec 4.1). A later revoke is `drive == .needsReconnect` instead, which keeps the app usable and shows Reconnect Drive (spec 4.16). Both are remembered in `UserDefaults` so the first frame is right.
+- **Drive status** only changes on the server's word: `drive_revoked` sets `.needsReconnect`, a working token sets `.connected`, a network error changes nothing. Launch checks it once in the background, never blocking the first frame. Access tokens are cached until a minute before expiry and concurrent requests share one mint.
+- **Files.** `Features/Auth/`: `OAuthFlow.swift` (URL, state, callback parsing), `AuthBackend.swift` (`WebAuthenticator` and `AuthBackend` protocols, the live `ASWebAuthenticationSession`, Firebase and functions code), `LiveAuthService.swift`, `SignInViewModel.swift` (also `ReconnectDriveModel`), `SignInScreen.swift` (also `AuthGate`, which `PaperTrailApp` wraps around `RootView`), `AccountSettings.swift` (Settings account row, Account screen, Google Drive section, `ReconnectDriveBanner` for Sort, Outbox and Piles), `AuthViews.swift` (Google button, avatar, and `AuthPalette`, the spec colors auth needs until the shared color sets land), `AuthAssets.xcassets` (Google's G).
+- **Simulator checks** of the auth screens on sample data (DEBUG only): launch with `-PTSample -PTAuth signedOut|notAllowed|driveConsent|needsReconnect`, and add `-PTSettings` to open Settings as a sheet.
+
 Why (a):
 - **It doesn't care about the bundle ID.** The redirect is our HTTPS URL and a custom scheme the session captures itself. The GoogleSignIn SDK uses the iOS OAuth client, which Google registers against `com.brycewalls.papertrail`; after SideStore re-signs the app the bundle ID may differ, and whether Google still accepts the iOS client then can only be found out on the phone. That's the failure mode #33 flagged, and (a) removes it.
 - **Drive never disconnects (#15).** The refresh token is created by the server's own exchange and never leaves it. With (b) the server would still need the same web client secret, the same token store and the same `driveToken` function to use `serverAuthCode`, so (b) saves no server work.
 - **No extra SDK.** One fewer dependency to keep current, and the same `oauthCallback` and `driveToken` functions can fix #15 for the web app later.
 - Costs: two small HTTPS functions and a Hosting rewrite, Google's consent screen in a browser sheet (once), and the system's "wants to use google.com to sign in" prompt. Acceptable for a one-person app.
 
-Setup this needs from Bryce (the auth agent lists the exact steps): the web OAuth client's secret as a Functions secret, `https://paper-trail-bw.web.app/oauth/callback` added to that client's authorized redirect URIs, Blaze for the functions, and confirming the iOS API key in `GoogleService-Info.plist` has no iOS bundle ID restriction (a restricted key would break after SideStore changes the bundle ID).
+Setup this needs from Bryce (the auth agent lists the exact steps): the web OAuth client's secret as a Functions secret, `https://paper-trail-bw.web.app/oauth/callback` added to that client's authorized redirect URIs, Blaze for the functions, a Hosting deploy for the two rewrites, and confirming the iOS API key in `GoogleService-Info.plist` has no iOS bundle ID restriction (a restricted key would break after SideStore changes the bundle ID).
 
 The Firebase iOS app is registered (`Paper Trail iOS`, `1:814219266285:ios:34d37913b8aa6eb662e4e4`) and Firebase created an iOS OAuth client with it (`CLIENT_ID` and `REVERSED_CLIENT_ID` are in the plist). Option (a) doesn't use that client; it stays harmlessly unused.
 
 ## Capture
 
 VisionKit's `VNDocumentCameraViewController` for Scan (the custom scanner, #32, is parked). Files and Photos imports. A PDF built at good quality with an invisible OCR text layer (Vision, accurate) so Drive search finds it (#22); imported PDFs keep their original bytes. A SHA-256 content hash for the duplicate check (#2). `CaptureService.sampleDocuments()` is the simulator test seam: it feeds sample pages as if scanned. Every path ends in `CaptureIntake.add`.
+
+How it's built (capture, `Features/Capture/`):
+
+- **Hosting.** Sort adds two lines: `ScanMenuButton()` in its toolbar and `.captureFlow { model.refresh() }` on its content. `captureFlow` owns the `CaptureController` (in the environment), the full-screen scanner and review cover, the Files and Photos pickers and the unsupported-file alert. `ImportMenuButton()` is there for the Sort empty state.
+- **Pages.** Scanner and photo pages are normalized to upright JPEGs, 1700 px on the short side (about 200 dpi letter, same as the web scanner), quality 0.82, and embedded in the PDF without recompression. Image pages are 612 pt wide with the photo's own aspect.
+- **Review (spec 4.11).** Pages are written to `FileStore` under `review/<session>/` with a `manifest.json` (`ReviewSession`) before the review appears and after every edit, so a review left open reopens on the next launch. Each group is read as it forms: OCR, PDF, hash, duplicate check, then `ReadingQueue.read` on an item made with `CaptureIntake.makeItem` (not yet in SwiftData). "Send to the deck" inserts the items (`CaptureIntake.add(items:)`); groups still reading go in when they finish. The review folder is deleted once every sent group is in SwiftData.
+- **Splitting (#19).** A scan starts as one document until `ClassifyService.proposeSplit(pageTexts:)` exists; `ScanReviewViewModel` takes it as an optional `SplitProposer` and applies any proposal that covers every page once, in order. Imports start as one document per file, photos as one document.
+- **Byte for byte.** An imported PDF is filed as its original bytes only while its group is exactly that file (all pages, in order, none rotated). Split, joined or rotated, it's assembled fresh (vector pages drawn as is, plus a text layer for pages that had no text).
+- **Text.** `PipelineItem.ocrText` holds every page's text, capped at 100,000 characters (the same cap as `fullText`). PDF pages that already have text use it instead of OCR. OCR failing never blocks capture.
+- **Duplicates (#2).** `contentHash` is SHA-256 hex of the bytes that will be filed. The review checks it against `FiledDoc.contentHash` (first `docs()` snapshot, 3 second limit) and against other `PipelineItem`s.
+- **CaptureService.** `LiveCaptureService` is the one-shot version (pages already grouped) for callers outside the review, such as deck's sample loader. The review builds documents page by page through the same `DocumentBuilder`, so both paths make identical PDFs.
+- **Thumbnails.** `PipelineItem.thumbnailName` is `items/<uuid>.thumb.jpg`, 600 px on the long side. When the outbox deletes an item's PDF it should delete this file too.
+- **Simulator seam.** In the simulator (where the iOS 27 runtime reports VisionKit as supported but has no camera) and wherever VisionKit isn't supported, Scan document feeds `SampleScanSource` pages through the same review. Launch arguments: `-PTScanSource <path>` (a folder of images or a PDF), `-PTScanSeam` (use the seam on a device), `-PTOpenScan` (start a scan when Sort appears).
 
 ## Testing
 
@@ -196,7 +250,7 @@ Each agent stays inside its folders. Shared files take minimal, listed edits (sa
 | `ios/project.yml` | scaffold | Shared: add a package or Info.plist key only with a reason in the PR |
 | `ios/ARCHITECTURE.md` | scaffold | Shared: anyone extending the contract edits it |
 | `ios/GoogleService-Info.plist` | scaffold | Regenerate with `firebase apps:sdkconfig IOS 1:814219266285:ios:34d37913b8aa6eb662e4e4` |
-| `App/PaperTrailApp.swift`, `App/RootView.swift` | scaffold | Shared: tab content only via the feature's screen |
+| `App/PaperTrailApp.swift`, `App/RootView.swift` | scaffold | Shared: tab content only via the feature's screen. Tabs per "Navigation" |
 | `App/AppEnvironment.swift` | scaffold | Each feature edits only its own line in `live()` |
 | `Core/Models/*` | scaffold | Shared contract: add optional fields only, record them here |
 | `Core/Persistence/PipelineItem.swift` | scaffold | Shared: add defaulted properties for your stage only |
@@ -204,7 +258,8 @@ Each agent stays inside its folders. Shared files take minimal, listed edits (sa
 | `Core/Services/ServiceProtocols.swift` | scaffold | Each protocol's owner may add methods, plus the fake |
 | `Core/Services/Fakes/*` | scaffold | Anyone adding a protocol method updates its fake |
 | `Core/Services/FirebaseBootstrap.swift` | auth | |
-| `Core/UI/Theme.swift` | scaffold, then the design spec | Placeholder until `docs/design-spec.md` |
+| `Core/UI/` | deck (spec section 7) | Tokens (`Palette`, `Space`, `Radius`, `Metrics`, `Motion`, `CardShadow`), `VerdictBadge` (the only place a verdict is drawn), pills and chips, `StatusPill`, `ProgressRing`, `DocThumbnail`, `Banner`, `FlowLayout`, `AvatarButton`. Colors are asset catalog color sets used as `Color(.shred)`. `Theme.swift` is gone |
+| `App/AppRouter.swift` | scaffold | Shared: tabs, per-tab paths, Settings sheet |
 | `Features/Auth/` | auth | Live `AuthService`, sign-in screen, Settings account and Drive rows |
 | `Features/Capture/` | capture | Live `CaptureService`, scanner, importers, OCR, PDF, hashing, `CaptureIntake` |
 | `Features/Classify/` | classify | `ReadingQueue`, live `ClassifyService`, sender rules, "Not this?" picker, Settings Senders list |

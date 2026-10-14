@@ -66,6 +66,11 @@ final class PipelineItem {
     // Reading
     var card: DocumentCard?
     var model: String?
+    /// The card's fields below CardConfidence.fieldUnsureBelow, in sheet order (#20). Set by the
+    /// reading queue; cleared field by field as the check-fields sheet or card detail confirms them.
+    var unsureFields: [String] = []
+    /// The ClassifyErrorCode of the last failed read, so the deck can offer Try again only when it helps.
+    var readErrorCode: String?
 
     // Decision (Deck)
     var decisionRaw: String?
@@ -79,6 +84,13 @@ final class PipelineItem {
     var md5: String?
     var verifiedAt: Date?
     var firestoreDocID: String?
+    /// When the next automatic retry runs (backoff 1, 2, 5, 15 min). Nil on a failed item means
+    /// the retries are used up: it needs attention.
+    var nextRetryAt: Date? = nil
+    /// When the outbox finished with it (Drive upload and record written, or the shred logged).
+    var filedAt: Date? = nil
+    /// Automatic re-uploads after a checksum mismatch (#18). One is allowed.
+    var reuploads: Int = 0
 
     init(id: UUID = UUID(), fileName: String, pageCount: Int, sizeBytes: Int, origin: String, stage: PipelineStage = .captured) {
         self.id = id

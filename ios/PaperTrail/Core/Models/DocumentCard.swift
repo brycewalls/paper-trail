@@ -55,16 +55,29 @@ nonisolated struct PaperlessHint: Codable, Sendable, Hashable {
     var how: String
 }
 
-/// Per-field confidence from 0 to 1 (#20). Optional: the live function does not send it yet,
-/// and a card without it is treated as "needs a look" for every field.
+/// Per-field confidence from 0 to 1 (#20). Optional: the function sends it only when the request
+/// sets wantConfidence, and a card without it is never counted as confident.
 nonisolated struct CardConfidence: Codable, Sendable, Hashable {
-    /// Overall confidence for the card as a whole.
+    /// The lowest field score (the function computes it that way).
     var overall: Double
     /// Keyed by DocumentCard field name: "title", "folder", "filename", "verdict", "docDate", "issuer".
     var fields: [String: Double]
 
-    /// A card at or above this overall score can be filed by "File all confident".
-    static let confidentThreshold = 0.85
+    /// Kept for source compatibility. A card is confident when it has confidence data and no field
+    /// is below `fieldUnsureBelow` (DocumentCard.isConfident), so the deck's "ready to file" count
+    /// and the "2 to check" pill can never disagree.
+    static let confidentThreshold = 0.75
+    /// A field below this is "Not sure" and goes in the check-fields sheet (design spec 0, 3.8).
+    static let fieldUnsureBelow = 0.75
+    /// The scored fields, in the order the check-fields sheet shows them: sender, date, folder,
+    /// title, filename, verdict.
+    static let fieldOrder = ["issuer", "docDate", "folder", "title", "filename", "verdict"]
+
+    /// The fields below `fieldUnsureBelow`, in `fieldOrder`. A field the function didn't score
+    /// isn't flagged.
+    var unsureFields: [String] {
+        Self.fieldOrder.filter { (fields[$0] ?? 1) < Self.fieldUnsureBelow }
+    }
 }
 
 nonisolated struct DocumentCard: Codable, Sendable, Hashable {
@@ -87,9 +100,14 @@ nonisolated struct DocumentCard: Codable, Sendable, Hashable {
     var confidence: CardConfidence?
     /// New, optional (#21): the key of the sender rule the function applied, if any.
     var appliedRule: String?
+    /// New, optional (#20): up to two other guesses per field, best first, keyed like
+    /// `confidence.fields` ("issuer", "docDate", "folder", "title", "filename"). Sent with confidence.
+    var alternatives: [String: [String]]? = nil
 
+    /// Ready to file without a look: confidence came back and no field is "Not sure" (design spec
+    /// 3.1). A card without confidence data is never confident.
     var isConfident: Bool {
         guard let confidence else { return false }
-        return confidence.overall >= CardConfidence.confidentThreshold
+        return confidence.unsureFields.isEmpty
     }
 }

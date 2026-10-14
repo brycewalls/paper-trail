@@ -10,6 +10,9 @@ import UIKit
 final class FakeAuthService: AuthService {
     var state: AuthState
     var drive: DriveLink = .connected
+    var driveConsentPending = false
+    /// Set to make signIn and reconnectDrive fail with this.
+    var failure: AuthFailure?
 
     init(signedIn: Bool = true) {
         let bryce = Account(uid: "fake-uid", email: "bryce.evan.walls@gmail.com", displayName: "Bryce Walls")
@@ -17,10 +20,16 @@ final class FakeAuthService: AuthService {
     }
 
     func signIn() async throws {
+        if let failure { throw failure }
         state = .signedIn(Account(uid: "fake-uid", email: "bryce.evan.walls@gmail.com", displayName: "Bryce Walls"))
         drive = .connected
+        driveConsentPending = false
     }
-    func reconnectDrive() async throws { drive = .connected }
+    func reconnectDrive() async throws {
+        if let failure { throw failure }
+        drive = .connected
+        driveConsentPending = false
+    }
     func signOut() throws { state = .signedOut }
     func driveAccessToken() async throws -> String {
         if drive != .connected { throw DriveError.unauthorized }
@@ -38,7 +47,9 @@ final class FakeClassifyService: ClassifyService {
         requests.append(request)
         try? await Task.sleep(for: delay)
         if let failure { throw ClassifyFailure(code: failure, message: "Fake failure") }
-        return ClassifyResponse(result: SampleData.card(forText: request.ocrText), model: "fake")
+        // Like the function: apply the matching sender rule and say which (#21).
+        let card = SenderRuleEngine.apply(request.senderHints ?? [], to: SampleData.card(forText: request.ocrText))
+        return ClassifyResponse(result: card, model: "fake")
     }
 }
 
@@ -64,6 +75,16 @@ final class FakeDriveService: DriveService {
     /// What `search` returns; tests set it for "Also in Drive" [piles].
     var searchResults: [DriveFileMetadata] = []
     func search(_ text: String) async throws -> [DriveFileMetadata] { searchResults }
+
+    private(set) var trashed: [String] = []
+
+    func ensureYearFolder(_ year: String, in folder: String) async throws -> String {
+        "fake-folder-\(slug(folder))-\(year)"
+    }
+
+    func download(fileID: String) async throws -> Data { Data() }
+
+    func trash(fileID: String) async throws { trashed.append(fileID) }
 }
 
 final class FakeDocStore: DocStore {
@@ -82,10 +103,11 @@ final class FakeDocStore: DocStore {
     var syncError: DocStoreError?
 
     init(seed: [FiledDoc] = SampleData.filedDocs(), paperless: [PaperlessSender] = [],
-         settings: AppSettings = AppSettings()) {
+         settings: AppSettings = AppSettings(), rules: [SenderRule] = SampleData.senderRules) {
         docList = seed
         senders = paperless
         appSettings = settings
+        self.rules = Dictionary(uniqueKeysWithValues: rules.map { ($0.key, $0) })
     }
 
     /// The simulator's sample library (-PTSample): enough documents and senders that Piles,
@@ -234,8 +256,10 @@ final class FakeCaptureService: CaptureService {
     }
 }
 
+@Observable
 final class FakeOutboxService: OutboxService {
     private(set) var enqueued: [UUID] = []
+    var status = OutboxStatus()
 
     func enqueue(_ item: PipelineItem) async {
         enqueued.append(item.id)
@@ -243,6 +267,7 @@ final class FakeOutboxService: OutboxService {
         try? await Task.sleep(for: .milliseconds(200))
         item.driveFileID = item.decision == .file ? "fake-file-\(enqueued.count)" : nil
         item.stage = item.decision == .file ? .verified : .filed
+        item.filedAt = .now
         if item.decision == .file { item.verifiedAt = .now }
     }
 
@@ -252,4 +277,22 @@ final class FakeOutboxService: OutboxService {
     }
 
     func resumePending() async {}
+
+    private(set) var sentBack: [UUID] = []
+    /// Tests: act like a verified item whose local file is already gone.
+    var refuseSendBack = false
+
+    @discardableResult func sendBack(_ item: PipelineItem) async -> Bool {
+        sentBack.append(item.id)
+        if refuseSendBack { return false }
+        item.decision = nil
+        item.decidedAt = nil
+        item.stage = .ready
+        item.driveFileID = nil
+        item.driveURL = nil
+        item.verifiedAt = nil
+        item.filedAt = nil
+        item.firestoreDocID = nil
+        return true
+    }
 }

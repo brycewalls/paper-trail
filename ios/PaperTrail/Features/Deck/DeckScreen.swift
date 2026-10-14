@@ -109,9 +109,13 @@ struct DeckScreen: View {
 
     @ViewBuilder private var content: some View {
         if model.cards.isEmpty && ghost == nil {
-            emptyState
+            VStack(spacing: 0) {
+                reconnectBanner
+                emptyState
+            }
         } else {
             VStack(spacing: Space.xl) {
+                reconnectBanner
                 if let title = model.bulkPromptTitle(enabled: offerBulkFile) {
                     Button(title) { showBulkSheet = true }
                         .buttonStyle(.bordered)
@@ -122,6 +126,16 @@ struct DeckScreen: View {
             }
             .padding(.top, Space.s)
             .padding(.bottom, Space.l)
+        }
+    }
+
+    /// Spec 4.16: Sort shows the Reconnect Drive banner at the top. Swiping keeps working.
+    @ViewBuilder private var reconnectBanner: some View {
+        if model.driveNeedsReconnect {
+            ReconnectDriveCard(isWorking: model.reconnecting, failed: model.reconnectFailed) {
+                Task { await model.reconnectDrive() }
+            }
+            .padding(.horizontal, Space.xl)
         }
     }
 

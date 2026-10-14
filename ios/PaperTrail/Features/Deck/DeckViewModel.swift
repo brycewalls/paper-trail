@@ -327,6 +327,21 @@ final class DeckViewModel {
         return .decided
     }
 
+    // MARK: - Reconnect Drive (4.16)
+
+    private(set) var reconnecting = false
+    private(set) var reconnectFailed = false
+
+    /// Only when the server says the refresh token is gone, never on a single failed request.
+    var driveNeedsReconnect: Bool { env.auth.drive == .needsReconnect }
+
+    func reconnectDrive() async {
+        reconnecting = true
+        reconnectFailed = false
+        do { try await env.auth.reconnectDrive() } catch { reconnectFailed = true }
+        reconnecting = false
+    }
+
     func cancelCheck() {
         checking = nil
         checkFocus = nil

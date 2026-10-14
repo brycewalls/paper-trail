@@ -38,17 +38,17 @@ final class AppEnvironment {
         let files = FileStore.temporary()
         return AppEnvironment(
             auth: FakeAuthService(), classify: FakeClassifyService(), drive: FakeDriveService(),
-            docs: FakeDocStore(), capture: FakeCaptureService(files: files), outbox: FakeOutboxService(),
+            docs: FakeDocStore.sampleLibrary(), capture: FakeCaptureService(files: files), outbox: FakeOutboxService(),
             files: files, modelContainer: PipelineStore.container(inMemory: true), isSample: true)
     }
 
-    /// The real app. Until each feature lands, its slot below still holds the fake.
+    /// The real app: every service is live.
     static func live() -> AppEnvironment {
         FirebaseBootstrap.configure()
         let files = FileStore.appDefault()
         // outbox: the live outbox needs auth, docs and the container, so they're named first.
         let auth: any AuthService = LiveAuthService.live()  // auth
-        let docs: any DocStore = FakeDocStore()        // piles: replace with the Firestore DocStore
+        let docs: any DocStore = FirestoreDocStore()   // piles: the live Firestore DocStore
         let container = PipelineStore.container(inMemory: false)  // outbox: on disk, survives a relaunch
         let drive = LiveDriveService(auth: auth, docs: docs)      // outbox
         return AppEnvironment(
@@ -59,7 +59,7 @@ final class AppEnvironment {
             capture: LiveCaptureService(files: files), // capture: live (Vision OCR, PDF text layer, SHA-256)
             outbox: LiveOutboxService(auth: auth, drive: drive, docs: docs, files: files, container: container), // outbox
             files: files, modelContainer: container,
-            isSample: true)                          // set to false once no fakes remain above
+            isSample: false)                         // every service above is live
     }
 
     static func forLaunch() -> AppEnvironment {

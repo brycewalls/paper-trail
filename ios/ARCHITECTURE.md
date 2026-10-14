@@ -91,6 +91,8 @@ Added by deck (#20, #33):
 - `ClassifyService.checkFields(for:) -> CheckFieldsData`: the unsure fields for the check-fields sheet, in the spec's order (sender, date, folder, title, filename, verdict), each with Claude's best value and up to two alternatives. A protocol extension supplies the default (fields under `CheckFieldsData.unsureBelow = 0.75` from `card.confidence`, no alternatives), so classify only overrides it to add `alternatives`. `CardField` names the six fields with the card's own keys.
 - `OutboxService.sendBack(_:) -> Bool`: the deck's late Undo and the Outbox's "Send back to the deck". Cancels the upload, or trashes the Drive copy and removes the Firestore record if it finished. Same signature as the outbox branch.
 
+`DocStore` additions (piles): `settings()` / `saveSettings(_:)` for `config/settings` (the same two lines the outbox adds for the shred hold), `watchSettings()` (a live stream, so Piles follows a Shred hold change), and `syncError` (set when a Firestore listener fails, cleared when one delivers; screens show their load-failed state from it). The live `FirestoreDocStore` lives in `Features/Piles/` and re-attaches its listeners when the signed-in user changes.
+
 ## Local persistence (SwiftData)
 
 `PipelineItem` is one document on its way through the phone. Its bytes are a file in `FileStore` (`Application Support/Documents-in-flight/items/<uuid>.pdf`, file protection until first unlock); SwiftData stores only the relative path, because the container path changes between installs.
@@ -141,7 +143,7 @@ Everything is under `users/{uid}/`, readable and writable only by that signed-in
 
 A doc filed by the app counts as safe to shred only when `verifiedAt` is set (`FiledDoc.isSafeToShred`) and the shred hold has passed. Web-filed docs keep the old rule.
 
-**`paperless/{slug(issuer)}`** (`PaperlessSender`). Existing: `issuer`, `how`, `status`, `firstSeen`, `doneAt`. Status values keep the web strings and add two: `todo` (To do), `requested`, `waiting_cycle`, `done` (Confirmed), `skip` (Can't stop). So the old `todo/done/skip` need no migration. New, optional (#23): `requestedAt`, `checkBackAt`, `steps [String]`, `stillMailingAt` (a new doc arrived from a sender already requested, waiting or confirmed), `lastSeen`.
+**`paperless/{slug(issuer)}`** (`PaperlessSender`). Existing: `issuer`, `how`, `status`, `firstSeen`, `doneAt`. Status values keep the web strings and add two: `todo` (To do), `requested`, `waiting_cycle`, `done` (Confirmed), `skip` (Can't stop). So the old `todo/done/skip` need no migration. New, optional (#23): `requestedAt`, `checkBackAt`, `steps [String]`, `stillMailingAt` (a new doc arrived from a sender already requested, waiting or confirmed), `lastSeen`. Also `mailHandledAt` (piles, #23): when Bryce last dealt with a "Still mailing?" flag with Wait a cycle; paper filed before it no longer raises the flag. The app never creates paperless records, it only updates status fields, so the web app and the outbox stay the only writers of new senders.
 
 **`senders/{slug(issuer)}`** (`SenderRule`, #21, new): `key`, `issuer`, optional `folder`, `filenamePattern` (tokens `{date}`, `{yyyy}`, `{mm}`, `{issuer}`, `{type}`; the last two are the slugs of the sender and document type), `verdict`, `docType`, and `updatedAt`. Written by the check-fields sheet's "Remember for this sender" (a confirmed filename's date becomes `{date}`) and edited or forgotten in Settings › Sender rules.
 

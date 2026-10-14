@@ -95,4 +95,116 @@ enum SampleData {
                 filedAt: "2026-10-1\(index)T12:00:00.000Z", source: "ios")
         }
     }
+
+    // MARK: - Piles, Search and Paperless samples (owner: piles)
+
+    /// ISO 8601 with milliseconds, the way the web app writes dates.
+    static func iso(_ date: Date) -> String {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f.string(from: date)
+    }
+
+    private static func daysAgo(_ days: Double, from now: Date) -> String {
+        iso(now.addingTimeInterval(-days * 86_400))
+    }
+
+    private static func doc(_ id: String, _ title: String, type: String, issuer: String, date: String,
+                            folder: String, verdict: Verdict, physical: PhysicalState, sensitive: Bool = false,
+                            filedAt: String, verifiedAt: String?, retention: String = "Keep 7 years",
+                            text: String? = nil, amount: String? = nil, paperless: Bool = false) -> FiledDoc {
+        FiledDoc(
+            id: id, title: title, docType: type, issuer: issuer, docDate: date,
+            summary: "\(type) from \(issuer).", folder: folder,
+            filename: "\(date.isEmpty ? "0000-00-00" : date)_\(slug(issuer))-\(slug(type))", verdict: verdict,
+            verdictReason: verdict == .keepOriginal ? "The paper itself has legal value." : "Drive keeps a good copy.",
+            retention: retention, sensitive: sensitive,
+            paperless: PaperlessHint(possible: paperless, issuer: issuer, how: paperless ? "Turn off paper statements in your account." : ""),
+            pages: 1, filed: true, driveId: "drive-\(id)", driveUrl: "https://drive.google.com/file/d/drive-\(id)/view",
+            physical: physical, filedAt: filedAt, verifiedAt: verifiedAt, source: "ios").with(text: text, amount: amount)
+    }
+
+    /// Extra filed documents so Piles, Search and Paperless look like A5 to A7 in sample mode.
+    /// Dates are relative to `now` so the hold countdown and the safe pile stay meaningful.
+    static func pileDocs(now: Date = .now) -> [FiledDoc] {
+        [
+            doc("pile-pharmacy", "Pharmacy receipt", type: "Receipt", issuer: "Elm Street Pharmacy", date: "2026-08-12",
+                folder: "05 Medical", verdict: .scanShred, physical: .toShred, sensitive: true,
+                filedAt: daysAgo(6, from: now), verifiedAt: daysAgo(6, from: now), retention: "Keep for HSA, 3 years",
+                text: "Elm Street Pharmacy\nReceipt\nAmoxicillin 500 mg\nTotal $12.40", amount: "12.40"),
+            doc("pile-1099", "2024 1099-INT", type: "Tax form", issuer: "Harbor Federal CU", date: "2025-01-31",
+                folder: "02 Taxes", verdict: .scanShred, physical: .toShred, sensitive: true,
+                filedAt: daysAgo(5, from: now), verifiedAt: daysAgo(5, from: now),
+                text: "Form 1099-INT Interest Income 2024\nHarbor Federal Credit Union\nBox 1 interest income $38.12"),
+            doc("pile-electric-aug", "Electric bill, August", type: "Bill", issuer: "Cascade Power & Light", date: "2026-08-28",
+                folder: "06 Home", verdict: .scanShred, physical: .toShred,
+                filedAt: daysAgo(30, from: now), verifiedAt: daysAgo(30, from: now), retention: "Keep 1 year",
+                text: "Cascade Power & Light\nStatement date August 28, 2026\nAmount due $84.12", amount: "84.12", paperless: true),
+            doc("pile-electric-oct", "Electric bill, October", type: "Bill", issuer: "Cascade Power & Light", date: "2026-10-09",
+                folder: "06 Home", verdict: .scanShred, physical: .toShred,
+                filedAt: daysAgo(4, from: now), verifiedAt: daysAgo(4, from: now), retention: "Keep 1 year",
+                text: "Cascade Power & Light\nStatement date October 9, 2026\nAmount due $91.03", amount: "91.03", paperless: true),
+            doc("pile-brightline", "Brightline Wireless bill", type: "Bill", issuer: "Brightline Wireless", date: "2026-09-15",
+                folder: "03 Money & Banking", verdict: .scanShred, physical: .toShred,
+                filedAt: daysAgo(5, from: now), verifiedAt: daysAgo(5, from: now), retention: "Keep 1 year",
+                text: "Brightline Wireless\nMonthly statement\nAmount due $65.00", amount: "65.00", paperless: true),
+            doc("pile-summit", "Summit Health Plan EOB", type: "Explanation of benefits", issuer: "Summit Health Plan",
+                date: "2026-09-02", folder: "05 Medical", verdict: .scanShred, physical: .toShred, sensitive: true,
+                filedAt: daysAgo(8, from: now), verifiedAt: daysAgo(8, from: now), retention: "Keep 3 years"),
+            doc("pile-w2-2025", "2025 W-2", type: "Tax form", issuer: "Northwind Logistics", date: "2026-01-30",
+                folder: "02 Taxes", verdict: .scanShred, physical: .toShred, sensitive: true,
+                filedAt: daysAgo(1, from: now), verifiedAt: daysAgo(1, from: now),
+                text: "Form W-2 Wage and Tax Statement 2025\nNorthwind Logistics\nBox 1 wages $58,200.00"),
+            doc("pile-w2-2023", "2023 W-2", type: "Tax form", issuer: "Northwind Logistics", date: "2024-01-29",
+                folder: "02 Taxes", verdict: .scanShred, physical: .shredded, sensitive: true,
+                filedAt: "2024-02-03T15:20:00.000Z", verifiedAt: "2024-02-03T15:21:00.000Z",
+                text: "Copy B. Form W-2 Wage and Tax Statement 2023. Employer Northwind Logistics. Box 1 wages, tips, other compensation $54,880.00"),
+            doc("pile-w2-2023c", "2023 W-2, corrected", type: "Tax form", issuer: "Northwind Logistics", date: "2024-03-02",
+                folder: "02 Taxes", verdict: .scanShred, physical: .shredded, sensitive: true,
+                filedAt: "2024-03-05T15:20:00.000Z", verifiedAt: "2024-03-05T15:21:00.000Z",
+                text: "Form W-2c Corrected Wage and Tax Statement 2023. Northwind Logistics."),
+            doc("pile-1099-2023", "2023 1099-INT", type: "Tax form", issuer: "Harbor Federal CU", date: "2024-01-31",
+                folder: "02 Taxes", verdict: .scanShred, physical: .shredded,
+                filedAt: "2024-02-04T15:20:00.000Z", verifiedAt: "2024-02-04T15:21:00.000Z",
+                text: "Form 1099-INT Interest Income 2023. Harbor Federal Credit Union."),
+            doc("pile-birth", "Birth certificate", type: "Certificate", issuer: "Wake County", date: "1994-05-02",
+                folder: "01 Identity & Legal", verdict: .keepOriginal, physical: .stored, sensitive: true,
+                filedAt: daysAgo(20, from: now), verifiedAt: daysAgo(20, from: now), retention: "Keep forever"),
+            doc("pile-passport", "Passport renewal receipt", type: "Receipt", issuer: "US Department of State", date: "2026-09-30",
+                folder: "01 Identity & Legal", verdict: .keepOriginal, physical: .keep,
+                filedAt: daysAgo(3, from: now), verifiedAt: daysAgo(3, from: now), retention: "Until the new passport arrives"),
+        ]
+    }
+
+    /// The A7 ledger: one sender per status, plus Cascade still mailing after a request.
+    static func paperlessSenders(now: Date = .now) -> [PaperlessSender] {
+        [
+            PaperlessSender(id: "cascade-power-light", issuer: "Cascade Power & Light", how: "Turn off paper bills under Billing.",
+                            status: .requested, firstSeen: daysAgo(60, from: now), requestedAt: daysAgo(25, from: now),
+                            checkBackAt: iso(now.addingTimeInterval(33 * 86_400)),
+                            steps: ["Sign in, then Billing, then Paperless billing", "Confirm the email they send"]),
+            PaperlessSender(id: "summit-health-plan", issuer: "Summit Health Plan", how: "Choose electronic EOBs in the member portal.",
+                            status: .waitingCycle, firstSeen: daysAgo(40, from: now), requestedAt: daysAgo(30, from: now),
+                            checkBackAt: iso(now.addingTimeInterval(15 * 86_400)), mailHandledAt: daysAgo(2, from: now)),
+            PaperlessSender(id: "brightline-wireless", issuer: "Brightline Wireless", how: "Turn off paper bills in the app.",
+                            status: .toDo, firstSeen: daysAgo(5, from: now),
+                            steps: ["Account settings, then Billing, then Paper bill off"]),
+            PaperlessSender(id: "harbor-federal", issuer: "Harbor Federal", how: "Statements, then Delivery, then Online only.",
+                            status: .confirmed, firstSeen: daysAgo(90, from: now), doneAt: daysAgo(45, from: now)),
+            PaperlessSender(id: "northwind", issuer: "Northwind", how: "Ask HR for electronic W-2s.",
+                            status: .confirmed, firstSeen: daysAgo(120, from: now), doneAt: daysAgo(70, from: now)),
+            PaperlessSender(id: "dmv", issuer: "DMV", how: "Registration renewals only come on paper.",
+                            status: .cantStop, firstSeen: daysAgo(100, from: now)),
+        ]
+    }
+}
+
+private extension FiledDoc {
+    func with(text: String?, amount: String?) -> FiledDoc {
+        var copy = self
+        copy.fullText = text
+        copy.amount = amount
+        if text != nil { copy.searchTerms = SearchIndex.terms(for: copy) }
+        return copy
+    }
 }

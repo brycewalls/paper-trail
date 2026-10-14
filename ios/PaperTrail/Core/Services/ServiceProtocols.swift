@@ -185,6 +185,18 @@ protocol DocStore: AnyObject {
     /// users/{uid}/config/settings. Missing doc: AppSettings() defaults. [outbox: shred hold]
     func settings() async throws -> AppSettings
     func saveSettings(_ settings: AppSettings) async throws
+    /// Live users/{uid}/config/settings, so Piles follows a Shred hold change at once [piles].
+    /// Yields the defaults when the doc doesn't exist yet.
+    func watchSettings() -> AsyncStream<AppSettings>
+    /// Set when a live listener fails (permission denied, signed out mid-stream); cleared when
+    /// one delivers again. The streams themselves just stop yielding. [piles]
+    var syncError: DocStoreError? { get }
+}
+
+nonisolated enum DocStoreError: Error, Sendable, Hashable {
+    case signedOut
+    /// Firestore refused or failed the listener. The message is for logs, not the UI.
+    case listener(String)
 }
 
 // MARK: - Capture [capture]

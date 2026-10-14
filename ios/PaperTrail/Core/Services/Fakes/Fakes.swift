@@ -72,7 +72,9 @@ final class FakeDriveService: DriveService {
                           webViewLink: "https://drive.google.com/file/d/\(fileID)/view")
     }
 
-    func search(_ text: String) async throws -> [DriveFileMetadata] { [] }
+    /// What `search` returns; tests set it for "Also in Drive" [piles].
+    var searchResults: [DriveFileMetadata] = []
+    func search(_ text: String) async throws -> [DriveFileMetadata] { searchResults }
 
     private(set) var trashed: [String] = []
 
@@ -87,15 +89,32 @@ final class FakeDriveService: DriveService {
 
 final class FakeDocStore: DocStore {
     private var docList: [FiledDoc]
-    private var senders: [PaperlessSender] = []
+    private var senders: [PaperlessSender]
     private var rules: [String: SenderRule] = [:]
     private var folderCache: DriveFolderCache?
+    private var appSettings: AppSettings
     private var docWatchers: [UUID: AsyncStream<[FiledDoc]>.Continuation] = [:]
     private var paperlessWatchers: [UUID: AsyncStream<[PaperlessSender]>.Continuation] = [:]
+    private var settingsWatchers: [UUID: AsyncStream<AppSettings>.Continuation] = [:]
+    /// Every update call, in order, so tests can check what was written.
+    private(set) var writes: [(path: String, fields: [String: any Sendable])] = []
+    /// Tests set these to see how screens handle a failed write or a failed listener.
+    var failWrites = false
+    var syncError: DocStoreError?
 
-    init(seed: [FiledDoc] = SampleData.filedDocs(), rules: [SenderRule] = SampleData.senderRules) {
+    init(seed: [FiledDoc] = SampleData.filedDocs(), paperless: [PaperlessSender] = [],
+         settings: AppSettings = AppSettings(), rules: [SenderRule] = SampleData.senderRules) {
         docList = seed
+        senders = paperless
+        appSettings = settings
         self.rules = Dictionary(uniqueKeysWithValues: rules.map { ($0.key, $0) })
+    }
+
+    /// The simulator's sample library (-PTSample): enough documents and senders that Piles,
+    /// Search and Paperless look like A5 to A7, with a 3-day shred hold. [piles]
+    static func sampleLibrary() -> FakeDocStore {
+        FakeDocStore(seed: SampleData.filedDocs() + SampleData.pileDocs(), paperless: SampleData.paperlessSenders(),
+                     settings: AppSettings(shredHoldDays: 3))
     }
 
     func docs() -> AsyncStream<[FiledDoc]> {
@@ -116,13 +135,10 @@ final class FakeDocStore: DocStore {
     }
 
     func updateDoc(id: String, fields: [String: any Sendable]) async throws {
+        if failWrites { throw DocStoreError.listener("fake write failure") }
+        writes.append(("docs/\(id)", fields))
         guard let index = docList.firstIndex(where: { $0.id == id }) else { return }
-        if let raw = fields["physical"] as? String, let state = PhysicalState(rawValue: raw) { docList[index].physical = state }
-        if let at = fields["shreddedAt"] as? String { docList[index].shreddedAt = at }
-        if let at = fields["verifiedAt"] as? String { docList[index].verifiedAt = at }
-        if let pages = fields["verifiedPages"] as? Int { docList[index].verifiedPages = pages }
-        if let id = fields["driveId"] as? String { docList[index].driveId = id }
-        if let url = fields["driveUrl"] as? String { docList[index].driveUrl = url }
+        docList[index] = Self.merged(fields, into: docList[index], keepID: id)
         publishDocs()
     }
 
@@ -147,10 +163,10 @@ final class FakeDocStore: DocStore {
     }
 
     func updatePaperless(id: String, fields: [String: any Sendable]) async throws {
+        if failWrites { throw DocStoreError.listener("fake write failure") }
+        writes.append(("paperless/\(id)", fields))
         guard let index = senders.firstIndex(where: { $0.id == id }) else { return }
-        if let raw = fields["status"] as? String, let status = PaperlessStatus(rawValue: raw) { senders[index].status = status }
-        if let at = fields["lastSeen"] as? String { senders[index].lastSeen = at }
-        if let at = fields["stillMailingAt"] as? String { senders[index].stillMailingAt = at }
+        senders[index] = Self.merged(fields, into: senders[index], keepID: id)
         publishPaperless()
     }
 
@@ -161,12 +177,38 @@ final class FakeDocStore: DocStore {
     func driveFolders() async throws -> DriveFolderCache? { folderCache }
     func saveDriveFolders(_ cache: DriveFolderCache) async throws { folderCache = cache }
 
-    private var appSettings = AppSettings()
     func settings() async throws -> AppSettings { appSettings }
-    func saveSettings(_ settings: AppSettings) async throws { appSettings = settings }
+    func saveSettings(_ settings: AppSettings) async throws {
+        appSettings = settings
+        for c in settingsWatchers.values { c.yield(settings) }
+    }
+
+    func watchSettings() -> AsyncStream<AppSettings> {
+        let (stream, continuation) = AsyncStream<AppSettings>.makeStream()
+        let key = UUID()
+        settingsWatchers[key] = continuation
+        continuation.yield(appSettings)
+        continuation.onTermination = { [weak self] _ in Task { @MainActor in self?.settingsWatchers[key] = nil } }
+        return stream
+    }
 
     private func publishDocs() { for c in docWatchers.values { c.yield(docList) } }
     private func publishPaperless() { for c in paperlessWatchers.values { c.yield(senders) } }
+
+    /// Applies a Firestore-style field update to a Codable record by round-tripping it through JSON,
+    /// so the fake accepts any field the live store does.
+    private static func merged<T: Codable>(_ fields: [String: any Sendable], into value: T, keepID: String?) -> T {
+        guard let data = try? JSONEncoder().encode(value),
+              var object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return value }
+        for (key, field) in fields { object[key] = field }
+        guard let out = try? JSONSerialization.data(withJSONObject: object),
+              var decoded = try? JSONDecoder().decode(T.self, from: out) else { return value }
+        if let keepID {
+            if var doc = decoded as? FiledDoc { doc.id = keepID; decoded = doc as! T }
+            if var sender = decoded as? PaperlessSender { sender.id = keepID; decoded = sender as! T }
+        }
+        return decoded
+    }
 }
 
 final class FakeCaptureService: CaptureService {

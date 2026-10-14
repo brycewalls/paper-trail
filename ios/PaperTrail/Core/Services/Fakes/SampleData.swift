@@ -12,6 +12,17 @@ enum SampleData {
         "Big Box Furniture\nLimited time offer\n40% off sofas this weekend only",
     ]
 
+    /// A scanned pile for stack mode (#19): the four samples, with second pages on the first two,
+    /// back to back. Each page's first line is its letterhead, which the fake split goes by.
+    static let stackPageTexts: [String] = [
+        pageTexts[0],
+        "Duke Energy\nPage 2 of 2\nUsage history\nAccount ending 4417",
+        pageTexts[1],
+        "Blue Cross\nPage 2 of 2\nClaim details\nThis is not a bill",
+        pageTexts[2],
+        pageTexts[3],
+    ]
+
     static let cards: [DocumentCard] = [
         DocumentCard(
             title: "Duke Energy bill, March 2024", docType: "Utility bill", issuer: "Duke Energy",

@@ -13,6 +13,12 @@
 //   senderHints     the user's sender rules (users/{uid}/senders). Claude sees the known sender names
 //                   so it spells them the same way, then applySenderRule() applies the matching rule
 //                   to the card deterministically and sets result.appliedRule (#21)
+//
+// Split mode (#19, stack mode): a request with mode: "split" carries a scanned pile instead of one
+// document: pages [{text, image?}] in scan order, each with its on-device OCR text and an optional
+// small thumbnail. The reply is { split: { documents: [{start, end, label}] }, model }: 0-based,
+// inclusive page ranges that cover every page once, in order, each with a short label. Requests
+// without mode are untouched, so the web app's reads stay byte for byte what they were.
 
 const FOLDER_NAMES = [
   "01 Identity & Legal",
@@ -36,6 +42,12 @@ const MAX_IMAGES = 10;
 const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_OCR_CHARS = 20000;
 const MAX_SENDER_HINTS = 200;
+// Split mode (#19). The API takes up to 100 images in one request; text-only pages go past that.
+const MAX_SPLIT_PAGES = 300;
+const MAX_SPLIT_IMAGES = 100;
+const MAX_SPLIT_PAGE_CHARS = 2000;
+const MAX_SPLIT_TEXT_CHARS = 120000;
+const MAX_SPLIT_LABEL = 60;
 
 // Fields that get a confidence score (#20), in the order the app's check-fields sheet shows them.
 const CONFIDENCE_FIELDS = ["issuer", "docDate", "folder", "title", "filename", "verdict"];
@@ -340,11 +352,134 @@ function mapApiError(e, Anthropic) {
   return new ClassifyError("internal", "unknown", "Something interrupted the read.");
 }
 
+// ---------- Split mode (#19) ----------
+
+const SPLIT_PROMPT = `You are helping someone in the US digitize a box of personal paperwork. They scanned a stack of paper in one go, so one scan holds several documents back to back, in the order they came off the pile. Your job is to find where each document starts.
+
+Each page comes with the text read from it on the phone (OCR, may have errors) and, when there is one, a small picture of the page.
+
+Signs that a new document starts on a page: a new letterhead or sender, a different account, policy or claim number, a new statement or issue date, a page numbering that restarts ("Page 1 of 3"), a different layout or paper, a cover letter, an envelope.
+Signs that a page continues the one before: "Page 2 of 3", the same account number or sender in the header, a sentence or table that carries over, terms and conditions or a back side of the same form.
+A blank or nearly blank page belongs to the document before it. When unsure, keep pages together: it is easier for the person to split a document than to notice two pages that should have been joined.
+
+Reply with only a JSON object: { "documents": [ { "firstPage": number, "label": string } ] }
+- firstPage is the 1-based page number where each document starts, in increasing order. The first document starts on page 1.
+- label is a short name a person would recognize, at most 6 words, e.g. "Duke Energy bill, March 2024" or "Blue Cross EOB". Never write a full SSN or full account number.`;
+
+const SPLIT_SCHEMA = {
+  type: "object",
+  properties: {
+    documents: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { firstPage: { type: "integer" }, label: { type: "string" } },
+        required: ["firstPage", "label"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["documents"],
+  additionalProperties: false,
+};
+
+// Validates a split request. Text is lenient (trimmed and capped); a malformed image is dropped, not
+// refused, so one bad thumbnail never stops the split. The page list itself must be there.
+function validateSplit(data) {
+  const d = data && typeof data === "object" ? data : {};
+  const bad = (msg) => { throw new ClassifyError("invalid-argument", "bad_request", msg); };
+  if (!Array.isArray(d.pages) || !d.pages.length) bad("pages must be a non-empty list");
+  if (d.pages.length > MAX_SPLIT_PAGES) throw new ClassifyError("invalid-argument", "too_large", `At most ${MAX_SPLIT_PAGES} pages can be split at once.`);
+  let images = 0, size = 0, chars = 0;
+  const pages = d.pages.map((p) => {
+    const page = p && typeof p === "object" ? p : {};
+    let text = typeof page.text === "string" ? page.text.trim().slice(0, MAX_SPLIT_PAGE_CHARS) : "";
+    text = text.slice(0, Math.max(0, MAX_SPLIT_TEXT_CHARS - chars));
+    chars += text.length;
+    const im = page.image;
+    const out = { text };
+    if (im && IMAGE_TYPES.includes(im.type) && typeof im.data === "string" && im.data && B64.test(im.data.slice(0, 4096)) && images < MAX_SPLIT_IMAGES) {
+      images += 1; size += im.data.length;
+      out.image = { type: im.type, data: im.data };
+    }
+    return out;
+  });
+  if (size > MAX_BASE64_CHARS) throw new ClassifyError("invalid-argument", "too_large", "The page pictures are too large to send.");
+  return { mode: "split", pages };
+}
+
+// One user turn: every page in order, its picture (if any) then its text, and a closing line.
+function buildSplitRequest(input, { model, effort, today }) {
+  const content = [];
+  input.pages.forEach((p, i) => {
+    content.push({ type: "text", text: `Page ${i + 1}:` });
+    if (p.image) content.push({ type: "image", source: { type: "base64", media_type: p.image.type, data: p.image.data } });
+    content.push({ type: "text", text: p.text ? `<ocr>\n${p.text}\n</ocr>` : "(no text read from this page)" });
+  });
+  const n = input.pages.length;
+  content.push({ type: "text", text: `That is the whole stack: ${n} page${n > 1 ? "s" : ""} in scan order. Today is ${today}.` });
+  const req = {
+    model,
+    max_tokens: 8000,
+    system: [{ type: "text", text: SPLIT_PROMPT, cache_control: { type: "ephemeral" } }],
+    messages: [{ role: "user", content }],
+    output_config: { effort, format: { type: "json_schema", schema: SPLIT_SCHEMA } },
+  };
+  if (FALLBACK_MODELS.has(model)) { req.betas = ["server-side-fallback-2026-07-01"]; req.fallbacks = "default"; }
+  return req;
+}
+
+// Turns Claude's start pages into ranges that cover every page once, in order. Out of range,
+// repeated or non-integer starts are dropped, page 1 always starts a document, and a label that is
+// missing or empty falls back to "Document {n}".
+function normalizeSplit(raw, pageCount) {
+  const list = raw && typeof raw === "object" && Array.isArray(raw.documents) ? raw.documents : [];
+  const starts = new Map();
+  for (const doc of list) {
+    if (!doc || typeof doc !== "object") continue;
+    const first = doc.firstPage;
+    if (!Number.isInteger(first) || first < 1 || first > pageCount || starts.has(first)) continue;
+    starts.set(first, String(doc.label || "").replace(/\s+/g, " ").trim().slice(0, MAX_SPLIT_LABEL));
+  }
+  if (!starts.has(1)) starts.set(1, "");
+  const firsts = [...starts.keys()].sort((a, b) => a - b);
+  const documents = firsts.map((first, i) => ({
+    start: first - 1,
+    end: (i + 1 < firsts.length ? firsts[i + 1] : pageCount + 1) - 2,
+    label: starts.get(first) || `Document ${i + 1}`,
+  }));
+  return { documents };
+}
+
+// The split call, after the same sign-in and allowlist checks as a read.
+async function splitStack(data, deps) {
+  const input = validateSplit(data);
+  const model = deps.model(), effort = deps.effort();
+  let res;
+  try {
+    res = await deps.client().beta.messages.create(buildSplitRequest(input, { model, effort, today: deps.today() }));
+  } catch (e) {
+    const mapped = mapApiError(e, deps.Anthropic);
+    if (mapped.code === "unknown" || mapped.code === "bad_request") deps.log && deps.log("split: Claude call failed", { status: e && e.status, message: e && e.message });
+    throw mapped;
+  }
+  if (res.stop_reason === "refusal") throw new ClassifyError("failed-precondition", "refused", "Claude declined to split this stack.");
+  if (res.stop_reason === "max_tokens") throw new ClassifyError("internal", "invalid_json", "Claude's answer was cut off.");
+  const text = (res.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
+  let parsed;
+  try { parsed = JSON.parse(text); } catch { throw new ClassifyError("internal", "invalid_json", "Claude's answer was not valid JSON."); }
+  const split = normalizeSplit(parsed, input.pages.length);
+  const u = res.usage || {};
+  deps.log && deps.log("split: done", { model: res.model, pages: input.pages.length, documents: split.documents.length, input_tokens: u.input_tokens, output_tokens: u.output_tokens });
+  return { split, model: res.model || model };
+}
+
 // The whole callable: auth and allowlist first, then validate, call Claude, parse, normalize.
 // deps: { client(), allowlist(), model(), effort(), today(), Anthropic, log }
 async function classify(request, deps) {
   if (!request || !request.auth) throw new ClassifyError("unauthenticated", "signed_out", "Sign in first.");
   if (!isAllowed(request.auth.token, deps.allowlist())) throw new ClassifyError("permission-denied", "not_allowed", "This app is private.");
+  if (request.data && request.data.mode === "split") return splitStack(request.data, deps);
   const input = validate(request.data);
   const model = deps.model(), effort = deps.effort();
   let res;
@@ -374,4 +509,6 @@ module.exports = {
   CONFIDENCE_FIELDS, ALTERNATIVE_FIELDS,
   userText, extrasText, schemaFor, normalize, normalizeConfidence, cleanSenderHints, renderFilename, applySenderRule,
   parseAllowlist, isAllowed, validate, buildRequest, mapApiError, classify, ClassifyError, slug, cleanName,
+  SPLIT_PROMPT, SPLIT_SCHEMA, MAX_SPLIT_PAGES, MAX_SPLIT_IMAGES, MAX_SPLIT_PAGE_CHARS,
+  validateSplit, buildSplitRequest, normalizeSplit,
 };

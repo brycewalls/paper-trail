@@ -27,6 +27,23 @@ final class LiveClassifyService: ClassifyService {
         }
     }
 
+    /// Stack mode (#19): the same callable with `mode: "split"`. A function deployed before split
+    /// mode refuses the request as `bad_request` (it has no `kind`), which the review treats like
+    /// any other failed split: the stack stays one document and the scissors still work.
+    func proposeSplit(_ request: SplitRequest) async throws -> [SplitDocument] {
+        guard Auth.auth().currentUser != nil else {
+            throw ClassifyFailure(code: .signedOut, message: "Not signed in.")
+        }
+        var callable = Functions.functions(region: "us-central1")
+            .httpsCallable("classify", requestAs: SplitRequest.self, responseAs: SplitResponse.self)
+        callable.timeoutInterval = Self.timeout
+        do {
+            return try await callable.call(request).split.documents
+        } catch {
+            throw Self.failure(from: error)
+        }
+    }
+
     /// Maps whatever the SDK threw to a ClassifyFailure.
     nonisolated static func failure(from error: any Error) -> ClassifyFailure {
         if let failure = error as? ClassifyFailure { return failure }

@@ -8,6 +8,8 @@
 //                          is one scanned page. Without it, the four SampleData pages are drawn.
 //   -PTScanSeam            use the seam even where the camera works.
 //   -PTOpenScan            start a scan as soon as Sort appears (for screenshots and UI checks).
+//   -PTScanStack           draw SampleData's six-page pile instead of the four single pages (#19).
+//   -PTAutoSplit           sample mode only: tap "Split into documents" as the review opens.
 import CoreGraphics
 import CoreText
 import Foundation
@@ -18,6 +20,7 @@ nonisolated enum SampleScanSource {
 
     static var forced: Bool { arguments.contains("-PTScanSeam") }
     static var opensScanAtLaunch: Bool { arguments.contains("-PTOpenScan") }
+    static var drawsStack: Bool { arguments.contains("-PTScanStack") }
 
     static var sourcePath: String? {
         guard let i = arguments.firstIndex(of: "-PTScanSource"), arguments.indices.contains(i + 1) else { return nil }
@@ -27,7 +30,7 @@ nonisolated enum SampleScanSource {
     /// Page JPEGs, as the scanner would hand them over.
     @MainActor
     static func pages() async -> [Data] {
-        await render(texts: SampleData.pageTexts, path: sourcePath)
+        await render(texts: drawsStack ? SampleData.stackPageTexts : SampleData.pageTexts, path: sourcePath)
     }
 
     @concurrent

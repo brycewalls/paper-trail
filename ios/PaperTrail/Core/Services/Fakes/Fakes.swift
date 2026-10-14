@@ -51,6 +51,31 @@ final class FakeClassifyService: ClassifyService {
         let card = SenderRuleEngine.apply(request.senderHints ?? [], to: SampleData.card(forText: request.ocrText))
         return ClassifyResponse(result: card, model: "fake")
     }
+
+    private(set) var splitRequests: [SplitRequest] = []
+
+    /// Stack mode (#19), for the simulator, sample mode and tests: a page starts a new document
+    /// when its first line (the letterhead) differs from the page before. Labels are the sample
+    /// card's title for that text.
+    func proposeSplit(_ request: SplitRequest) async throws -> [SplitDocument] {
+        splitRequests.append(request)
+        try? await Task.sleep(for: delay * 3)
+        if let failure { throw ClassifyFailure(code: failure, message: "Fake failure") }
+        return Self.split(request.pages.map(\.text))
+    }
+
+    static func split(_ texts: [String]) -> [SplitDocument] {
+        let heads = texts.map { $0.split(separator: "\n").first.map(String.init) ?? "" }
+        var documents: [SplitDocument] = []
+        for (index, head) in heads.enumerated() {
+            if index > 0, head == heads[index - 1] || head.isEmpty {
+                documents[documents.count - 1].end = index
+            } else {
+                documents.append(SplitDocument(start: index, end: index, label: SampleData.card(forText: texts[index]).title))
+            }
+        }
+        return documents
+    }
 }
 
 final class FakeDriveService: DriveService {

@@ -1,0 +1,13 @@
+{
+  "name": "paper-trail-functions",
+  "private": true,
+  "description": "The classify callable for paper-trail-bw: reads one document with Claude and returns the filing card.",
+  "main": "index.js",
+  "engines": { "node": "22" },
+  "scripts": { "test": "node --test test/*.test.mjs" },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.129.0",
+    "firebase-admin": "14.5.0",
+    "firebase-functions": "7.4.0"
+  }
+}

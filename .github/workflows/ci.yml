@@ -1,0 +1,73 @@
+# Paper Trail CI. Every push to main and every pull request:
+#   smoke      opens every HTML page in headless Chromium at desktop and phone widths and fails on
+#              console errors, page errors, failed requests, or horizontal overflow (the template's
+#              test, from Web Development Resources/github-template)
+#   deck       sorts a small stack in the real page against tools/fake/fake-backend.js and checks
+#              the original file reaches (fake) Drive byte for byte
+#   functions  the classify function's unit tests, Claude stood in
+# Pushing a tag like v1.2 publishes a Release with a zip of the site attached.
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    name: Open every page
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Playwright
+        run: |
+          npm install --no-save playwright@1
+          npx playwright install --with-deps chromium
+      - name: Smoke test every page
+        run: node tools/smoke_test.mjs
+      - name: Sort a stack against the fake backend
+        run: node tools/deck_test.mjs
+      - name: Keep the screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: page-screenshots
+          path: tools/smoke/
+          retention-days: 14
+
+  functions:
+    name: Function unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - run: npm ci --prefix functions
+      - run: node --test functions/test/*.test.mjs
+
+  release:
+    name: Publish release
+    needs: [smoke, functions]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Zip the site
+        run: |
+          NAME="${GITHUB_REPOSITORY##*/}-${GITHUB_REF_NAME}"
+          zip -r "$NAME.zip" public functions firebase firebase.json .firebaserc -x "functions/node_modules/*" "*.DS_Store"
+          ls -la "$NAME.zip"
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" ./*.zip --title "$GITHUB_REF_NAME" --generate-notes

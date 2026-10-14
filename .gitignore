@@ -1,0 +1,11 @@
+tools/smoke/
+node_modules/
+.DS_Store
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+firestore-debug.log
+ui-debug.log
+.claude/
+functions/.secret.local
+functions/*.local

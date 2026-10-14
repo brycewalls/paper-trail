@@ -1,0 +1,24 @@
+name: Roadmap item
+description: A bigger idea for later, tracked so it doesn't get lost
+title: "[Roadmap] "
+labels: ["roadmap"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it matters
+  - type: dropdown
+    id: size
+    attributes:
+      label: Rough size
+      options:
+        - An evening
+        - A weekend
+        - Several sessions
+        - Unknown

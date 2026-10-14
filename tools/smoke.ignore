@@ -1,0 +1,2 @@
+# Pages the smoke test should skip: one path or folder prefix per line, relative to the repo root.
+# Example: build/template.html

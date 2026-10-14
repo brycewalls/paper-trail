@@ -1,0 +1,42 @@
+name: Bug
+description: Something on the site did the wrong thing
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: input
+    id: page
+    attributes:
+      label: Page
+      description: The URL or file, and the section if it matters
+      placeholder: "index.html, the services grid"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen again
+  - type: dropdown
+    id: device
+    attributes:
+      label: Where you saw it
+      options:
+        - Desktop Chrome
+        - Desktop Safari
+        - iPhone Safari
+        - Android Chrome
+        - Not device-specific
+  - type: dropdown
+    id: severity
+    attributes:
+      label: How bad
+      options:
+        - Blocks visitors (page broken, form fails, nothing loads)
+        - Annoying but there's a workaround
+        - Cosmetic

@@ -1,0 +1,20 @@
+rules_version = '2';
+// Paper Trail keeps one subtree per Google account: users/{uid}/docs, users/{uid}/paperless and
+// users/{uid}/config. Only the signed-in owner of that uid can read or write it, and only when the
+// account is on the allowlist. That list must match ALLOWED_EMAILS in functions/.env (#5, #8).
+// The page also uses a refused read here to show "This app is private".
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function allowed() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.lower() in ["bryce.evan.walls@gmail.com"];
+    }
+    match /users/{uid}/{document=**} {
+      allow read, write: if allowed() && request.auth.uid == uid;
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

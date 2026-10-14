@@ -1,4 +1,4 @@
-// Builds every app icon in public/ from one drawing: three piles of paper (Shred, Scan + shred,
+// Builds every app icon in public/ (and the iPhone app's icon in ios/) from one drawing: three piles of paper (Shred, Scan + shred,
 // Keep original), each topped with its stamp color, on dark ink. Issue #10, direction C.
 //   node tools/make_icons.mjs
 // Change the art in ART below, then rerun. Needs Playwright's Chromium (see the README's Tests line).
@@ -7,7 +7,10 @@ import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
-const out = resolve(dirname(fileURLToPath(import.meta.url)), "..", "public");
+const repo = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const out = join(repo, "public");
+// The iPhone app's single 1024px icon (iOS draws every other size from it).
+const iosIcon = join(repo, "ios", "PaperTrail", "Resources", "Assets.xcassets", "AppIcon.appiconset", "icon-1024.png");
 
 const INK = "#16202b";   // the app's --ink token, the tile ground
 const PAPER = "#e6ebf0"; // dark theme --ink, the sheets
@@ -51,6 +54,7 @@ const pngs = [
   ["icon-512.png", tile, 512],
   ["icon-maskable-192.png", maskable, 192],
   ["icon-maskable-512.png", maskable, 512],
+  [iosIcon, apple, 1024],
 ];
 
 const browser = await chromium.launch();
@@ -59,8 +63,10 @@ for (const [name, source, size] of pngs) {
   await page.setViewportSize({ width: size, height: size });
   await page.setContent(`<!doctype html><style>html,body{margin:0;background:transparent}img{display:block;width:${size}px;height:${size}px}</style><img src="data:image/svg+xml;base64,${Buffer.from(source).toString("base64")}">`);
   await page.waitForFunction(() => document.images[0].complete && document.images[0].naturalWidth > 0);
-  await page.screenshot({ path: join(out, name), omitBackground: true, clip: { x: 0, y: 0, width: size, height: size } });
-  console.log(`public/${name}  ${size}px`);
+  const path = name.startsWith("/") ? name : join(out, name);
+  // The iOS icon must be opaque: no omitBackground, so the PNG has no alpha to turn black.
+  await page.screenshot({ path, omitBackground: path !== iosIcon, clip: { x: 0, y: 0, width: size, height: size } });
+  console.log(`${path.slice(repo.length + 1)}  ${size}px`);
 }
 await browser.close();
 console.log("public/favicon.svg");

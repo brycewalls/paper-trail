@@ -9,3 +9,7 @@ ui-debug.log
 .claude/
 functions/.secret.local
 functions/*.local
+
+# iPhone app build outputs (tools/build_ipa.sh)
+dist/
+ios/.spm/

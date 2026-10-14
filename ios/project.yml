@@ -1,0 +1,98 @@
+# Paper Trail for iPhone. XcodeGen spec: the .xcodeproj is generated from this file and never
+# committed or hand-edited. Regenerate after adding, moving or removing files:
+#   cd ios && xcodegen
+# See ARCHITECTURE.md for the structure and who owns which folder.
+name: PaperTrail
+options:
+  bundleIdPrefix: com.brycewalls
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    # Swift 6.2 approachable concurrency: app code is MainActor unless it says otherwise.
+    # Heavy work (PDF, OCR, hashing) opts out with nonisolated / @concurrent.
+    SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+    SWIFT_APPROACHABLE_CONCURRENCY: "YES"
+    TARGETED_DEVICE_FAMILY: "1"
+    # Free Apple ID sideload: no team, no entitlements. SideStore signs the .ipa on the phone.
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_IDENTITY: ""
+    ENABLE_USER_SCRIPT_SANDBOXING: "YES"
+
+packages:
+  Firebase:
+    url: https://github.com/firebase/firebase-ios-sdk
+    exactVersion: 13.0.1
+
+targets:
+  PaperTrail:
+    type: application
+    platform: iOS
+    sources:
+      - path: PaperTrail
+      - path: GoogleService-Info.plist
+        buildPhase: resources
+    dependencies:
+      - package: Firebase
+        product: FirebaseAuth
+      - package: Firebase
+        product: FirebaseFirestore
+      - package: Firebase
+        product: FirebaseFunctions
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.brycewalls.papertrail
+        PRODUCT_NAME: PaperTrail
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        OTHER_LDFLAGS: ["$(inherited)", "-ObjC"]
+        GENERATE_INFOPLIST_FILE: "YES"
+    info:
+      path: PaperTrail/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: Paper Trail
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UIRequiresFullScreen: true
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        NSCameraUsageDescription: Paper Trail uses the camera to scan your paperwork.
+        NSPhotoLibraryUsageDescription: Paper Trail imports photos of paperwork you choose.
+        ITSAppUsesNonExemptEncryption: false
+
+  PaperTrailTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: PaperTrailTests
+    dependencies:
+      - target: PaperTrail
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.brycewalls.papertrail.tests
+        GENERATE_INFOPLIST_FILE: "YES"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/PaperTrail.app/PaperTrail"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+
+schemes:
+  PaperTrail:
+    build:
+      targets:
+        PaperTrail: all
+        PaperTrailTests: [test]
+    test:
+      targets:
+        - PaperTrailTests
+      gatherCoverageData: false
+    run:
+      config: Debug
+    archive:
+      config: Release

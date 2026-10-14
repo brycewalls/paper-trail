@@ -342,11 +342,14 @@ final class AppWalkthroughUITests: PaperTrailUITestCase {
         launch()
         waitFor(card, 20)
         let before = topCardLabel
+        // #74: a plain tap opens the menu with all three sources (decision 1). It used to scan at once
+        // and hide both imports behind a long press.
         let scan = element("sort.scan")
-        scan.press(forDuration: 1.0)
-        waitFor(app.buttons["Scan document"], 5, "Long press on Scan should show the menu")
-        XCTAssertTrue(app.buttons["Import from Files"].exists)
-        XCTAssertTrue(app.buttons["Import from Photos"].exists)
+        scan.tap()
+        waitFor(app.buttons["Scan document"], 5, "A tap on Scan should open the menu")
+        XCTAssertTrue(app.buttons["Import from Files"].exists, "The Scan menu is missing Import from Files (#74)")
+        XCTAssertTrue(app.buttons["Import from Photos"].exists, "The Scan menu is missing Import from Photos (#74)")
+        XCTAssertFalse(element("review.send").exists, "A tap on Scan started a scan instead of opening the menu (#74)")
         shot("60-scan-menu")
         // In the simulator, Scan document feeds the sample pages (SampleScanSource) instead of the camera.
         app.buttons["Scan document"].tap()
@@ -373,8 +376,8 @@ final class AppWalkthroughUITests: PaperTrailUITestCase {
     func testStackScanWaitsForTheSplit() {
         launch(["-PTScanStack"])
         waitFor(card, 20)
-        element("sort.scan").press(forDuration: 1.0)
-        waitFor(app.buttons["Scan document"], 5, "Long press on Scan should show the menu").tap()
+        element("sort.scan").tap()
+        waitFor(app.buttons["Scan document"], 5, "A tap on Scan should open the menu").tap()
         waitFor(element("review.send"), 15, "Scan didn't open the review screen")
         // Header rows combine their text and pill, so match on what the label contains.
         let held = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Reads when you split or send'")).firstMatch

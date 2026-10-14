@@ -64,3 +64,38 @@ nonisolated struct ClassifyFailure: Error, Sendable, Hashable {
     var code: ClassifyErrorCode
     var message: String
 }
+
+// MARK: - Split mode (#19, stack mode)
+
+/// One page of a scanned pile for a split request: its on-device OCR text and, optionally, a small
+/// thumbnail so Claude can see letterheads and layout.
+nonisolated struct SplitPage: Codable, Sendable, Hashable {
+    var text: String
+    var image: ClassifyImage?
+}
+
+/// The classify callable in split mode: `mode` is always "split". The function answers with where
+/// each document starts instead of a card. An older function refuses it as `bad_request`.
+nonisolated struct SplitRequest: Codable, Sendable, Hashable {
+    var mode: String = "split"
+    var pages: [SplitPage]
+
+    init(pages: [SplitPage]) { self.pages = pages }
+}
+
+/// One proposed document: 0-based, inclusive page range in scan order, and a short label
+/// ("Duke Energy bill, March 2024").
+nonisolated struct SplitDocument: Codable, Sendable, Hashable {
+    var start: Int
+    var end: Int
+    var label: String
+}
+
+nonisolated struct SplitResponse: Codable, Sendable, Hashable {
+    nonisolated struct Split: Codable, Sendable, Hashable {
+        var documents: [SplitDocument]
+    }
+
+    var split: Split
+    var model: String
+}

@@ -160,6 +160,8 @@ final class CaptureController {
         review = model
         phase = .review
         model.start()
+        // Sample-mode seam for simulator screenshots: tap "Split into documents" at once.
+        if env.isSample, ProcessInfo.processInfo.arguments.contains("-PTAutoSplit") { model.splitIntoDocuments() }
     }
 
     private func close() {

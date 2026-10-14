@@ -21,6 +21,11 @@ final class AppRouter {
     var tab: AppTab = .sort
     var paths: [AppTab: NavigationPath] = [:]
     var showSettings = false
+    /// The search island's field (spec 4.6). RootView owns the field (it wraps the search tab's stack), so
+    /// its text lives here and SearchScreen mirrors it into its view model.
+    var searchText = ""
+    /// Bumped when the keyboard's Search key is pressed in that field.
+    var searchSubmits = 0
     /// Screens that take the bottom edge (card detail's Shred / File bar, the Outbox itself) hide
     /// the outbox accessory while they're on screen. Keyed by screen so two can't race.
     var accessoryHiders: Set<String> = []

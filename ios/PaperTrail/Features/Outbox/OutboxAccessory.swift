@@ -84,17 +84,17 @@ struct OutboxAccessory: View {
         Group {
             switch state {
             case .caughtUp:
-                Image(systemName: "checkmark.circle.fill").foregroundStyle(OutboxPalette.file)
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(Color(.file))
             case .empty:
                 Image(systemName: "tray").foregroundStyle(.secondary)
             case .uploading(_, _, let fraction):
-                OutboxRing(value: fraction)
+                ProgressRing(value: fraction)
             case .offline:
                 Image(systemName: "wifi.slash").foregroundStyle(.secondary)
             case .needsRetry:
-                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(OutboxPalette.unsure)
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color(.unsure))
             case .reconnect:
-                Image(systemName: "exclamationmark.icloud.fill").foregroundStyle(OutboxPalette.danger)
+                Image(systemName: "exclamationmark.icloud.fill").foregroundStyle(Palette.danger)
             }
         }
         .font(.title3)

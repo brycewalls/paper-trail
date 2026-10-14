@@ -37,16 +37,28 @@ final class ScanReviewViewModel {
         case groups([[UUID]])
     }
 
-    /// Optional split proposal (#19): page texts in, page index groups out. The classify agent's
-    /// `ClassifyService.proposeSplit(pageTexts:)` plugs in here once it exists; until then a scan
-    /// starts as one document and the person splits it by hand (spec 4.11 fallback).
-    typealias SplitProposer = ([String]) async -> [[Int]]
+    /// Stack mode (#19): a pile's pages in, where each document starts out. Defaults to
+    /// `ClassifyService.proposeSplit`; tests pass their own.
+    typealias SplitProposer = (SplitRequest) async throws -> [SplitDocument]
+
+    /// "Split into documents" (#19): offered after a multi-page scan or import.
+    enum SplitState: Equatable {
+        /// Not asked yet (or pages were added since).
+        case idle
+        /// Claude is finding where each document starts.
+        case splitting
+        /// Applied. `documents` is how many documents the review holds now.
+        case done(documents: Int)
+        /// Claude couldn't split it; the pages stay as they were.
+        case failed
+    }
 
     private(set) var session: ReviewSession
     private(set) var states: [UUID: GroupState] = [:]
     /// Small page JPEGs for the review strip, by page ID.
     private(set) var thumbnails: [UUID: Data] = [:]
     private(set) var isSent = false
+    private(set) var splitState: SplitState = .idle
     /// Called whenever items join SwiftData (so Sort can refresh the deck).
     var onAdded: () -> Void = {}
 
@@ -57,11 +69,11 @@ final class ScanReviewViewModel {
     private let container: ModelContainer
     private let reader: ReadingQueue
     private let docs: any DocStore
-    private let proposeSplit: SplitProposer?
+    private let proposeSplit: SplitProposer
     private var texts: [String: PageText] = [:]
     private var pdfCache: [String: Data] = [:]
     private var tasks: [UUID: Task<Void, Never>] = [:]
-    /// The split proposal in flight, if any (#19).
+    /// "Split into documents" in flight, if any (#19).
     private var proposalTask: Task<Void, Never>?
     private var inserted: Set<UUID> = []
     private var filedKnown: [KnownDocument]?
@@ -73,7 +85,8 @@ final class ScanReviewViewModel {
         self.context = env.modelContainer.mainContext
         self.reader = ReadingQueue(env: env)   // classify: sends and applies sender rules (#21)
         self.docs = env.docs
-        self.proposeSplit = proposeSplit
+        let classify = env.classify
+        self.proposeSplit = proposeSplit ?? { try await classify.proposeSplit($0) }
     }
 
     // MARK: - What the screen shows
@@ -100,6 +113,23 @@ final class ScanReviewViewModel {
     var moreTitle: String { session.kind == .scan ? "Scan more" : "Add more" }
     var discardTitle: String { "Discard \(Self.count(pageCount, "page", "pages"))?" }
 
+    // Stack mode (#19).
+    /// A document with more than one page that Claude could split.
+    var hasStack: Bool { session.groups.contains { $0.pageIDs.count > 1 } }
+    /// Show the "Split into documents" row: before the first split, or to try again.
+    var offersSplit: Bool { !isSent && hasStack && (splitState == .idle || splitState == .failed) }
+    let splitTitle = "Split into documents"
+    var splitDetail: String {
+        switch splitState {
+        case .idle: "Claude finds where each document starts. You can change any split after."
+        case .splitting: "Finding where each document starts"
+        case let .done(documents) where documents == 1:
+            "Claude thinks this is one document. Split it with the scissors if not."
+        case let .done(documents): "Claude found \(documents) documents. Fix any split with the scissors or Join."
+        case .failed: "Claude couldn't split this stack. Split it with the scissors, or try again."
+        }
+    }
+
     func pages(in group: ReviewGroup) -> [ReviewPage] { group.pageIDs.compactMap(session.page) }
     func state(_ group: ReviewGroup) -> GroupState { states[group.id] ?? GroupState() }
 
@@ -107,7 +137,7 @@ final class ScanReviewViewModel {
     /// or "Reading page 2".
     func header(_ group: ReviewGroup) -> (text: String, isRead: Bool) {
         switch state(group).status {
-        case let .reading(page): ("Reading page \(page)", false)
+        case let .reading(page): (group.label ?? "Reading page \(page)", false)
         case let .read(header): (header, true)
         case .failed: ("Couldn't read this one", false)
         }
@@ -129,13 +159,28 @@ final class ScanReviewViewModel {
     func start() {
         persist()
         Task { await loadThumbnails(session.pages) }
-        if let proposeSplit, session.kind == .scan, session.groups.count == 1, pageCount > 1 {
-            proposalTask = Task { [weak self] in
-                await self?.applyProposal(proposeSplit)
-                self?.proposalTask = nil
+        session.groups.forEach(process)
+    }
+
+    /// "Split into documents" (#19): asks Claude where each document in every multi-page group
+    /// starts and splits them to match, each new group labeled until its card is read. The person
+    /// adjusts with the scissors and Join as usual. An edit to a group while Claude works wins over
+    /// the proposal for that group; a failure leaves the pages as they were.
+    func splitIntoDocuments() {
+        guard offersSplit else { return }
+        splitState = .splitting
+        let targets = session.groups.filter { $0.pageIDs.count > 1 }
+        proposalTask = Task { [weak self] in
+            var ok = true
+            for group in targets {
+                guard let self, !Task.isCancelled else { return }
+                if await !self.propose(group) { ok = false }
             }
-        } else {
-            session.groups.forEach(process)
+            guard let self, !Task.isCancelled else { return }
+            self.proposalTask = nil
+            if self.splitState == .splitting {
+                self.splitState = ok ? .done(documents: self.documentCount) : .failed
+            }
         }
     }
 
@@ -197,6 +242,8 @@ final class ScanReviewViewModel {
     func add(_ pages: [ReviewPage], placement: Placement) {
         guard !isSent, !pages.isEmpty else { return }
         session.pages += pages
+        // New pages may be a new stack: offer the split again.
+        if splitState != .splitting { splitState = .idle }
         Task { await loadThumbnails(pages) }
         let ids = pages.map(\.id)
         switch placement {
@@ -219,6 +266,8 @@ final class ScanReviewViewModel {
     func send() {
         guard canSend else { return }
         isSent = true
+        proposalTask?.cancel()
+        proposalTask = nil
         for group in session.groups {
             if group.skipped {
                 tasks[group.id]?.cancel()
@@ -399,30 +448,51 @@ final class ScanReviewViewModel {
         DocumentBuilder.thumbnail(of: source, maxPixel: 260)
     }
 
-    private func applyProposal(_ propose: SplitProposer) async {
-        guard let group = session.groups.first else { return }
-        states[group.id] = GroupState()
-        var pageTexts: [String] = []
-        for (index, page) in pages(in: group).enumerated() {
-            states[group.id]?.status = .reading(page: index + 1)
-            guard let source = source(for: page) else { pageTexts.append(""); continue }
-            pageTexts.append(await text(for: page, source: source).text)
+    /// Asks for one group's split and applies it. False when the split failed (the pages stay as
+    /// they were); true when it was applied, or when an edit or Send made it moot.
+    private func propose(_ group: ReviewGroup) async -> Bool {
+        let pages = pages(in: group)
+        guard pages.count <= SplitPayload.maxPages else { return false }
+        var texts: [String] = []
+        var thumbs: [Data?] = []
+        let withImages = pages.count <= SplitPayload.maxImages
+        for page in pages {
+            guard isCurrent(group.id), !isSent, !Task.isCancelled else { return true }
+            guard let source = source(for: page) else {
+                texts.append("")
+                thumbs.append(nil)
+                continue
+            }
+            texts.append(await text(for: page, source: source).text)
+            thumbs.append(withImages ? await Self.splitThumbnail(source) : nil)
         }
-        let proposal = await propose(pageTexts)
-        // The person split, joined or edited while Claude was proposing: their edit wins.
-        guard isCurrent(group.id) else { return }
-        // Already sent, or a proposal that doesn't fit: keep it as one document.
-        guard !isSent, Self.isValid(proposal, pageCount: group.pageIDs.count) else { return process(group) }
-        let ids = group.pageIDs
-        states[group.id] = nil
-        session.groups = proposal.map { ReviewGroup(pageIDs: $0.map { ids[$0] }) }
-        persist()
-        session.groups.forEach(process)
+        let documents: [SplitDocument]
+        do {
+            documents = try await proposeSplit(SplitPayload.request(texts: texts, thumbnails: thumbs))
+        } catch {
+            return !isCurrent(group.id) || isSent
+        }
+        // The person split, joined or edited while Claude was proposing, or sent: their call wins.
+        guard isCurrent(group.id), !isSent, let at = session.groups.firstIndex(where: { $0.id == group.id }) else {
+            return true
+        }
+        guard let proposal = SplitPayload.groups(from: documents, pageCount: pages.count) else { return false }
+        if proposal.count == 1 {
+            // One document: keep its read going, add the label.
+            session.groups[at].label = proposal[0].label.isEmpty ? nil : proposal[0].label
+            persist()
+            return true
+        }
+        let ids = pages.map(\.id)
+        replace(at: at, with: proposal.map {
+            ReviewGroup(pageIDs: $0.pages.map { ids[$0] }, label: $0.label.isEmpty ? nil : $0.label)
+        })
+        return true
     }
 
-    /// A proposal must cover every page once, in order.
-    static func isValid(_ proposal: [[Int]], pageCount: Int) -> Bool {
-        !proposal.contains(where: \.isEmpty) && proposal.flatMap { $0 } == Array(0..<pageCount)
+    @concurrent
+    private nonisolated static func splitThumbnail(_ source: SourcePage) async -> Data? {
+        DocumentBuilder.thumbnail(of: source, maxPixel: SplitPayload.thumbnailPixels)
     }
 
     // MARK: - Duplicates (#2)

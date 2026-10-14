@@ -60,10 +60,19 @@ protocol ClassifyService: AnyObject {
     /// spec's order, each with Claude's best value and up to two alternatives. The deck hosts the
     /// sheet; classify fills it. The default (below) reads `card.confidence` only.
     func checkFields(for card: DocumentCard) -> CheckFieldsData
+    /// Stack mode (#19): where each document in a scanned pile starts, with a short label. The
+    /// classify callable in split mode. Throws ClassifyFailure; an older function that doesn't
+    /// know split mode throws `.badRequest`.
+    func proposeSplit(_ request: SplitRequest) async throws -> [SplitDocument]
 }
 
 extension ClassifyService {
     func checkFields(for card: DocumentCard) -> CheckFieldsData { CheckFieldsData.fromConfidence(card) }
+    /// Default for services that can't split (test doubles): the review keeps the stack as one
+    /// document and says so.
+    func proposeSplit(_ request: SplitRequest) async throws -> [SplitDocument] {
+        throw ClassifyFailure(code: .badRequest, message: "Splitting isn't available.")
+    }
 }
 
 // MARK: - Check fields [classify fills, deck hosts]

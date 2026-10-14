@@ -39,7 +39,7 @@ struct SettingsScreen: View {
                 }
             }
         }
-        .tint(AuthPalette.accent)   // AccentColor (spec 2.1) until the shared color sets land
+        .tint(Color(.accent))
         .onAppear { if account == nil { account = AccountSettingsModel(env: env) } }
     }
 }

@@ -71,11 +71,11 @@ struct PilesScreen: View {
         }
         if let banner = model.safeBanner {
             Section {
-                PileKit.BannerRow(background: PileKit.Palette.fileSoft) {
+                BannerContent(fill: Color(.fileSoft)) {
                     HStack(alignment: .firstTextBaseline, spacing: 12) {
                         Image(systemName: "checkmark")
                             .fontWeight(.semibold)
-                            .foregroundStyle(PileKit.Palette.file)
+                            .foregroundStyle(Color(.file))
                             .accessibilityHidden(true)
                         Text("\(Text(banner.bold).bold()) \(banner.rest)")
                             .font(.subheadline)
@@ -86,10 +86,10 @@ struct PilesScreen: View {
         if !model.safe.isEmpty {
             Section(caps: "Safe to shred") {
                 ForEach(model.visibleSafe) { doc in
-                    row(doc, subtitle: model.shredSubtitle(doc)) { PileKit.StatusPill(kind: .safe) }
+                    row(doc, subtitle: model.shredSubtitle(doc)) { StatusPill(kind: .safe) }
                         .swipeActions(edge: .trailing) {
                             Button("Shredded") { Task { await model.markShredded(doc) } }
-                                .tint(PileKit.Palette.fileFill)
+                                .tint(Color(.fileFill))
                         }
                 }
                 if model.hiddenSafeCount > 0 {
@@ -112,7 +112,7 @@ struct PilesScreen: View {
             Section(caps: "Waiting") {
                 ForEach(model.waiting) { doc in
                     row(doc, subtitle: model.waitingSubtitle(doc)) {
-                        PileKit.StatusPill(kind: .waiting(model.waitingPill(doc)))
+                        StatusPill(kind: model.waitingDaysLeft(doc).map { .waiting(daysLeft: $0) } ?? .checking)
                     }
                 }
             }
@@ -130,7 +130,7 @@ struct PilesScreen: View {
                     row(doc, subtitle: model.keepSubtitle(doc)) { EmptyView() }
                         .swipeActions(edge: .trailing) {
                             Button("Put away") { Task { await model.putAway(doc) } }
-                                .tint(PileKit.Palette.accentFill)
+                                .tint(Color(.accentFill))
                         }
                 }
             }
@@ -162,7 +162,7 @@ struct PilesScreen: View {
         ForEach(model.filedByMonth, id: \.title) { group in
             Section(caps: group.title) {
                 ForEach(group.docs) { doc in
-                    row(doc, subtitle: model.filedSubtitle(doc)) { PileKit.VerdictBadge(verdict: doc.verdict) }
+                    row(doc, subtitle: model.filedSubtitle(doc)) { VerdictBadge(verdict: doc.verdict) }
                         .contextMenu {
                             if let url = model.driveURL(doc) {
                                 Link(destination: url) { Label("Open in Drive", systemImage: "arrow.up.forward.square") }
@@ -192,7 +192,7 @@ struct PilesScreen: View {
             opened = doc
         } label: {
             HStack(spacing: 12) {
-                PileKit.DocThumbnail(doc: doc)
+                DocThumbnail(label: doc.thumbnailLabel)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(doc.title).font(.body).foregroundStyle(.primary)
                     Text(subtitle).font(.footnote).foregroundStyle(.secondary)
@@ -222,7 +222,7 @@ struct PilesScreen: View {
         } label: {
             Text(model.markTitle)
                 .font(.headline)
-                .foregroundStyle(PileKit.Palette.accent)
+                .foregroundStyle(Color(.accent))
                 .padding(.horizontal, 24)
                 .frame(minHeight: 54)
         }
@@ -245,11 +245,11 @@ private struct ReconnectBanner: View {
 
     var body: some View {
         Section {
-            PileKit.BannerRow(background: PileKit.Palette.shredSoft) {
+            BannerContent(fill: Color(.shredSoft)) {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(alignment: .firstTextBaseline, spacing: 12) {
                         Image(systemName: "exclamationmark.icloud.fill")
-                            .foregroundStyle(PileKit.Palette.danger)
+                            .foregroundStyle(Palette.danger)
                             .accessibilityHidden(true)
                         Text("\(Text("Drive needs reconnecting.").bold()) Your scans are safe on this phone and upload once it's back.")
                             .font(.subheadline)
@@ -265,7 +265,7 @@ private struct ReconnectBanner: View {
                     if model.reconnectFailed {
                         Text("Drive didn't reconnect. Try again in a minute.")
                             .font(.footnote)
-                            .foregroundStyle(PileKit.Palette.danger)
+                            .foregroundStyle(Palette.danger)
                     }
                 }
             }

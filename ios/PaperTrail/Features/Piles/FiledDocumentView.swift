@@ -17,7 +17,7 @@ struct FiledDocumentView: View {
         Form {
             Section {
                 VStack(alignment: .leading, spacing: 8) {
-                    PileKit.VerdictBadge(verdict: doc.verdict, large: true)
+                    VerdictBadge(verdict: doc.verdict, size: .large)
                     if !doc.verdictReason.isEmpty {
                         Text("Why: \(doc.verdictReason)")
                             .font(.subheadline)
@@ -54,8 +54,7 @@ struct FiledDocumentView: View {
                 LabeledContent("Retention", value: doc.retention)
                 if doc.sensitive {
                     LabeledContent("Sensitive") {
-                        PileKit.Pill(text: "Sensitive", symbol: "lock.fill", foreground: PileKit.Palette.unsure,
-                                     background: PileKit.Palette.unsureSoft)
+                        SensitiveChip()
                     }
                 }
             }
@@ -99,7 +98,7 @@ enum SearchHighlight {
             guard let lower = AttributedString.Index(range.lowerBound, within: out),
                   let upper = AttributedString.Index(range.upperBound, within: out) else { continue }
             out[lower..<upper].inlinePresentationIntent = .stronglyEmphasized
-            out[lower..<upper].backgroundColor = PileKit.Palette.accentSoft
+            out[lower..<upper].backgroundColor = Color(.accentSoft)
         }
         return out
     }

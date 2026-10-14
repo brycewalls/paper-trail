@@ -105,6 +105,7 @@ Neutrals come from the system so they track Increase Contrast and future iOS cha
 | `Danger` | Shred button and overlay, failed uploads, Drive disconnected | same as `Shred` | same as `Shred` |
 | `Unsure` | "Not sure" text, "2 to check" pill, Sensitive chip, Requested pill, "Still mailing?" | #A15C00 | #F2C05A |
 | `UnsureSoft` | Unsure row highlight, the pills above, the "Still mailing?" banner | #FFF3D6 | #33280F |
+| `FileFill` | Solid fill behind a white label: the "Shredded" and "Confirmed" swipe actions | #17773F | #1A7F4B (white on `File` dark #5FD393 is too light) |
 
 Contrast (checked): every text/background pair above is 4.5:1 or better in both themes. `.secondary` on `CardWell` is the weakest pair, so gray pills use `.secondary` with `.semibold` weight.
 

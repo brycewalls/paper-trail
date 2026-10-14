@@ -129,15 +129,15 @@ struct CheckFieldsSheet: View {
     }
 
     private var dateChips: some View {
-        ClassifyFlowLayout(spacing: 8) {
+        FlowLayout(spacing: Space.s) {
             ForEach(model.options(for: "docDate")) { option in
-                ClassifyChoiceChip(title: CheckFieldsModel.displayDate(option.value),
-                                   isOn: model.isSelected(option, for: "docDate")) {
+                ChoiceChip(title: CheckFieldsModel.displayDate(option.value),
+                                   isSelected: model.isSelected(option, for: "docDate")) {
                     model.select(option.value, for: "docDate")
                 }
                 .accessibilityValue(option.likelihood.rawValue)
             }
-            ClassifyChoiceChip(title: "Pick a date", systemImage: "calendar", isOn: false) {
+            ChoiceChip(title: "Pick a date", systemImage: "calendar", isSelected: false) {
                 pickerDate = CheckFieldsModel.dateFromISODay(model.currentValue("docDate")) ?? .now
                 showDatePicker = true
             }
@@ -220,7 +220,7 @@ struct CheckFieldsSheet: View {
                 .font(.headline)
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity, minHeight: 52)
-                .background(ClassifyPalette.accentFill, in: .capsule)
+                .background(Color(.accentFill), in: .capsule)
                 .contentShape(.capsule)
         }
         .buttonStyle(.plain)
@@ -272,7 +272,7 @@ private struct RadioRowChrome: ViewModifier {
         HStack(spacing: 12) {
             ZStack {
                 Circle()
-                    .strokeBorder(isSelected ? ClassifyPalette.accent : Color(.tertiaryLabel), lineWidth: isSelected ? 6 : 1.5)
+                    .strokeBorder(isSelected ? Color(.accent) : Color(.tertiaryLabel), lineWidth: isSelected ? 6 : 1.5)
                     .frame(width: 20, height: 20)
             }
             .accessibilityHidden(true)
@@ -281,10 +281,10 @@ private struct RadioRowChrome: ViewModifier {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .frame(minHeight: 48)
-        .background(ClassifyPalette.surface, in: .rect(cornerRadius: 12, style: .continuous))
+        .background(Palette.surface, in: .rect(cornerRadius: 12, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(isSelected ? ClassifyPalette.accent : Color(.separator), lineWidth: isSelected ? 2 : 0.5)
+                .strokeBorder(isSelected ? Color(.accent) : Palette.separator, lineWidth: isSelected ? 2 : 0.5)
         }
         .contentShape(.rect(cornerRadius: 12, style: .continuous))
     }
@@ -310,7 +310,7 @@ struct FolderPickerList: View {
                     Text(SenderRuleEngine.folderName(folder)).foregroundStyle(.primary)
                     Spacer()
                     if folder == selected {
-                        Image(systemName: "checkmark").foregroundStyle(ClassifyPalette.accent)
+                        Image(systemName: "checkmark").foregroundStyle(Color(.accent))
                     }
                 }
             }

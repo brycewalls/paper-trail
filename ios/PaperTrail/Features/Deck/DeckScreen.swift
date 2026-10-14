@@ -10,6 +10,7 @@ enum DeckRoute: Hashable {
 
 struct DeckScreen: View {
     @State private var model: DeckViewModel
+    @Environment(AppEnvironment.self) private var env
     @Environment(AppRouter.self) private var router
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -50,7 +51,7 @@ struct DeckScreen: View {
             .navigationSubtitle(model.subtitle)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    scanMenu
+                    ScanMenuButton()   // capture
                 }
                 ToolbarSpacer(.fixed, placement: .topBarTrailing)
                 ToolbarItem(placement: .topBarTrailing) {
@@ -77,12 +78,10 @@ struct DeckScreen: View {
             }
             .sheet(item: Binding(get: { model.checking.map(CheckTarget.init) },
                                  set: { if $0 == nil { model.cancelCheck() } })) { target in
-                DeckCheckFieldsSheet(
-                    card: target.item.card ?? model.blankCard(for: target.item),
-                    checks: model.checks(for: target.item),
-                    focus: model.checkFocus
-                ) { values, remember in
-                    Task { await confirmCheck(target.item, values: values, remember: remember) }
+                // classify owns the sheet's content (spec 3.8); the deck files the card it returns.
+                CheckFieldsSheet(model: CheckFieldsModel(item: target.item, docs: env.docs),
+                                 startAt: model.checkFocus?.rawValue) { item in
+                    Task { await confirmCheck(item) }
                 }
             }
             .sheet(isPresented: $showBulkSheet) {
@@ -95,6 +94,7 @@ struct DeckScreen: View {
                     announce(model.top == nil ? "All sorted." : "Filed \(chosen.count) cards.")
                 }
             }
+            .captureFlow { model.refresh() }  // capture: scanner, imports, review
             .task { await model.load() }
             .task(id: model.cards.prefix(3).map(\.id)) { await loadThumbnails() }
             .onChange(of: router.tab) { _, tab in
@@ -255,15 +255,10 @@ struct DeckScreen: View {
             } description: {
                 Text("Claude reads each document and gets it ready to file.")
             } actions: {
-                Button("Scan") { scan() }
+                ScanNowButton(title: "Scan")
                     .buttonStyle(.borderedProminent)
-                    .disabled(!model.isSample)
-                Menu("Import") {
-                    Button("Files", systemImage: "folder") { scan() }
-                    Button("Photos", systemImage: "photo.on.rectangle") { scan() }
-                }
-                .buttonStyle(.bordered)
-                .disabled(!model.isSample)
+                ImportMenuButton()   // capture
+                    .buttonStyle(.bordered)
             }
         } else {
             ContentUnavailableView {
@@ -273,31 +268,10 @@ struct DeckScreen: View {
                      : model.filedToday > 1 ? "\(model.filedToday) filed today. The outbox is handling the uploads."
                      : "The outbox is handling the uploads.")
             } actions: {
-                Button("Scan more") { scan() }
+                ScanNowButton(title: "Scan more")
                     .buttonStyle(.bordered)
-                    .disabled(!model.isSample)
             }
         }
-    }
-
-    /// Bryce's decision 1: Scan at the top of Sort, next to the avatar.
-    /// capture: replace this stand-in with ScanMenuButton (VisionKit, Files, Photos). Until then
-    /// only the sample seam works, in sample mode.
-    private var scanMenu: some View {
-        Menu {
-            Button("Scan document", systemImage: "doc.viewfinder") { scan() }
-            Button("Import from Files", systemImage: "folder") { scan() }
-            Button("Import from Photos", systemImage: "photo.on.rectangle") { scan() }
-        } label: {
-            Label("Scan", systemImage: "doc.viewfinder")
-        } primaryAction: {
-            scan()
-        }
-        .disabled(!model.isSample)
-    }
-
-    private func scan() {
-        Task { await model.loadSample() }
     }
 
     // MARK: - Gestures and decisions
@@ -406,10 +380,10 @@ struct DeckScreen: View {
         announce(model.announcement(after: .shred, title: title))
     }
 
-    private func confirmCheck(_ item: PipelineItem, values: [CardField: String], remember: Bool) async {
+    private func confirmCheck(_ item: PipelineItem) async {
         let title = item.card?.title ?? "Document"
         haptic.impactOccurred()
-        let outcome = await model.confirmCheck(item, values: values, remember: remember)
+        let outcome = model.fileChecked(item)
         guard outcome == .decided else { return }
         flyOff(item, side: .file, from: .zero)
         announce(model.announcement(after: .file, title: title))
@@ -558,5 +532,17 @@ private struct ActionRow: View {
         .fixedSize()
         .padding(.horizontal, Space.m)
         .frame(minHeight: Metrics.actionHeight - 16)
+    }
+}
+
+/// Starts a scan through capture's controller (spec 3.11 empty-state buttons). Reads the controller
+/// from the environment, which `.captureFlow` provides to everything inside the Sort screen.
+private struct ScanNowButton: View {
+    let title: String
+    @Environment(CaptureController.self) private var capture: CaptureController?
+
+    var body: some View {
+        Button(title) { Task { await capture?.scan() } }
+            .disabled(capture == nil)
     }
 }

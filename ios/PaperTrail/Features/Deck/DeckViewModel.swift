@@ -69,7 +69,7 @@ final class DeckViewModel {
 
     init(env: AppEnvironment) {
         self.env = env
-        self.reader = ReadingQueue(classify: env.classify, files: env.files)
+        self.reader = ReadingQueue(env: env)   // classify: sends and applies sender rules (#21)
     }
 
     var isSample: Bool { env.isSample }
@@ -310,6 +310,18 @@ final class DeckViewModel {
         item.card = card
         try? context.save()
         if remember { await saveRule(for: card) }
+        guard checks(for: item).isEmpty else { return .needsCheck }
+        commit([item], .file)
+        return .decided
+    }
+
+    /// Classify's check-fields sheet confirmed this card (it wrote the values, cleared the unsure
+    /// fields and saved the sender rule): file it as if swiped right.
+    @discardableResult
+    func fileChecked(_ item: PipelineItem) -> DeckOutcome {
+        checking = nil
+        checkFocus = nil
+        try? context.save()
         guard checks(for: item).isEmpty else { return .needsCheck }
         commit([item], .file)
         return .decided

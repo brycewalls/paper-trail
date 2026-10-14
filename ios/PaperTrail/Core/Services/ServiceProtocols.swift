@@ -33,6 +33,10 @@ protocol AuthService: AnyObject {
     /// Read at launch without waiting on the network.
     var state: AuthState { get }
     var drive: DriveLink { get }
+    /// Signed in, but the first consent came back without Drive. The sign-in screen stays up with
+    /// "Connect Google Drive" until it's granted (design spec 4.1). Different from a later revoke,
+    /// which keeps the app usable and shows Reconnect Drive (4.16).
+    var driveConsentPending: Bool { get }
     /// Runs the sign-in flow chosen in ARCHITECTURE.md ("Auth") and connects Drive server-side.
     func signIn() async throws
     /// Re-runs consent for Drive only, after a revoke.
@@ -41,6 +45,10 @@ protocol AuthService: AnyObject {
     /// A Drive access token (drive.file), minted by the server from the stored refresh token (#15).
     /// Cached until a minute before expiry.
     func driveAccessToken() async throws -> String
+}
+
+extension AuthService {
+    var driveConsentPending: Bool { false }
 }
 
 // MARK: - Classify [classify]
@@ -80,13 +88,14 @@ nonisolated struct CheckFieldsData: Sendable, Hashable {
     /// A field below this confidence is "Not sure" (design spec section 0).
     static let unsureBelow = 0.75
 
-    /// Fields whose confidence is under `unsureBelow`, with no alternatives. A card without
+    /// Fields whose confidence is under `unsureBelow`, with classify's alternatives (up to two). A card without
     /// confidence data has no unsure fields (it just never counts as confident).
     static func fromConfidence(_ card: DocumentCard) -> CheckFieldsData {
         guard let scores = card.confidence?.fields else { return CheckFieldsData(fields: []) }
         let fields = CardField.allCases.compactMap { field -> FieldCheck? in
             guard let score = scores[field.rawValue], score < unsureBelow else { return nil }
-            return FieldCheck(field: field, best: card.value(of: field), alternatives: [])
+            let others = (card.alternatives?[field.rawValue] ?? []).filter { $0 != card.value(of: field) }
+            return FieldCheck(field: field, best: card.value(of: field), alternatives: Array(others.prefix(2)))
         }
         return CheckFieldsData(fields: fields)
     }
@@ -144,6 +153,13 @@ protocol DriveService: AnyObject {
     func metadata(fileID: String) async throws -> DriveFileMetadata
     /// Drive's own full-text search inside the app's folders (#22). Returns file IDs.
     func search(_ text: String) async throws -> [DriveFileMetadata]
+    /// The year subfolder ("2025") inside one of the numbered folders, found or created on demand
+    /// and cached in config/drive under the key "02 Taxes/2025" (the web app ignores extra keys).
+    func ensureYearFolder(_ year: String, in folder: String) async throws -> String
+    /// The file's bytes, for reading the page count back when a checksum doesn't match (#18).
+    func download(fileID: String) async throws -> Data
+    /// Moves a file the app made to Drive's trash (Send back to the deck, Undo after upload).
+    func trash(fileID: String) async throws
 }
 
 // MARK: - Firestore [piles reads, outbox writes docs, classify writes senders]
@@ -165,6 +181,10 @@ protocol DocStore: AnyObject {
 
     func driveFolders() async throws -> DriveFolderCache?
     func saveDriveFolders(_ cache: DriveFolderCache) async throws
+
+    /// users/{uid}/config/settings. Missing doc: AppSettings() defaults. [outbox: shred hold]
+    func settings() async throws -> AppSettings
+    func saveSettings(_ settings: AppSettings) async throws
 }
 
 // MARK: - Capture [capture]
@@ -195,15 +215,37 @@ protocol CaptureService: AnyObject {
 
 // MARK: - Outbox [outbox]
 
+/// What the outbox knows beyond the pipeline items themselves. Views read it for the accessory.
+nonisolated struct OutboxStatus: Sendable, Hashable {
+    /// False while the network path is down; uploads wait instead of failing.
+    var isOnline = true
+    /// Drive answered 401 even after a fresh token: uploads pause until Reconnect Drive.
+    var needsReconnect = false
+    /// Bumps once when the last in-flight upload of a batch verifies (success haptic).
+    var batchesVerified = 0
+    /// Bumps once per item that runs out of automatic retries (warning haptic).
+    var itemsNeedingAttention = 0
+    var lastUploadAt: Date?
+}
+
+/// The deck holds its latest decision this long before calling enqueue, so Undo never has to
+/// reverse an upload (Bryce's decision 4). resumePending skips queued items younger than this.
+nonisolated enum UndoWindow {
+    static let hold: Duration = .seconds(10)
+    static let seconds: TimeInterval = 10
+}
+
 protocol OutboxService: AnyObject {
-    /// Takes a decided item (stage .queued) and drives it to .filed / .verified.
+    var status: OutboxStatus { get }
+    /// Takes a decided item (stage .queued) and drives it to .filed / .verified. Calling it is the
+    /// deck's release of the undo hold: the outbox starts at once.
     func enqueue(_ item: PipelineItem) async
     func retry(_ item: PipelineItem) async
-    /// "Send back to the deck" and the deck's late Undo (design spec 3.3, 4.4): cancel the upload,
-    /// or trash the Drive copy if it finished, and remove the Firestore log entry if one was
-    /// written. Returns false when the local file is already gone (a verified item past the undo
-    /// window), so there's nothing to put back. Same signature as the outbox branch.
-    @discardableResult func sendBack(_ item: PipelineItem) async -> Bool
-    /// Called at launch and when the background session wakes the app.
+    /// Called at launch, after Reconnect Drive, and when the background session wakes the app.
     func resumePending() async
+    /// Cancels the upload (or trashes the Drive copy and deletes the Firestore record if it
+    /// finished) and puts the card back on top of the deck. Returns false when the local file is
+    /// already gone (a verified item past the undo window), so there's nothing to put back.
+    @discardableResult func sendBack(_ item: PipelineItem) async -> Bool
 }
+

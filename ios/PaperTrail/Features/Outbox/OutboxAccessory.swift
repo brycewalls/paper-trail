@@ -1,11 +1,11 @@
-// Owner: outbox. STAND-IN added by deck with the tab shell so the Outbox stays reachable once it
-// stopped being a tab (docs/design-spec.md 3.7). Covers the basic states from SwiftData; the
-// outbox agent replaces the body (byte progress, offline, haptics) and keeps the name and init.
-import SwiftUI
+// Owner: outbox. Spec 3.7: the tab bar accessory above the Liquid Glass tab bar, like the Music
+// mini player. RootView (deck) hosts it in `.tabViewBottomAccessory` and passes `open`, which
+// pushes OutboxScreen onto the current tab.
 import SwiftData
+import SwiftUI
 
 struct OutboxAccessory: View {
-    let open: () -> Void
+    var open: () -> Void
 
     @Environment(AppEnvironment.self) private var env
     @Environment(\.tabViewBottomAccessoryPlacement) private var placement
@@ -13,80 +13,90 @@ struct OutboxAccessory: View {
 
     init(open: @escaping () -> Void) {
         self.open = open
+        let file = PipelineDecision.file.rawValue
+        let shred = PipelineDecision.shredOnly.rawValue
+        _items = Query(filter: #Predicate<PipelineItem> { $0.decisionRaw == file || $0.decisionRaw == shred })
     }
 
-    private var decided: [PipelineItem] { items.filter { $0.decision == .file || $0.decision == .shredOnly } }
-    private var inFlight: [PipelineItem] { decided.filter { $0.stage == .queued || $0.stage == .uploading } }
-    private var needsRetry: Int { decided.filter { $0.stage == .failed }.count }
-    private var filedToday: Int {
-        decided.filter { ($0.stage == .filed || $0.stage == .verified) && Calendar.current.isDateInToday($0.decidedAt ?? .distantPast) }.count
-    }
-
-    private enum Status { case reconnect, attention(Int), uploading(done: Int, total: Int), caughtUp(Int), empty }
-
-    private var status: Status {
-        if env.auth.drive == .needsReconnect { return .reconnect }
-        if needsRetry > 0 { return .attention(needsRetry) }
-        if !inFlight.isEmpty {
-            let batch = inFlight.count + filedToday
-            return .uploading(done: min(batch, filedToday + 1), total: batch)
-        }
-        return filedToday > 0 ? .caughtUp(filedToday) : .empty
+    private var state: AccessoryState {
+        OutboxSummary.accessory(items.map(OutboxEntry.init), status: env.outbox.status,
+                                driveNeedsReconnect: env.auth.drive == .needsReconnect)
     }
 
     var body: some View {
+        let state = state
         Button(action: open) {
-            HStack(spacing: Space.m) {
-                glyph.frame(width: 30, height: 30)
-                if placement == .inline {
-                    if let short { Text(short).font(.subheadline.weight(.semibold)).contentTransition(.numericText()) }
-                } else {
-                    Text(title)
-                        .font(.subheadline.weight(.semibold))
-                        .contentTransition(.numericText())
-                        .lineLimit(2)
-                    Spacer(minLength: Space.s)
-                    Text("Outbox").font(.footnote).foregroundStyle(.secondary)
-                    Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
-                }
+            if placement == .inline {
+                inline(state)
+            } else {
+                expanded(state)
             }
-            .padding(.horizontal, Space.l)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityElement(children: .ignore)
         .accessibilityLabel("Outbox")
-        .accessibilityValue(title)
+        .accessibilityValue(state.title)
         .accessibilityAddTraits(.isButton)
+        .sensoryFeedback(.success, trigger: env.outbox.status.batchesVerified)
+        .sensoryFeedback(.warning, trigger: env.outbox.status.itemsNeedingAttention)
+        // Spec 2.6: Drive needing a reconnect counts as needing attention too, once.
+        .sensoryFeedback(.warning, trigger: env.outbox.status.needsReconnect) { _, now in now }
     }
 
-    @ViewBuilder private var glyph: some View {
-        switch status {
-        case .reconnect: Image(systemName: "exclamationmark.icloud.fill").foregroundStyle(Palette.danger)
-        case .attention: Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color(.unsure))
-        case .uploading(let done, let total): ProgressRing(value: Double(done - 1) / Double(max(1, total)))
-        case .caughtUp: Image(systemName: "checkmark.circle.fill").foregroundStyle(Color(.file)).font(.title3)
-        case .empty: Image(systemName: "tray").foregroundStyle(.secondary)
+    private func expanded(_ state: AccessoryState) -> some View {
+        HStack(spacing: 12) {
+            glyph(state)
+            Text(state.title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+                .contentTransition(.numericText())
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+            Spacer(minLength: 8)
+            Text("Outbox")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Image(systemName: "chevron.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
         }
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(.rect)
+        .animation(.smooth, value: state)
     }
 
-    private var title: String {
-        switch status {
-        case .reconnect: "Reconnect Drive to keep filing"
-        case .attention(let n): n == 1 ? "1 needs a retry" : "\(n) need a retry"
-        case .uploading(let done, let total): "Uploading \(done) of \(total)"
-        case .caughtUp(let n): "All caught up · \(n) filed today"
-        case .empty: "Outbox is empty"
+    private func inline(_ state: AccessoryState) -> some View {
+        HStack(spacing: 8) {
+            glyph(state)
+            if let text = state.inlineText {
+                Text(text)
+                    .font(.subheadline.weight(.semibold))
+                    .contentTransition(.numericText())
+            }
         }
+        .padding(.horizontal, 12)
+        .contentShape(.rect)
     }
 
-    private var short: String? {
-        switch status {
-        case .reconnect, .empty: nil
-        case .attention(let n): "\(n)"
-        case .uploading(let done, let total): "\(done) of \(total)"
-        case .caughtUp(let n): "\(n)"
+    @ViewBuilder
+    private func glyph(_ state: AccessoryState) -> some View {
+        Group {
+            switch state {
+            case .caughtUp:
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(OutboxPalette.file)
+            case .empty:
+                Image(systemName: "tray").foregroundStyle(.secondary)
+            case .uploading(_, _, let fraction):
+                OutboxRing(value: fraction)
+            case .offline:
+                Image(systemName: "wifi.slash").foregroundStyle(.secondary)
+            case .needsRetry:
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(OutboxPalette.unsure)
+            case .reconnect:
+                Image(systemName: "exclamationmark.icloud.fill").foregroundStyle(OutboxPalette.danger)
+            }
         }
+        .font(.title3)
+        .frame(width: 30, height: 30)
     }
 }

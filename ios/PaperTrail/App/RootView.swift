@@ -41,6 +41,7 @@ struct RootView: View {
                 .presentationDetents([.large])
         }
         .environment(router)
+        .task { if await OutboxDemo.prepare(env: env) { router.openOutbox() } }  // outbox: simulator screenshots only
     }
 
     private var isSignedIn: Bool {

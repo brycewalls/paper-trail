@@ -10,6 +10,9 @@ import UIKit
 final class FakeAuthService: AuthService {
     var state: AuthState
     var drive: DriveLink = .connected
+    var driveConsentPending = false
+    /// Set to make signIn and reconnectDrive fail with this.
+    var failure: AuthFailure?
 
     init(signedIn: Bool = true) {
         let bryce = Account(uid: "fake-uid", email: "bryce.evan.walls@gmail.com", displayName: "Bryce Walls")
@@ -17,10 +20,16 @@ final class FakeAuthService: AuthService {
     }
 
     func signIn() async throws {
+        if let failure { throw failure }
         state = .signedIn(Account(uid: "fake-uid", email: "bryce.evan.walls@gmail.com", displayName: "Bryce Walls"))
         drive = .connected
+        driveConsentPending = false
     }
-    func reconnectDrive() async throws { drive = .connected }
+    func reconnectDrive() async throws {
+        if let failure { throw failure }
+        drive = .connected
+        driveConsentPending = false
+    }
     func signOut() throws { state = .signedOut }
     func driveAccessToken() async throws -> String {
         if drive != .connected { throw DriveError.unauthorized }
@@ -38,7 +47,9 @@ final class FakeClassifyService: ClassifyService {
         requests.append(request)
         try? await Task.sleep(for: delay)
         if let failure { throw ClassifyFailure(code: failure, message: "Fake failure") }
-        return ClassifyResponse(result: SampleData.card(forText: request.ocrText), model: "fake")
+        // Like the function: apply the matching sender rule and say which (#21).
+        let card = SenderRuleEngine.apply(request.senderHints ?? [], to: SampleData.card(forText: request.ocrText))
+        return ClassifyResponse(result: card, model: "fake")
     }
 }
 
@@ -62,6 +73,16 @@ final class FakeDriveService: DriveService {
     }
 
     func search(_ text: String) async throws -> [DriveFileMetadata] { [] }
+
+    private(set) var trashed: [String] = []
+
+    func ensureYearFolder(_ year: String, in folder: String) async throws -> String {
+        "fake-folder-\(slug(folder))-\(year)"
+    }
+
+    func download(fileID: String) async throws -> Data { Data() }
+
+    func trash(fileID: String) async throws { trashed.append(fileID) }
 }
 
 final class FakeDocStore: DocStore {
@@ -72,7 +93,10 @@ final class FakeDocStore: DocStore {
     private var docWatchers: [UUID: AsyncStream<[FiledDoc]>.Continuation] = [:]
     private var paperlessWatchers: [UUID: AsyncStream<[PaperlessSender]>.Continuation] = [:]
 
-    init(seed: [FiledDoc] = SampleData.filedDocs()) { docList = seed }
+    init(seed: [FiledDoc] = SampleData.filedDocs(), rules: [SenderRule] = SampleData.senderRules) {
+        docList = seed
+        self.rules = Dictionary(uniqueKeysWithValues: rules.map { ($0.key, $0) })
+    }
 
     func docs() -> AsyncStream<[FiledDoc]> {
         let (stream, continuation) = AsyncStream<[FiledDoc]>.makeStream()
@@ -96,6 +120,9 @@ final class FakeDocStore: DocStore {
         if let raw = fields["physical"] as? String, let state = PhysicalState(rawValue: raw) { docList[index].physical = state }
         if let at = fields["shreddedAt"] as? String { docList[index].shreddedAt = at }
         if let at = fields["verifiedAt"] as? String { docList[index].verifiedAt = at }
+        if let pages = fields["verifiedPages"] as? Int { docList[index].verifiedPages = pages }
+        if let id = fields["driveId"] as? String { docList[index].driveId = id }
+        if let url = fields["driveUrl"] as? String { docList[index].driveUrl = url }
         publishDocs()
     }
 
@@ -122,6 +149,8 @@ final class FakeDocStore: DocStore {
     func updatePaperless(id: String, fields: [String: any Sendable]) async throws {
         guard let index = senders.firstIndex(where: { $0.id == id }) else { return }
         if let raw = fields["status"] as? String, let status = PaperlessStatus(rawValue: raw) { senders[index].status = status }
+        if let at = fields["lastSeen"] as? String { senders[index].lastSeen = at }
+        if let at = fields["stillMailingAt"] as? String { senders[index].stillMailingAt = at }
         publishPaperless()
     }
 
@@ -131,6 +160,10 @@ final class FakeDocStore: DocStore {
 
     func driveFolders() async throws -> DriveFolderCache? { folderCache }
     func saveDriveFolders(_ cache: DriveFolderCache) async throws { folderCache = cache }
+
+    private var appSettings = AppSettings()
+    func settings() async throws -> AppSettings { appSettings }
+    func saveSettings(_ settings: AppSettings) async throws { appSettings = settings }
 
     private func publishDocs() { for c in docWatchers.values { c.yield(docList) } }
     private func publishPaperless() { for c in paperlessWatchers.values { c.yield(senders) } }
@@ -181,8 +214,10 @@ final class FakeCaptureService: CaptureService {
     }
 }
 
+@Observable
 final class FakeOutboxService: OutboxService {
     private(set) var enqueued: [UUID] = []
+    var status = OutboxStatus()
 
     func enqueue(_ item: PipelineItem) async {
         enqueued.append(item.id)
@@ -190,6 +225,7 @@ final class FakeOutboxService: OutboxService {
         try? await Task.sleep(for: .milliseconds(200))
         item.driveFileID = item.decision == .file ? "fake-file-\(enqueued.count)" : nil
         item.stage = item.decision == .file ? .verified : .filed
+        item.filedAt = .now
         if item.decision == .file { item.verifiedAt = .now }
     }
 
@@ -207,9 +243,13 @@ final class FakeOutboxService: OutboxService {
     @discardableResult func sendBack(_ item: PipelineItem) async -> Bool {
         sentBack.append(item.id)
         if refuseSendBack { return false }
+        item.decision = nil
+        item.decidedAt = nil
+        item.stage = .ready
         item.driveFileID = nil
         item.driveURL = nil
         item.verifiedAt = nil
+        item.filedAt = nil
         item.firestoreDocID = nil
         return true
     }

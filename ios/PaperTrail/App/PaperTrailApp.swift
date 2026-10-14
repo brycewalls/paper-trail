@@ -8,10 +8,14 @@ struct PaperTrailApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
+            AuthGate { RootView() }
                 .environment(env)
                 .modelContainer(env.modelContainer)
                 .task { await env.outbox.resumePending() }
+        }
+        // outbox: the system relaunches the app to report background uploads (#17).
+        .backgroundTask(.urlSession(BackgroundUploader.identifier)) { [env] in
+            await LiveOutboxService.handleBackgroundEvents(env)
         }
     }
 }

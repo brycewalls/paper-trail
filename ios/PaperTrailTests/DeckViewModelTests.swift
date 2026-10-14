@@ -173,7 +173,8 @@ struct DeckViewModelTests {
         let (deck, env) = await makeDeck()
         let eob = try card(deck, "Blue Cross")
         _ = await deck.confirmCheck(eob, values: [:], remember: false)
-        #expect(try await env.docs.senderRules().isEmpty)
+        // The sample store starts with classify's sample rules; none is added for Blue Cross.
+        #expect(try await env.docs.senderRules().contains { $0.key == "blue-cross" } == false)
     }
 
     @Test func aCardWithoutConfidenceIsNeverReadyToFile() {
@@ -307,7 +308,7 @@ struct DeckViewModelTests {
         #expect(deck.filingChanged(from: eob.card, to: edited))
         await deck.saveEdits(eob, card: edited, remember: true)
         #expect(deck.unsureFields(eob) == [.docDate])
-        #expect(try await env.docs.senderRules().first?.verdict == .shred)
+        #expect(try await env.docs.senderRules().first { $0.key == "blue-cross" }?.verdict == .shred)
         #expect(deck.cards.contains { $0.id == eob.id })
     }
 

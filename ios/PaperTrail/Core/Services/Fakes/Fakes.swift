@@ -62,6 +62,16 @@ final class FakeDriveService: DriveService {
     }
 
     func search(_ text: String) async throws -> [DriveFileMetadata] { [] }
+
+    private(set) var trashed: [String] = []
+
+    func ensureYearFolder(_ year: String, in folder: String) async throws -> String {
+        "fake-folder-\(slug(folder))-\(year)"
+    }
+
+    func download(fileID: String) async throws -> Data { Data() }
+
+    func trash(fileID: String) async throws { trashed.append(fileID) }
 }
 
 final class FakeDocStore: DocStore {
@@ -96,6 +106,9 @@ final class FakeDocStore: DocStore {
         if let raw = fields["physical"] as? String, let state = PhysicalState(rawValue: raw) { docList[index].physical = state }
         if let at = fields["shreddedAt"] as? String { docList[index].shreddedAt = at }
         if let at = fields["verifiedAt"] as? String { docList[index].verifiedAt = at }
+        if let pages = fields["verifiedPages"] as? Int { docList[index].verifiedPages = pages }
+        if let id = fields["driveId"] as? String { docList[index].driveId = id }
+        if let url = fields["driveUrl"] as? String { docList[index].driveUrl = url }
         publishDocs()
     }
 
@@ -122,6 +135,8 @@ final class FakeDocStore: DocStore {
     func updatePaperless(id: String, fields: [String: any Sendable]) async throws {
         guard let index = senders.firstIndex(where: { $0.id == id }) else { return }
         if let raw = fields["status"] as? String, let status = PaperlessStatus(rawValue: raw) { senders[index].status = status }
+        if let at = fields["lastSeen"] as? String { senders[index].lastSeen = at }
+        if let at = fields["stillMailingAt"] as? String { senders[index].stillMailingAt = at }
         publishPaperless()
     }
 
@@ -131,6 +146,10 @@ final class FakeDocStore: DocStore {
 
     func driveFolders() async throws -> DriveFolderCache? { folderCache }
     func saveDriveFolders(_ cache: DriveFolderCache) async throws { folderCache = cache }
+
+    private var appSettings = AppSettings()
+    func settings() async throws -> AppSettings { appSettings }
+    func saveSettings(_ settings: AppSettings) async throws { appSettings = settings }
 
     private func publishDocs() { for c in docWatchers.values { c.yield(docList) } }
     private func publishPaperless() { for c in paperlessWatchers.values { c.yield(senders) } }
@@ -181,8 +200,10 @@ final class FakeCaptureService: CaptureService {
     }
 }
 
+@Observable
 final class FakeOutboxService: OutboxService {
     private(set) var enqueued: [UUID] = []
+    var status = OutboxStatus()
 
     func enqueue(_ item: PipelineItem) async {
         enqueued.append(item.id)
@@ -190,7 +211,18 @@ final class FakeOutboxService: OutboxService {
         try? await Task.sleep(for: .milliseconds(200))
         item.driveFileID = item.decision == .file ? "fake-file-\(enqueued.count)" : nil
         item.stage = item.decision == .file ? .verified : .filed
+        item.filedAt = .now
         if item.decision == .file { item.verifiedAt = .now }
+    }
+
+    func sendBack(_ item: PipelineItem) async -> Bool {
+        item.decision = nil
+        item.decidedAt = nil
+        item.stage = .ready
+        item.driveFileID = nil
+        item.verifiedAt = nil
+        item.filedAt = nil
+        return true
     }
 
     func retry(_ item: PipelineItem) async {

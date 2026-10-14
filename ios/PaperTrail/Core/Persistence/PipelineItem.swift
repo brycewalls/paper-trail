@@ -79,6 +79,13 @@ final class PipelineItem {
     var md5: String?
     var verifiedAt: Date?
     var firestoreDocID: String?
+    /// When the next automatic retry runs (backoff 1, 2, 5, 15 min). Nil on a failed item means
+    /// the retries are used up: it needs attention.
+    var nextRetryAt: Date? = nil
+    /// When the outbox finished with it (Drive upload and record written, or the shred logged).
+    var filedAt: Date? = nil
+    /// Automatic re-uploads after a checksum mismatch (#18). One is allowed.
+    var reuploads: Int = 0
 
     init(id: UUID = UUID(), fileName: String, pageCount: Int, sizeBytes: Int, origin: String, stage: PipelineStage = .captured) {
         self.id = id

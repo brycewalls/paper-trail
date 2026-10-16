@@ -24,7 +24,7 @@ const server = createServer((req, res) => {
   res.end(readFileSync(file));
 });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
-const base = `http://127.0.0.1:${server.address().port}/public/index.html?fake=1&hold=1`;   // hold=1: a one-second undo hold
+const base = `http://127.0.0.1:${server.address().port}/public/index.html?fake=1&hold=1&reader=claude`;   // hold=1: a one-second undo hold
 const shots = join(root, "tools", "smoke");
 mkdirSync(shots, { recursive: true });
 

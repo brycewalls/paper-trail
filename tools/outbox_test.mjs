@@ -29,7 +29,7 @@ const server = createServer((req, res) => {
   res.end(readFileSync(file));
 });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
-const base = `http://127.0.0.1:${server.address().port}/public/index.html?fake=1&fastretry`;
+const base = `http://127.0.0.1:${server.address().port}/public/index.html?fake=1&fastretry&reader=claude`;
 
 // A PDF with `pages` pages, padded with a comment to about `pad` bytes so uploads take several chunks.
 function makePdf(pages, label, pad = 0) {

@@ -43,6 +43,10 @@
 // Drive also answers files.get (metadata with a real md5Checksum), files.update with trashed: true,
 // alt=media downloads and fullText search over what was uploaded; B.call("driveToken") mints the
 // fake token.
+// Added for the lab reader (#92): the page reads with rules on the fake path too; ?reader=claude
+// (read by lab/reader.js) keeps the Claude path for the deck, outbox and browse tests. Compare mode
+// asks classify like the live app; a test can set window.__PT_FAKE__.answer = (payload) => result
+// to choose Claude's answer (null falls back to the samples).
 // Everything it saw is on window.__PT_FAKE__ for tests: files uploaded (with their bytes),
 // folders, classify payloads and the Firestore records.
 
@@ -146,6 +150,7 @@ export function createFakeBackend(params) {
     uploadFail: Number(params.get("uploadfail")) || 0,
     chunks: [],                // { session, from, to, total } for every resumable PUT
     calls: [],                 // { name, data } for every B.call
+    answer: null,              // (payload) => classify result, set by a test (lab compare, #92)
     authCb: null,
     nextId: 1,
   };
@@ -317,6 +322,11 @@ export function createFakeBackend(params) {
         const pages = payload.pages || [];
         const starts = pages.map((p, i) => (i === 0 || /\bpage 1\b/i.test(p.text || "") ? i : -1)).filter((i) => i >= 0);
         return { split: { documents: starts.map((s, k) => ({ start: s, end: (starts[k + 1] ?? pages.length) - 1, label: String(pages[s].text || "Document").split(/\s+/).slice(0, 4).join(" ").slice(0, 60) })) }, model: "fake" };
+      }
+      // A test's own answer (lab compare mode, #92).
+      if (typeof state.answer === "function") {
+        const own = state.answer(payload);
+        if (own) return { result: structuredClone(own), model: "fake" };
       }
       // Photos read as the birth certificate; a PDF that mentions W-2 as the W-2; anything else as the bill.
       const sample = payload.kind === "images" ? SAMPLES[2] : payload.pdf && /W-2/.test(atob(payload.pdf)) ? SAMPLES[1] : SAMPLES[0];

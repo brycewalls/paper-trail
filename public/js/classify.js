@@ -18,11 +18,19 @@
 //   readError, readCode, readErrorCode, READ_COPY: failures as copy
 //   markConfident(card, fields): fields the person confirmed count as sure
 //   classifyItem(item)        the legacy deck's read (session items), on the same payload rules
+//
+// The lab build (#92, branch exp/no-ai): on the lab site READER is "rules" (lab/reader.js), so readItem, classifyItem
+// and proposeSplit read with the PDF text layer or on-device OCR and the rules engine, never the
+// classify callable. Each lab read emits "lab:read" { item, source }; lab/compare.js then asks the
+// classify callable the same question the live app asks (claudeRead), only when compare mode is on,
+// only to measure the rules. On the fake backend ?reader=claude keeps the old Claude path for the
+// deck, outbox and browse tests.
 // Owner: deck (capture owns proposeSplit); built in the capture PR with the reading queue (#83).
 import { FOLDER_NAMES, VERDICT, PDF_MAX_PAGES, PDF_MAX_BYTES, READ_PAGES, READ_EDGE, READERS, DENIED } from "./config.js";
-import { slug, cleanName, errCode } from "./ui.js";
+import { slug, cleanName, errCode, emit } from "./ui.js";
 import { B } from "./backend.js";
 import { blobB64, openPdfDoc, renderPage, photoJpeg } from "./media.js";
+import { READER, labRead, localSplit, progressCopy } from "./lab/reader.js";
 
 // ---------- payload rules (ClassifyPayload) ----------
 export const OCR_MIN_CHARS = 120;      // less text than this (whitespace squeezed out) can't carry a read
@@ -210,6 +218,7 @@ export const READ_COPY = {
   bad_request: "Claude couldn't open this file. Rescan it and add it again.",
   offline: "You're offline. Tap Try again once you're back online.",
   not_deployed: "The reader isn't running yet. Once the classify function is deployed, tap Try again.",
+  rules_failed: "The lab reader stopped on this one. Tap Try again, or fill it in yourself.",
   unknown: "Something interrupted the read. Tap Try again.",
 };
 // The ClassifyErrorCode for a failure: the function's details.code first, the callable's own code second.
@@ -271,6 +280,11 @@ export function readItem(item, source = {}) {
 async function readOne({ item, source, queuedAt }) {
   const started = Date.now();
   let built = started, kind = "", primary = false;
+  if (READER === "rules") {
+    await labReadOne(item, source);
+    queueStats.timings.push({ id: item.id, total: Date.now() - queuedAt, waited: started - queuedAt, build: 0, call: Date.now() - started, kind: "rules", ocrPrimary: false });
+    return;
+  }
   try {
     const pdf = typeof source.pdf === "function" ? await source.pdf() : source.pdf;
     const payload = await buildPayload(item, pdf);
@@ -293,6 +307,59 @@ async function readOne({ item, source, queuedAt }) {
   }
   queueStats.timings.push({ id: item.id, total: Date.now() - queuedAt, waited: started - queuedAt, build: built - started, call: Date.now() - built, kind, ocrPrimary: primary });
 }
+// ---------- the lab read (#92): text and rules, no AI ----------
+// The rules' answer goes through the same normalize and sender rules as Claude's, so the card, the
+// Not sure fields and the deck behave the same. item.lab keeps what compare mode and Lab Stats need.
+function labCard(out, item, list = rules) {
+  let card = normalize(out.result);
+  if (!card.appliedRule) card = applySenderRule(card, list);
+  item.lab = { readId: item.id, rules: card, textSource: out.text.source, textChars: out.text.chars, ocrPages: out.text.ocrPages, ms: out.ms, compare: "off", claude: null, agreement: null, picks: null };
+  return card;
+}
+async function labReadOne(item, source) {
+  const progress = (p) => { item.progress = progressCopy(p); emit("lab:progress", { id: item.id, progress: item.progress }); };
+  try {
+    const input = { textPages: item.textPages, textSource: item.textSource, ocrText: item.ocrText, pages: item.pages, name: item.name };
+    if (!(Array.isArray(input.textPages) && input.textPages.some((t) => String(t || "").trim())) && !input.ocrText) {
+      input.pdf = typeof source.pdf === "function" ? await source.pdf() : source.pdf;
+    }
+    const out = await labRead(input, { senderRules: rules, onProgress: progress });
+    lastAnswer = Date.now();
+    item.card = labCard(out, item);
+    item.model = "rules";
+    item.unsureFields = unsureFields(item.card);
+    item.stage = "ready";
+    item.progress = "";
+    emit("lab:read", { item, source });
+  } catch (e) {
+    console.warn("Lab read failed", e);
+    item.readErrorCode = "rules_failed";
+    item.errorMessage = READ_COPY.rules_failed;
+    item.failedStage = "reading";
+    item.stage = "failed";
+    item.progress = "";
+  }
+}
+
+// What the live app would have said (compare mode, lab/compare.js): the same request the live app
+// sends for this item, through the same retries, normalize and sender rules. source: { pdf } for a
+// pipeline item (the review's), nothing for a legacy session item (it has its files).
+export async function claudeRead(item, source = {}) {
+  let payload;
+  if (item.files && item.kind === "photos") {
+    const images = [];
+    for (const f of item.files.slice(0, READ_PAGES)) images.push({ type: "image/jpeg", data: await blobB64(await photoJpeg(f, READ_EDGE, PAGE_Q)) });
+    payload = { kind: "images", images, totalPages: item.files.length, wantConfidence: true };
+    if (rules.length) payload.senderHints = rules.map(hintOf);
+  } else {
+    const pdf = item.files ? item.files[0] : typeof source.pdf === "function" ? await source.pdf() : source.pdf;
+    payload = await buildPayload({ pages: item.numPages || item.pages, ocrText: item.ocrText }, pdf);
+  }
+  const out = await classifyWithRetry(payload);
+  const card = normalize(out && out.result);
+  return { card: card.appliedRule ? card : applySenderRule(card, rules), model: (out && out.model) || "" };
+}
+
 async function classifyWithRetry(payload) {
   for (let attempt = 0; ; attempt++) {
     try { return await B.classify(payload); }
@@ -310,6 +377,7 @@ export const SPLIT = { thumbEdge: 512, maxImages: 100, maxPages: 300, pageChars:
 // older than split mode (it refuses the request as bad_request): the pages then stay as they are.
 export async function proposeSplit(pages) {
   if (!pages.length || pages.length > SPLIT.maxPages) throw { details: { code: "too_large" } };
+  if (READER === "rules") return localSplit(pages);   // the lab: no AI, page markers only
   const withImages = pages.length <= SPLIT.maxImages;
   const req = { mode: "split", pages: [] };
   for (const p of pages) {
@@ -340,6 +408,20 @@ export function splitGroups(documents, n) {
 // senderHints: the rules to send; the live list from senders.js when not given.
 export async function classifyItem(item, onProgress = () => {}, { senderHints } = {}) {
   const list = Array.isArray(senderHints) ? senderHints : rules;
+  if (READER === "rules") {
+    const input = item.kind === "pdf" ? { pdf: item.files[0], pages: item.numPages, name: item.name } : { photos: item.files, pages: item.files.length, name: item.name };
+    let out;
+    try {
+      out = await labRead(input, { senderRules: list, onProgress: (p) => { item.progress = progressCopy(p); onProgress(); } });
+    } catch (e) {
+      console.warn("Lab read failed", e);
+      throw { details: { code: "rules_failed" } };
+    }
+    item.progress = "";
+    const card = labCard(out, item, list);
+    emit("lab:read", { item, source: {} });
+    return card;
+  }
   let payload;
   if (item.kind === "pdf") {
     payload = await buildPayload({ pages: item.numPages, ocrText: item.ocrText }, item.files[0]);

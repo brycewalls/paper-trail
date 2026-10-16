@@ -36,7 +36,7 @@ async function open(hash, { width = 390, height = 844, dark = false, extra = "" 
   const problems = [];
   page.on("console", (m) => { if (m.type() === "error") problems.push(m.text()); });
   page.on("pageerror", (e) => problems.push(e.message));
-  await page.goto(`${origin}/public/index.html?fake=1&seed${extra}${hash}`, { waitUntil: "networkidle" });
+  await page.goto(`${origin}/public/index.html?fake=1&seed&reader=claude${extra}${hash}`, { waitUntil: "networkidle" });
   await page.waitForSelector("#app:not([hidden])");
   return { ctx, page, problems };
 }

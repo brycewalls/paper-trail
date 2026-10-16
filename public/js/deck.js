@@ -31,6 +31,14 @@ import { openSheet, actionSheet, sheetOpen } from "./ui/sheet.js";
 import { openMenu } from "./ui/menu.js";
 import { spring, reduceMotion, haptic } from "./ui/motion.js";
 import { openCheckFields } from "./checkfields.js";
+import { READER } from "./lab/reader.js";
+import { labChip, openCompare } from "./lab/compare.js";
+
+// The lab build (#92) reads with rules, not Claude: its own reading and failure copy, and the
+// compare chip on the card ("Claude agrees" / "Claude differs", lab/compare.js).
+const LAB = READER === "rules";
+on("lab:compared", () => render());
+on("lab:progress", () => { if (!deckCards().length) render(); });
 
 // The undo window (decision 4). ?hold=<seconds> shortens it on the fake backend, for tests.
 const HOLD_MS = FAKE && params.has("hold") ? Math.max(0, Number(params.get("hold")) || 0) * 1000 : 10000;
@@ -426,14 +434,16 @@ function renderEmpty(skipped) {
     html = emptyState({ symbol: "arrow.up.forward.circle", title: `${skipped.length} skipped. Sort them now?`, description: done,
       actions: button("Sort skipped", { prominent: true, "data-act": "sort-skipped" }) + button("Scan more", { "data-scan": "" }) });
   } else if (reading) {
-    key = `reading:${reading}`;
-    html = emptyState({ spinner: true, title: `Reading ${reading} document${reading === 1 ? "" : "s"}`, description: "They show up here as soon as Claude is done.", role: "status" });
+    const prog = LAB ? (items.find((i) => mine(i) && i.stage === "reading" && i.progress) || {}).progress || "" : "";
+    key = `reading:${reading}:${prog}`;
+    html = emptyState({ spinner: true, title: `Reading ${reading} document${reading === 1 ? "" : "s"}`,
+      description: LAB ? (prog ? `${prog}. They show up here as soon as they're read.` : "They show up here as soon as they're read.") : "They show up here as soon as Claude is done.", role: "status" });
   } else if (items.some(mine)) {
     key = `sorted:${today}`;
     html = emptyState({ symbol: "checkmark.circle", title: "All sorted", description: done, actions: button("Scan more", { "data-scan": "" }) });
   } else {
     key = "first";
-    html = emptyState({ symbol: "doc.viewfinder", title: "Scan your first stack", description: "Claude reads each document and gets it ready to file.",
+    html = emptyState({ symbol: "doc.viewfinder", title: "Scan your first stack", description: LAB ? "The lab reads each document on this device with rules, no AI, and gets it ready to file." : "Claude reads each document and gets it ready to file.",
       actions: button("Scan", { prominent: true, "data-scan": "" }) });
   }
   if (els.empty.dataset.key === key) return;
@@ -491,7 +501,7 @@ function cardHtml(it) {
   if (failed) {
     return `${well}<div class="dk-body">
       <h2 class="dk-title">Couldn't read this one</h2>
-      <p class="dk-meta">${esc(it.openError || "Claude didn't answer. Your scan is saved.")}</p>
+      <p class="dk-meta">${esc(it.openError || (LAB ? "The lab reader stopped on this one. Your scan is saved." : "Claude didn't answer. Your scan is saved."))}</p>
       <div class="dk-fail-actions">${it.openError ? "" : button("Try again", { "data-act": "retry" })}${button("Fill it in yourself", { "data-act": "fill" })}</div>
     </div>`;
   }
@@ -505,12 +515,14 @@ function cardHtml(it) {
   if (c.sensitive || c.retention) lines.push(`<div class="dk-chips">${c.sensitive ? sensitiveChip() : ""}${retentionChip(c.retention)}</div>`);
   lines.push(has("filename") ? ur("filename") : `<p class="dk-filename">${esc(c.filename)}.pdf</p>`);
   if (has("verdict")) lines.push(ur("verdict"));
+  const chip = labChip(it);
+  if (chip) lines.push(`<div class="dk-lab">${chip}</div>`);
   return `${well}<div class="dk-body">${lines.join("")}</div>`;
 }
 
 // VoiceOver / screen reader label (section 6).
 export function cardLabel(it) {
-  if (isReadFailed(it) || !it.card) return "Couldn't read this one. Claude didn't answer. Your scan is saved.";
+  if (isReadFailed(it) || !it.card) return LAB ? "Couldn't read this one. The lab reader stopped. Your scan is saved." : "Couldn't read this one. Claude didn't answer. Your scan is saved.";
   const c = it.card;
   const parts = [`${c.title}.`, `${c.issuer || "Unknown sender"}, ${fmtDate(c.docDate) || "No date"}.`, `${verdictStamp(c.verdict)}.`, `Folder ${folderName(c.folder)}.`];
   if (c.sensitive) parts.push("Sensitive.");
@@ -532,6 +544,7 @@ function bindCard(el, it) {
     if (el.dataset.dragged) { delete el.dataset.dragged; return; }
     const chk = e.target.closest("[data-check]");
     if (chk) { e.stopPropagation(); openCheck(it, chk.dataset.check); return; }
+    if (e.target.closest("[data-lab-compare]")) { e.stopPropagation(); openCompare(it, { onApply: (card) => { setCard(it, card); render(); } }); return; }
     const act = e.target.closest("[data-act]");
     if (act?.dataset.act === "retry") { retryRead(it); return; }
     if (act?.dataset.act === "fill" || !act) openDetail(it);

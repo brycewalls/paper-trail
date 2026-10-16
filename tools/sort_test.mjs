@@ -23,7 +23,7 @@ const server = createServer((req, res) => {
   res.end(readFileSync(file));
 });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
-const base = `http://127.0.0.1:${server.address().port}/public/index.html?fake=1`;
+const base = `http://127.0.0.1:${server.address().port}/public/index.html?fake=1&reader=claude`;
 
 function makePdf(pages, label) {
   const objs = ["<< /Type /Catalog /Pages 2 0 R >>", "", "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"];

@@ -7,13 +7,14 @@
 //     (on by default; Bryce approved compare mode). compareEnabled() is what the reader asks before
 //     it calls classify for a comparison.
 //   - The "Rules vs Claude" stats from users/{uid}/lab/data/compare: agreementStats() per field.
-//   - The Lab section in Settings (order 25, after Google Drive).
+//   - The Lab section in Settings (order 25, after Google Drive), with a row that opens Lab Stats
+//     (lab/stats.js).
 // docs/web-contract.md, "Lab".
 import { LAB, ROOT_FOLDER } from "./config.js";
 import { esc, on } from "./ui.js";
 import { watchLabSettings, saveLabSettings, watchComparisons } from "./store.js";
 import { registerSettingsSection } from "./settings.js";
-import { section, row, toggleRow } from "./ui/components.js";
+import { section, row, toggleRow, valueRow } from "./ui/components.js";
 
 export { LAB };
 
@@ -82,7 +83,8 @@ function sectionHtml() {
   return section(
     row({ title: "Reader", trailing: `<span class="row-value" id="lab-reader">${esc(LAB_COPY.reader)}</span>` })
     + toggleRow(LAB_COPY.compare, { id: "lab-compare", checked: compareEnabled(), subtitle: LAB_COPY.compareSub })
-    + `<div id="lab-stats-host">${statsHtml()}</div>`,
+    + `<div id="lab-stats-host">${statsHtml()}</div>`
+    + valueRow("Lab Stats", "", { "data-open-lab-stats": "", "aria-label": "Lab Stats" }),
     { header: "Lab", footer: LAB_COPY.footer, id: "settings-lab" });
 }
 
@@ -114,6 +116,10 @@ if (LAB) {
       host = el;
       el.querySelector("#lab-compare")?.addEventListener("change", (e) => {
         setCompare(e.target.checked).catch((err) => console.warn("Lab settings didn't save", err));
+      });
+      // Lab Stats (lab/stats.js, the reader's): agreement per field, your picks, Needs a look.
+      el.querySelector("[data-open-lab-stats]")?.addEventListener("click", () => {
+        import("./lab/stats.js").then((m) => m.openLabStats()).catch((err) => console.warn("Lab Stats didn't open", err));
       });
     } });
   on("session:started", () => {

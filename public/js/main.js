@@ -26,6 +26,8 @@ import { scanned, importFiles, importPhotos } from "./capture.js";
 import { reviewState } from "./review.js";
 import { queueStats } from "./classify.js";
 import "./senders.js";
+import * as labCompare from "./lab/compare.js";   // compare mode (#92): listens for lab:read
+import * as labStats from "./lab/stats.js";       // Lab Stats, opened from Settings, Lab (lab.js)
 import { startShell, shellSignedIn } from "./shell.js";
 import "./lab.js";      // the lab build (#92): badge, Lab settings, Rules vs Claude; inert on the live site
 
@@ -82,7 +84,8 @@ on("capture:sent", ({ items: sent, blobs }) => {
     const li = newItem(it.name, [new File([b.pdf], `${it.name}.pdf`, { type: "application/pdf" })], uid);
     Object.assign(li, { kind: "pdf", numPages: it.pages, thumb: URL.createObjectURL(b.thumb), ocrText: it.ocrText, contentHash: it.contentHash, opened: true, stage: "reading" });
     const settle = () => {
-      if (it.stage === "ready") { li.card = it.card; li.unsureFields = it.unsureFields || []; li.stage = "ready"; }
+      // it.lab (#92) is shared, not copied: compare mode fills it in after the card lands on the deck.
+      if (it.stage === "ready") { li.card = it.card; li.unsureFields = it.unsureFields || []; li.lab = it.lab; li.stage = "ready"; }
       else { li.stage = "failed"; li.failedStage = "reading"; li.readErrorCode = it.readErrorCode || "unknown"; li.errorMessage = it.errorMessage || "Something interrupted the read. Tap Try again."; }
       pump();
     };
@@ -102,7 +105,7 @@ on("capture:sent", ({ items: sent, blobs }) => {
     await initBackend();
     // Test hooks, on the fake path only: add files without the picker.
     if (FAKE) window.__PT__ = { addFiles: addEach, addPhotos: addAsOne, items: () => items, scanner: sc, outbox, db,
-      importFiles, importPhotos, scanned, review: reviewState, reads: queueStats };
+      importFiles, importPhotos, scanned, review: reviewState, reads: queueStats, lab: { compare: labCompare, stats: labStats } };
   } catch (e) {
     console.error("Paper Trail could not start", e);
     document.documentElement.classList.remove("pt-cached");

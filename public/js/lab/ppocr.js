@@ -111,7 +111,9 @@ export function dbBoxes(prob, mw, mh, srcW, srcH) {
         if (prob[j] <= DB.thresh) { edge = true; continue; }
         if (!label[j]) { label[j] = next; stack[top++] = j; }
       }
-      if (edge) pts.push(x, y, x + 1, y, x, y + 1, x + 1, y + 1);
+      // Pixel coordinates, as OpenCV's contours give them to PaddleOCR (not pixel corners, which
+      // would make every box a pixel taller and the unclipped crop's letters too narrow to read).
+      if (edge) pts.push(x, y);
     }
     if (count < 4) continue;
     const r = minAreaRect(pts);

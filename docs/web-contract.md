@@ -58,7 +58,7 @@ All under `public/js/`. Entry `main.js` (a module script in `index.html`). jsPDF
 | 1 | `backend.js` | shared | `B` (Firebase, or the fake with `?fake`) and `initBackend()`. |
 | 1 | `db.js` (new) | outbox | IndexedDB: the pipeline store, blobs, review sessions (see "Local pipeline"). Emits `pipeline:changed`. |
 | 2 | `auth.js` | auth | Session and sign-in: `currentUser()`, `watchUser()`, `startAuth()`, `finishReturn()`, `cachedSession()`, `markNotAllowed()`, the web OAuth code flow, `driveAccessToken()`, `invalidateDriveToken()`, `reconnectDrive()`, `driveStatus()`, `signOut()`, the sign-in screen (`showGate`, `hideGate`), the Reconnect Drive banner (`mountReconnectBanner`, `watchDriveUi`). Emits `drive:status`. |
-| 2 | `store.js` | browse (shared: each owner adds its own named functions) | Every Firestore read and write by name: docs, paperless, senders, config. |
+| 2 | `store.js` | browse (shared: each owner adds its own named functions) | Every Firestore read and write by name: docs, paperless, senders, config. Capture added `findByHash`, `watchSenders`, `setSenderRule`, `deleteSenderRule`; outbox `getDoc`, `putDoc`, `getSender`, `createSender`, `getSettings`, `watchSettings`, `saveSettings`. |
 | 3 | `drive.js` | outbox | Drive REST: `drive()`, `withRetry`, `DriveError`, `DRIVE_COPY`, `ensureFolders`, `ensureYearFolder`, `startUpload`, `putChunk`, `uploadStatus`, `metadata`, `download`, `trash`, `search`, `CHUNK`. Gets tokens only from `auth.driveAccessToken()` (`auth.invalidateDriveToken()` on a 401, then one more try). `needsDrive`, `setNeedsDrive` (the outbox's pause); `reconnect()` runs `auth.reconnectDrive()`. The Reconnect banner is auth's; `renderDrive()` is a legacy alias for `auth.renderReconnect()`. |
 | 3 | `settings.js` | auth | The Settings sheet from the avatar; `registerSettingsSection` for every other owner's rows. |
 | 4 | `media.js` | capture | Canvas, pdf.js and jsPDF helpers: page renders, photos to PDF, the hidden text layer (#22), `pdfText(file)` for the PDF's own text. |
@@ -207,7 +207,7 @@ The exports other owners may call. Each owner adds its fake support in the same 
 | `session:ended` | none | `main.js` | features | Signed out. |
 | `drive:status` | `{ status }` | `auth.js` | `drive.js`, `outbox.js`, `settings.js` | Drive connected or needs reconnecting (server's word only). |
 | `capture:request` | `{ source }` | `shell.js` (Scan menu) | `capture.js` (the legacy shim in `main.js` until then) | A Scan menu item was picked. |
-| `capture:sent` | `{ ids }` | `capture.js` | `deck.js` | New items are in the pipeline. |
+| `capture:sent` | `{ ids }`, plus `items` and `blobs` until db.js lands | `review.js` (capture) | `deck.js` (`main.js` legacy bridge until then) | New items are in the pipeline. Without a pipeline store, `items` are the live item objects (each with `whenRead`, a promise that settles when Claude's read does) and `blobs[id]` is `{ pdf, thumb }`. |
 | `pipeline:changed` | `{ id, stage }` | `db.js` | `deck.js`, `outbox-view.js`, `search.js` | An item was written. |
 | `deck:decided` | `{ id, decision }` | `deck.js` | features | A swipe or its twin, before the hold. |
 | `deck:skipped` | `{ id }` | `deck.js` | features | A card went to the Skipped set. |
@@ -260,15 +260,22 @@ The popup methods (`signIn()`, `reconnect()`) are gone (#15): no popups. The cac
 | `slowupload` | Uploads take about 4 s | outbox (progress, undo hold) |
 | `readfail` | The first read fails with `rate_limited` | deck |
 | `unsure` | Reads asking for confidence come back unsure of sender and date, with alternatives (A2) | deck |
+| `dupe=<sha256>` | A filed doc ("2025 W-2", filed Oct 2) with that `contentHash`, for the duplicate line (#2) | capture |
+| `splitfail` | Split mode answers `bad_request`, like a function from before split mode | capture |
+| `readfail=N` | The first N reads fail with `rate_limited` (`readfail` alone: one; the queue retries twice by itself) | deck, capture |
 | `seed` | A filed library: docs in every pile and state (verified and not, shredded, keep, stored, a left swipe), five paperless senders in every status with a "still mailing" flag, two sender rules, `config/settings` | browse |
 
 Already answered: `call("driveToken")`, split mode (`mode: "split"`, a new document at every page whose text says "page 1"), `wantConfidence` (sparse), `senderHints` (`appliedRule`), Drive `files.get` with a real `md5Checksum`, `files.update` with `trashed: true`, `alt=media`, `fullText contains` search, and uploads returning `md5Checksum` and `size`.
 
 The session and the server's Drive grant survive a reload (sessionStorage `pt-fake-auth`), like Firebase's persistence, because sign-in is a full-page redirect: `B.authorize(url)` records the URL and reloads on `#/auth/done?handoff=fake&state=...` (or `?error=...`), and `B.redeem` checks the verifier against the state. Use a fresh browser context per test.
 
-Each owner adds, in its own PR: outbox (done): resumable chunks and `Content-Range: bytes */N` status (308 with `Range`), `?md5mismatch` (the first upload's checksum is wrong), `?md5pending` (the first `files.get` has no checksum), `?uploadfail=N` (the first N sessions are refused), and, read by `outbox.js` on the fake path, `?chunk=N` and `?fastretry` (retries after 1 to 4 s); the fake honors `AbortSignal`; capture, a `?dupe` switch where `findByHash` matches; browse, nothing beyond `seed` unless it needs it.
+Each owner adds, in its own PR: outbox (done): resumable chunks and `Content-Range: bytes */N` status (308 with `Range`), `?md5mismatch` (the first upload's checksum is wrong), `?md5pending` (the first `files.get` has no checksum), `?uploadfail=N` (the first N sessions are refused), and, read by `outbox.js` on the fake path, `?chunk=N` and `?fastretry` (retries after 1 to 4 s); the fake honors `AbortSignal`; capture, `?dupe=<sha256>` and `?splitfail` (done); browse, nothing beyond `seed` unless it needs it.
 
-Test hooks: `window.__PT__ = { addFiles, addPhotos, items(), scanner, outbox, db }` today (`outbox` and `db` are the modules). Add to it, don't rename; once the pipeline moves to `db.js`, `items()` returns the db's items.
+OCR on the fake path: nothing loads unless the page asks with `?ocr`; tests put a stand-in on `window.__PT_OCR__` (blob, turns) → text.
+
+Test hooks: `window.__PT__ = { addFiles, addPhotos, items(), scanner, outbox, db, importFiles, importPhotos, scanned, review(), reads }` (`outbox` and `db` are the modules). Add to it, don't rename; once the pipeline moves to `db.js`, `items()` returns the db's items.
+
+**Capture and the pipeline store (capture PR).** `review.js` exports `attachStore(db)` and `resumeReview()`. Once `db.js` exists, `main.js` calls `attachStore` with the db module (it uses `putItem`, `updateItem`, `putBlob`, `getBlob`, `putReview`, `getReview`, `deleteReview`, `kvGet`, `kvSet`; the open review's session id is `kv.openReview`) and `resumeReview()` after `session:started`. From then on the review is saved after every change, items and their PDFs go to db.js, and `capture:sent` carries ids only. Until then the review lives in memory, its footnote says "Keep this page open until you send them." instead of the spec's, and leaving the page asks first.
 
 ## Auth (design for the auth agent, #14, #15, #3)
 

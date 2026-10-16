@@ -42,6 +42,9 @@ const P = {
   "gearshape": '<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/>',
   "plus": '<path d="M12 5v14M5 12h14"/>',
   "trash": '<path d="M4.5 7h15M10 4h4M6.5 7l1 12.5A1.5 1.5 0 0 0 9 21h6a1.5 1.5 0 0 0 1.5-1.5l1-12.5"/>',
+  // capture (#83): the scan review's "Split into documents" and a page's Rotate
+  "rectangle.split.3x1": '<rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="M9 5.5v13M15 5.5v13"/>',
+  "rotate.right": '<path d="M13 4.5a7.5 7.5 0 1 1-7.4 8.8"/><path d="M13 1.8v5.4l3-2.7z" fill="currentColor"/><rect x="5" y="9" width="7" height="9" rx="1.2"/>',
 };
 
 export const ICONS = Object.keys(P);

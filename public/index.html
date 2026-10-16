@@ -29,6 +29,8 @@
 <link rel="stylesheet" href="css/components.css">
 <link rel="stylesheet" href="css/outbox.css">
 <link rel="stylesheet" href="css/shell.css">
+<link rel="stylesheet" href="css/capture.css">
+<link rel="stylesheet" href="css/senders.css">
 <script type="module" src="js/main.js"></script>
 </head>
 <body>
@@ -82,10 +84,13 @@
         <span class="empty-sym"><svg class="sym" width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16"/><path d="M8.5 8.5h7M8.5 12h7M8.5 15.5h4.5"/></svg></span>
         <h2 class="empty-title">Scan your first stack</h2>
         <p class="empty-desc">Claude reads each document and gets it ready to file.</p>
+        <!-- The Scan menu (capture, #79): every scan entry point is the same menu -->
+        <div class="empty-actions"><button type="button" class="cbtn prominent" id="btn-scan-first" data-scan-menu><span>Scan</span></button></div>
       </div>
 
-      <!-- Legacy intake: the scanner and pickers the current deck and tests drive. Capture replaces it with the Scan menu (#79). -->
-      <div class="intake" id="intake">
+      <!-- Legacy intake, hidden since the capture build: the Scan menu replaces it (#79). Kept in the page
+           because the legacy deck binds these inputs and tools/deck_test.mjs adds files through them. -->
+      <div class="intake" id="intake" hidden>
         <button type="button" class="scan-btn" id="btn-scan"><strong>Scan document</strong><span class="note">Use the camera. Every page you scan goes into one PDF.</span></button>
         <label class="drop" id="drop" for="file">
           <input type="file" id="file" accept="image/jpeg,image/png,image/webp,application/pdf,.pdf" multiple>
@@ -93,7 +98,7 @@
           <span class="note">Each file is one document.</span>
         </label>
       </div>
-      <div class="pages-row" id="pages-row">
+      <div class="pages-row" id="pages-row" hidden>
         <label class="pages-btn" for="pages-file">Photograph a multi-page document</label>
         <input type="file" id="pages-file" class="vh" accept="image/jpeg,image/png,image/webp" multiple>
         <span class="note">All photos in one pick become one PDF.</span>
@@ -187,6 +192,11 @@
     </nav>
   </div>
 
+  <!-- 4.11 Scan review and 4.11.1 page viewer (owner: capture): full screen over the column. The
+       rest of the column goes inert while they show; sheets and menus still mount in #overlay. -->
+  <section class="review" id="review" role="dialog" aria-modal="true" aria-labelledby="review-title" hidden></section>
+  <section class="viewer" id="viewer" role="dialog" aria-modal="true" aria-labelledby="viewer-title" hidden></section>
+
   <!-- Sheets, menus and toasts mount here, inside the column (ui/sheet.js, ui/menu.js, ui/toast.js). -->
   <div class="overlay" id="overlay"></div>
 </div>
@@ -218,7 +228,7 @@
         <p id="sc-err-p"></p>
         <div class="row">
           <button type="button" class="btn primary" id="sc-retry">Try again</button>
-          <button type="button" class="btn" id="sc-pick">Choose documents instead</button>
+          <button type="button" class="btn" id="sc-pick">Import from Files instead</button>
         </div>
       </div>
     </div>

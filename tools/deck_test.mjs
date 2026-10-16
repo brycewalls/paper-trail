@@ -171,8 +171,11 @@ try {
 
   // 3. A failed read shows in Needs attention and Try again recovers it.
   {
-    const { ctx, page } = await open("&readfail");
+    // The reading queue retries a rate limit twice by itself (2 s, 8 s), so three failures reach
+    // the card; the waits are shortened for the test.
+    const { ctx, page } = await open("&readfail=3");
     await page.waitForSelector("#app:not([hidden])");
+    await page.evaluate(async () => (await import("/public/js/classify.js")).setBackoff([50, 50]));
     await page.setInputFiles("#file", [{ name: "a.pdf", mimeType: "application/pdf", buffer: makePdf(1, "A") }]);
     await page.waitForSelector("[data-retry]", { timeout: 15000 });
     check(/rate limit/.test(await page.textContent("#trouble")), "a rate limit gets its own message");

@@ -11,13 +11,17 @@ import { initBackend } from "./backend.js";
 import { watchUser, startAuth, finishReturn, cachedSession, markNotAllowed, showGate } from "./auth.js";
 import { renderDrive, resetFolders, setNeedsDrive } from "./drive.js";
 import { checkAccess, watchDocs, watchPaperless } from "./store.js";
-import { items, clearItems } from "./items.js";
+import { items, clearItems, newItem } from "./items.js";
 import { addEach, addAsOne, pump } from "./deck.js";
 import * as outbox from "./outbox.js";
 import * as db from "./db.js";
 import "./outbox-view.js";            // registers the Outbox and Earlier screens and the Shred hold row
 import { setDocs, setPaperless, resetPiles, renderPiles } from "./piles.js";
 import { sc } from "./scanner.js";
+import { scanned, importFiles, importPhotos } from "./capture.js";
+import { reviewState } from "./review.js";
+import { queueStats } from "./classify.js";
+import "./senders.js";
 import { startShell, shellSignedIn } from "./shell.js";
 
 let unwatch = [];
@@ -62,11 +66,26 @@ function onUser(u, { confirmed }) {
   checkAccess().catch((e) => { if (/permission-denied/.test(errCode(e)) && shown === u.uid) markNotAllowed(u.email); });
 }
 
-// The Scan menu asks for a source with "capture:request" (shell.js). Until capture's new review
-// screen lands, the request opens the legacy scanner and pickers.
-on("capture:request", ({ source }) => {
-  if (source === "camera") $("btn-scan").click();
-  else $(source === "photos" ? "pages-file" : "file").click();
+// Legacy bridge (capture, #83): until db.js and the rebuilt deck land, "capture:sent" carries the
+// review's documents in memory and they join the legacy deck here as session items: the PDF the
+// review built (or the imported original), its thumbnail, and Claude's card once the read is back.
+// With db.js attached (review.attachStore), capture writes the pipeline instead and sends ids only,
+// and this goes.
+on("capture:sent", ({ items: sent, blobs }) => {
+  if (!sent) return;
+  for (const it of sent) {
+    const b = blobs[it.id];
+    const li = newItem(it.name, [new File([b.pdf], `${it.name}.pdf`, { type: "application/pdf" })]);
+    Object.assign(li, { kind: "pdf", numPages: it.pages, thumb: URL.createObjectURL(b.thumb), ocrText: it.ocrText, contentHash: it.contentHash, status: "reading", progress: "Claude is reading it" });
+    const settle = () => {
+      if (it.stage === "ready") { li.result = it.card; li.status = "ready"; }
+      else { li.status = "error"; li.error = it.errorMessage || "Something interrupted the read. Tap Try again."; }
+      pump();
+    };
+    if (it.stage === "ready" || it.stage === "failed") settle(); else it.whenRead.then(settle);
+    items.push(li);
+  }
+  pump();
 });
 
 // ---------- boot ----------
@@ -78,7 +97,8 @@ on("capture:request", ({ source }) => {
   try {
     await initBackend();
     // Test hooks, on the fake path only: add files without the picker.
-    if (FAKE) window.__PT__ = { addFiles: addEach, addPhotos: addAsOne, items: () => items, scanner: sc, outbox, db };
+    if (FAKE) window.__PT__ = { addFiles: addEach, addPhotos: addAsOne, items: () => items, scanner: sc, outbox, db,
+      importFiles, importPhotos, scanned, review: reviewState, reads: queueStats };
   } catch (e) {
     console.error("Paper Trail could not start", e);
     document.documentElement.classList.remove("pt-cached");

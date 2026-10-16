@@ -101,6 +101,13 @@ const TOL = 0.03 * Math.hypot(W, H);  // corners within 3% of the frame diagonal
 async function waitLive(page) {
   await page.waitForFunction(() => { const s = window.__PT__.scanner; return s.libs === "ready" && s.live && s.view === "camera"; }, null, { timeout: 90000 });
 }
+// Scan document is on the Scan menu (#79): tap Scan, then Scan document.
+async function openScan(page) {
+  await page.click("#btn-scan-menu");
+  await page.waitForSelector(".menu");
+  await page.click('.menu .menu-item:has-text("Scan document")');
+  await page.waitForSelector("#scanner:not([hidden])");
+}
 async function captureAndReview(page) {
   await page.waitForSelector("#sc-shutter:not([disabled])");
   await page.click("#sc-shutter");
@@ -129,7 +136,7 @@ try {
   // 1. Scan a two-page document, with a corner drag, a delete and a retake on the way.
   {
     const { ctx, page, problems } = await open();
-    await page.click("#btn-scan");
+    await openScan(page);
     check(await page.isVisible("#scanner"), "Scan document opens the scanner full screen");
     check(/Getting the scanner ready/.test(await page.textContent("#sc-msg")), "it says Getting the scanner ready while OpenCV loads");
     check(await page.evaluate(() => document.getElementById("sc-video").hasAttribute("playsinline")), "the video is playsinline, so iPhone Safari doesn't take it full screen");
@@ -202,20 +209,27 @@ try {
     const after = await sc(page, () => ({ n: window.__PT__.scanner.pages.length, first: window.__PT__.scanner.pages[0].thumb }));
     check(after.n === 2 && after.first !== oldFirst, "the retake replaces page 1, still two pages");
 
-    // Done: one item, two pages, filed as one PDF.
+    // Done: the scan review (spec 4.11) with both pages as one document; Send puts ONE item on the
+    // deck, filed as one PDF.
     const pageBytes = (await measurePage(page, 1)).bytes;
     await sc(page, () => { window.__tracks = window.__PT__.scanner.stream.getTracks(); });
     const itemsBefore = await sc(page, () => window.__PT__.items().length);
     await page.click("#sc-done");
     await page.waitForSelector("#scanner", { state: "hidden" });
-    const added = await sc(page, () => window.__PT__.items().map((i) => ({ name: i.name, files: i.files.length, kind: i.kind })));
-    check(itemsBefore === 0 && added.length === 1 && added[0].files === 2 && added[0].kind === "photos", "Done adds ONE item to the deck, with both pages");
-    check(added[0]?.name === "Scan, 2 pages", "it's named Scan, 2 pages until Claude reads it");
+    await page.waitForSelector("#review:not([hidden])");
+    check((await page.textContent(".review-title")) === "2 pages, 1 document", "Done opens the scan review: 2 pages, 1 document");
+    check(await page.evaluate(() => document.activeElement?.classList.contains("review-cancel")), "the review takes focus");
     check(await sc(page, () => window.__tracks.every((t) => t.readyState === "ended") && !window.__PT__.scanner.stream), "closing the scanner stops the camera");
-    check(await page.evaluate(() => document.activeElement?.id) === "btn-scan", "focus goes back to Scan document");
+    await page.waitForFunction(() => window.__PT__.review().groups[0].status === "held", null, { timeout: 20000 });
+    check(await sc(page, () => window.__PT_FAKE__.classifyCalls.length) === 0, "a two-page scan waits for the split before Claude reads it (#54)");
+    await page.click("[data-send]");
+    await page.waitForSelector("#review", { state: "hidden" });
+    const added = await sc(page, () => window.__PT__.items().map((i) => ({ name: i.name, files: i.files.length, kind: i.kind, pages: i.numPages })));
+    check(itemsBefore === 0 && added.length === 1 && added[0].files === 1 && added[0].kind === "pdf" && added[0].pages === 2, "Send adds ONE item to the deck: one two-page PDF");
+    check(added[0]?.name === "Scan, 2 pages", "it's named Scan, 2 pages until Claude reads it");
     await page.waitForSelector(".card.top .stamp", { timeout: 20000 });
     const call = await sc(page, () => window.__PT_FAKE__.classifyCalls[0]);
-    check(call?.kind === "images" && call.images.length === 2, "Claude gets both scanned pages");
+    check(call?.kind === "pdf" && call.totalPages === 2 && call.wantConfidence, "Claude gets the scan's two-page PDF");
     await page.keyboard.press("ArrowRight");
     await page.waitForFunction(() => window.__PT_FAKE__.files.length === 1, null, { timeout: 20000 });
     const pdf = Buffer.from(await sc(page, () => [...window.__PT_FAKE__.files[0].bytes]));
@@ -224,18 +238,18 @@ try {
     check(pdf.includes(Buffer.from(pageBytes)), "the flattened page JPEG is inside the PDF untouched");
 
     // Cancel: scan a page, cancel, nothing joins the deck.
-    await page.click("#btn-scan");
+    await openScan(page);
     await waitLive(page);
     await captureAndReview(page);
     await keep(page);
     await sc(page, () => { window.__tracks = window.__PT__.scanner.stream.getTracks(); });
     await page.click("#sc-cancel");  // the discard question is accepted
     await page.waitForSelector("#scanner", { state: "hidden" });
-    check(await sc(page, () => window.__PT__.items().length) === 1, "Cancel discards the scan: nothing new joins the deck");
+    check(await sc(page, () => window.__PT__.items().length) === 1 && await page.isHidden("#review"), "Cancel discards the scan: no review, nothing new joins the deck");
     check(await sc(page, () => window.__tracks.every((t) => t.readyState === "ended")), "Cancel stops the camera");
 
     // Auto-capture: fires once when the page holds still, then waits for the next page.
-    await page.click("#btn-scan");
+    await openScan(page);
     await waitLive(page);
     await page.click("#sc-auto");
     check(await page.getAttribute("#sc-auto", "aria-pressed") === "true", "Auto-capture turns on");
@@ -253,7 +267,7 @@ try {
   {
     const { ctx, page, problems } = await open({ viewport: { width: 390, height: 844 }, colorScheme: "dark" });
     await page.screenshot({ path: join(shots, "scanner-intake-phone-dark.png") });
-    await page.click("#btn-scan");
+    await openScan(page);
     await waitLive(page);
     const fitOk = await page.evaluate(() => {
       const inView = (id) => { const r = document.getElementById(id).getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth; };
@@ -270,7 +284,7 @@ try {
     await ctx.close();
   }
 
-  // 3. The camera refused, missing, or not available: clear copy, and Choose documents still works.
+  // 3. The camera refused, missing, or not available: clear copy, and Import from Files still works.
   const reject = (name) => `navigator.mediaDevices.getUserMedia = () => Promise.reject(new DOMException("test", ${JSON.stringify(name)}));`;
   for (const [what, init, heading, retry] of [
     ["denied permission", reject("NotAllowedError"), "Camera access is off", true],
@@ -278,13 +292,13 @@ try {
     ["no camera API", "Object.defineProperty(navigator, 'mediaDevices', { value: undefined });", "This browser can't use the camera", false],
   ]) {
     const { ctx, page, problems } = await open({ init });
-    await page.click("#btn-scan");
+    await openScan(page);
     await page.waitForSelector("#sc-error:not([hidden])");
     check((await page.textContent("#sc-err-h")).trim() === heading && (await page.isVisible("#sc-retry")) === retry, `${what}: "${heading}"${retry ? " with Try again" : ""}`);
     if (what === "denied permission") await page.screenshot({ path: join(shots, "scanner-denied-desktop.png") });
     const chooser = page.waitForEvent("filechooser", { timeout: 5000 }).then(() => true, () => false);
     await page.click("#sc-pick");
-    check(await chooser && await page.isHidden("#scanner"), `${what}: Choose documents instead closes the scanner and opens the file picker`);
+    check(await chooser && await page.isHidden("#scanner"), `${what}: Import from Files instead closes the scanner and opens the file picker`);
     check(problems.length === 0, `${what}: no console errors (${problems.join(" | ") || "none"})`);
     await ctx.close();
   }

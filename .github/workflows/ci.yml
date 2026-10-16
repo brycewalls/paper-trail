@@ -13,6 +13,8 @@
 #              verification, retries, offline, Reconnect Drive, Send back, the Outbox screen, Shred hold
 #   scanner    drives Scan document with a fake camera (a generated video of a tilted page): edges
 #              found, the page flattened, Done adds one item that files as one PDF, Cancel adds none
+#   capture    the Scan menu's sources, the scan review (split, join, stack mode, duplicates), the page
+#              viewer, the reading queue and sender rules, against the fake backend (#83)
 #   functions  the classify function's unit tests, Claude stood in
 #   ios        the iPhone app (ios/): xcodegen, a simulator build and the unit tests. macOS minutes
 #              cost 10x, and the Swift app is paused, so it runs only when started by hand (Run workflow).
@@ -55,6 +57,9 @@ jobs:
       - name: The outbox against the fake backend
         if: always()
         run: node tools/outbox_test.mjs
+      - name: Capture, the scan review, stack mode and sender rules
+        if: always()
+        run: node tools/capture_test.mjs
       - name: Keep the screenshots
         if: always()
         uses: actions/upload-artifact@v4

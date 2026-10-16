@@ -40,6 +40,7 @@ const strangerOwnTree = { uid: "other_uid", token: { email: "someone@example.com
 const unverified = { uid, token: { email: OWNER, email_verified: false } };
 const fp = (p) => `/databases/(default)/documents/${p}`;
 const doc = `users/${uid}/docs/d1`;
+const lab = `users/${uid}/lab/data`;
 const CASES = [
   ["owner reads a doc", { auth: owner, path: fp(doc), method: "get" }, "ALLOW"],
   ["owner lists docs", { auth: owner, path: fp(`users/${uid}/docs`), method: "list" }, "ALLOW"],
@@ -67,6 +68,20 @@ const CASES = [
   ["owner reads a sign-in handoff", { auth: owner, path: fp("oauthHandoffs/h1"), method: "get" }, "DENY"],
   ["owner lists the sign-in handoffs", { auth: owner, path: fp("oauthHandoffs"), method: "list" }, "DENY"],
   ["signed out reads a sign-in handoff", { path: fp("oauthHandoffs/h1"), method: "get" }, "DENY"],
+  // The lab build (#92): users/{uid}/lab/data/... is the owner's, exactly like the live tree.
+  ["owner reads a lab doc", { auth: owner, path: fp(`${lab}/docs/d1`), method: "get" }, "ALLOW"],
+  ["owner lists lab docs", { auth: owner, path: fp(`${lab}/docs`), method: "list" }, "ALLOW"],
+  ["owner files a lab doc", { auth: owner, path: fp(`${lab}/docs/d1`), method: "create", resource: { data: { title: "x" } } }, "ALLOW"],
+  ["owner reads the lab Drive folder cache (the lab's access probe)", { auth: owner, path: fp(`${lab}/config/drive`), method: "get" }, "ALLOW"],
+  ["owner writes lab settings", { auth: owner, path: fp(`${lab}/config/lab`), method: "create", resource: { data: { compareWithClaude: true } } }, "ALLOW"],
+  ["owner writes a rules vs Claude comparison", { auth: owner, path: fp(`${lab}/compare/d1`), method: "create", resource: { data: { agree: { title: true } } } }, "ALLOW"],
+  ["owner deletes a lab doc", { auth: owner, path: fp(`${lab}/docs/d1`), method: "delete" }, "ALLOW"],
+  ["another account reads the owner's lab doc", { auth: stranger, path: fp(`${lab}/docs/d1`), method: "get" }, "DENY"],
+  ["another account writes its own lab tree", { auth: strangerOwnTree, path: fp("users/other_uid/lab/data/docs/d1"), method: "create", resource: { data: { title: "x" } } }, "DENY"],
+  ["owner reads another uid's lab tree", { auth: owner, path: fp("users/other_uid/lab/data/docs/d1"), method: "get" }, "DENY"],
+  ["unverified owner address reads the lab", { auth: unverified, path: fp(`${lab}/docs/d1`), method: "get" }, "DENY"],
+  ["signed out reads the lab", { path: fp(`${lab}/docs/d1`), method: "get" }, "DENY"],
+  ["a top-level lab collection stays closed", { auth: owner, path: fp("lab/data/docs/d1"), method: "get" }, "DENY"],
 ];
 
 try {

@@ -3,8 +3,9 @@
 // time a page has no text), and the rules engine (lab/engine.js) turns it into the same card the
 // classify function returns. classify.js calls it in place of the classify callable.
 //
-//   READER                 "rules" (the lab), or "claude" on the fake backend with ?reader=claude so
-//                          the deck, outbox and browse tests keep their Claude stand-in answers
+//   READER                 "rules" on the lab site (LAB, config.js: paper-trail-lab.web.app, or
+//                          localhost with ?lab), "claude" everywhere else, so the live app's reader
+//                          never changes. On the fake backend ?reader=claude also keeps the Claude path
 //   readText(input, onProgress)   one string per page, and where it came from
 //   labRead(input, { senderRules, onProgress })   text, then the rules; { result, text, ms }
 //   localSplit(pages)      stack mode without Claude: a document starts at "Page 1" (or after "Page n
@@ -16,11 +17,11 @@
 // page with almost no text of its own is OCR'd, and photos are OCR'd.
 // The rules run in a module Web Worker (lab/rules-worker.js); if it can't start, on the main thread.
 // Owner: lab reader.
-import { FAKE, params } from "../config.js";
+import { FAKE, LAB, params } from "../config.js";
 import { openPdfDoc, pdfPageText, renderPage, ocr } from "../media.js";
 import { runRules } from "./engine.js";
 
-export const READER = FAKE && params.get("reader") === "claude" ? "claude" : "rules";
+export const READER = LAB && !(FAKE && params.get("reader") === "claude") ? "rules" : "claude";
 export const PAGE_MIN_CHARS = 40;      // a page with less text of its own than this is OCR'd
 export const MAX_TEXT_PAGES = 20;      // pages read for text; the rest of a long PDF isn't needed to route it
 const OCR_EDGE = 2000;

@@ -19,7 +19,7 @@
 //   markConfident(card, fields): fields the person confirmed count as sure
 //   classifyItem(item)        the legacy deck's read (session items), on the same payload rules
 //
-// The lab build (#92, branch exp/no-ai): READER is "rules" (lab/reader.js), so readItem, classifyItem
+// The lab build (#92, branch exp/no-ai): on the lab site READER is "rules" (lab/reader.js), so readItem, classifyItem
 // and proposeSplit read with the PDF text layer or on-device OCR and the rules engine, never the
 // classify callable. Each lab read emits "lab:read" { item, source }; lab/compare.js then asks the
 // classify callable the same question the live app asks (claudeRead), only when compare mode is on,

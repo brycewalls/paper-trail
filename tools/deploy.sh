@@ -7,7 +7,9 @@
 #   firestore  firebase/firestore.rules and firebase/firestore.indexes.json
 #   functions  functions/: the `classify` callable. Needs the Blaze plan and the ANTHROPIC_API_KEY
 #              secret (set once: firebase functions:secrets:set ANTHROPIC_API_KEY --project paper-trail-bw)
-#   hosting    public/: the app, at https://paper-trail-bw.web.app
+#   hosting    public/: the app, at https://paper-trail-bw.web.app (the "live" hosting target; the
+#              no-AI lab build has its own site and its own script, tools/deploy-lab.sh, #92)
+# Only from main: the experiment branches (exp/*, feat/lab-*) must never reach the live site.
 # Before anything deploys: the function unit tests pass and the rules give the verdicts the page
 # needs in the real rules engine (tools/rules-check.mjs, a dry run through the Rules test API).
 # The project lives in iCloud Drive, where a cold functions/node_modules can take over a minute to
@@ -34,6 +36,13 @@ warm_functions() {
   '
 }
 
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+if [ "${1:-}" != "--warm-only" ] && [ "$BRANCH" != "main" ]; then
+  echo "deploy.sh deploys the live app and runs only on main (this is $BRANCH)."
+  echo "For the lab site use: bash tools/deploy-lab.sh"
+  exit 2
+fi
+
 case "${1:-}" in
   --warm-only) warm_functions; exit $? ;;
   --site) MODE=site ;;
@@ -59,5 +68,5 @@ if [ "$MODE" = all ]; then
   fi
 fi
 
-firebase deploy --only hosting --project "$PROJECT" --non-interactive
+firebase deploy --only hosting:live --project "$PROJECT" --non-interactive
 echo "Live at https://$PROJECT.web.app"

@@ -11,6 +11,10 @@
 //                  32 base64url characters (the iPhone app's are always 22), and those go back to
 //                  https://paper-trail-bw.web.app/#/auth/done?handoff=...&state=... instead. The
 //                  handoff rides in the fragment, so it never reaches a server log or a Referer.
+//                  The no-AI lab build (#92) signs in the same way from its own Hosting site: its
+//                  nonces are "lab_" plus 32 characters and go back to
+//                  https://paper-trail-lab.web.app/#/auth/done. The nonce picks the return host
+//                  from WEB_TARGETS, a fixed allowlist, so the request can never name one.
 //   oauthRedeem    HTTPS POST from the app: { handoff, state, verifier }. Single use, 2 minutes.
 //                  Returns the ID and access tokens the app signs in to Firebase with.
 //   driveToken     Callable, signed in and allowlisted. Mints a Drive access token from the stored
@@ -29,7 +33,11 @@ const APP_REDIRECT = "papertrail://auth";
 // The web app's return target. Comes from config (WEB_APP_REDIRECT), never from the request, so the
 // callback can't be turned into an open redirect.
 const WEB_REDIRECT = "https://paper-trail-bw.web.app/#/auth/done";
-const WEB_NONCE_RE = /^web_[A-Za-z0-9_-]{32}$/;
+const LAB_REDIRECT = "https://paper-trail-lab.web.app/#/auth/done";
+// The web return hosts a sign-in may pick, by its nonce's prefix. Nothing else is ever a target.
+// "web" is the live app (WEB_APP_REDIRECT may still move it, see webTarget); "lab" is the lab build.
+const WEB_TARGETS = Object.freeze({ web: WEB_REDIRECT, lab: LAB_REDIRECT });
+const WEB_NONCE_RE = /^(web|lab)_[A-Za-z0-9_-]{32}$/;
 const HANDOFF_TTL_MS = 2 * 60 * 1000;
 const GOOGLE_ISSUERS = new Set(["accounts.google.com", "https://accounts.google.com"]);
 
@@ -52,11 +60,22 @@ function parseState(state) {
 }
 
 const isWebNonce = (nonce) => WEB_NONCE_RE.test(String(nonce || ""));
+// "web", "lab", or "" for the iPhone app's nonces (and anything else).
+const webKind = (nonce) => { const m = WEB_NONCE_RE.exec(String(nonce || "")); return m ? m[1] : ""; };
 
 // Only an https URL on a fixed host can be the web target; anything else falls back to the default.
 function webTarget(configured) {
   const v = String(configured || "");
   return /^https:\/\/[a-z0-9.-]+(:\d+)?\/#\/auth\/done$/.test(v) ? v : WEB_REDIRECT;
+}
+
+// The return for one sign-in: papertrail://auth for the iPhone app, else the web host its nonce
+// names. The lab's host is fixed; only the live one follows config.
+function returnTarget(nonce, cfg) {
+  const kind = webKind(nonce);
+  if (kind === "lab") return WEB_TARGETS.lab;
+  if (kind === "web") return webTarget(cfg && cfg.webRedirect);
+  return APP_REDIRECT;
 }
 
 // Where the app (and only the app) gets sent back to. Every value is URL encoded. base is
@@ -97,7 +116,7 @@ async function oauthCallback(query, deps) {
   const parsed = parseState(q.state);
   if (!parsed) return { status: 400, body: "This sign-in link isn't valid. Go back to Paper Trail and try again." };
   const cfg = deps.config();
-  const base = isWebNonce(parsed.nonce) ? webTarget(cfg.webRedirect) : APP_REDIRECT;
+  const base = returnTarget(parsed.nonce, cfg);
   const back = (params) => ({ status: 302, location: appRedirect({ ...params, state: q.state }, base) });
 
   if (q.error) return back({ error: q.error === "access_denied" ? "canceled" : "failed" });
@@ -226,6 +245,7 @@ function firestoreStore(db) {
 }
 
 module.exports = {
-  GOOGLE_AUTH_URL, GOOGLE_TOKEN_URL, DRIVE_SCOPE, APP_REDIRECT, WEB_REDIRECT, HANDOFF_TTL_MS, isWebNonce, webTarget,
+  GOOGLE_AUTH_URL, GOOGLE_TOKEN_URL, DRIVE_SCOPE, APP_REDIRECT, WEB_REDIRECT, LAB_REDIRECT, WEB_TARGETS, HANDOFF_TTL_MS,
+  isWebNonce, webKind, webTarget, returnTarget,
   OAuthError, oauthCallback, oauthRedeem, driveToken, firestoreStore, parseState, challengeFor, decodeIdToken, appRedirect,
 };

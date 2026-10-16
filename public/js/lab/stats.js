@@ -1,5 +1,5 @@
-// lab/stats.js: Settings, Lab (#92): the "Compare with Claude" switch and Lab Stats, a sheet over
-// Settings (like Sender rules) built from users/{uid}/lab/reader/reads:
+// lab/stats.js: Lab Stats (#92), a sheet over Settings (like Sender rules), opened from the Lab
+// section lab.js draws in Settings, built from users/{uid}/lab/data/reads:
 //   - agreement per field across every compared document (lab/compare.js SCORED, scored by fieldAgrees)
 //   - how often Bryce sided with the rules or with Claude when they differed (his picks)
 //   - the "Needs a look" rate: lab reads that came back with a field the rules weren't sure of
@@ -7,11 +7,10 @@
 // Owner: lab reader.
 import { esc } from "../ui.js";
 import { watchLabReads } from "../store.js";
-import { registerSettingsSection } from "../settings.js";
 import { openSheet } from "../ui/sheet.js";
-import { section, row, toggleRow, valueRow, emptyState } from "../ui/components.js";
+import { section, row, emptyState } from "../ui/components.js";
 import { icon } from "../ui/icons.js";
-import { SCORED, LAB_LABEL, compareEnabled, setCompareEnabled, onCompareSetting } from "./compare.js";
+import { SCORED, LAB_LABEL } from "./compare.js";
 
 const pct = (n, d) => (d ? Math.round((100 * n) / d) : 0);
 export function computeStats(reads) {
@@ -35,22 +34,6 @@ export function computeStats(reads) {
     fields, bySource,
   };
 }
-
-// ---------- Settings, Lab ----------
-let count = null;   // compared documents, for the row's value once the sheet has loaded them
-registerSettingsSection({
-  id: "lab", order: 45,
-  render: () => section(
-    toggleRow("Compare with Claude", { checked: compareEnabled(), id: "lab-compare", subtitle: "Also asks Claude, only to measure the rules", "data-lab-toggle": "" })
-    + valueRow("Lab Stats", count === null ? "" : String(count), { "data-open-lab-stats": "", "aria-label": "Lab Stats" }),
-    { header: "Lab", footer: "The lab reads with on-device text and rules, no AI. Compare mode sends each document to Claude too, the same way the live app does, so the stats can show how close the rules get." }),
-  bind(el) {
-    const sw = el.querySelector("[data-lab-toggle]");
-    sw.addEventListener("change", () => setCompareEnabled(sw.checked));
-    const off = onCompareSetting((v) => { if (!el.isConnected) { off(); return; } sw.checked = v; });
-    el.querySelector("[data-open-lab-stats]").addEventListener("click", openLabStats);
-  },
-});
 
 // ---------- the Lab Stats sheet ----------
 let open = null;
@@ -77,7 +60,6 @@ function statRow(title, value, { sub = "", p = null, ...a } = {}) {
   return row({ title, subtitle: sub, trailing: `${p === null ? "" : bar(p)}<span class="row-value">${esc(value)}</span>`, ...a });
 }
 function draw(s) {
-  count = s.compared;
   const { body } = open;
   if (!s.reads) {
     body.innerHTML = emptyState({ symbol: "rectangle.stack", title: "No lab reads yet", description: "Scan or import a few documents. Each one the rules read shows up here, and with compare mode on, how Claude would have read it." });

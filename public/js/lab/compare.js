@@ -3,7 +3,7 @@
 // classify callable the same question the live app asks, in the background and only to measure the
 // rules. Claude's answer never replaces the rules' card on its own.
 //
-//   - records every lab read in users/{uid}/lab/reader/reads/{readId} (store.js): the rules' card,
+//   - records every lab read in users/{uid}/lab/data/reads/{readId} (store.js): the rules' card,
 //     where the text came from, Needs a look, then Claude's card and the per-field agreement
 //   - the card's quiet chip: "Claude agrees" / "Claude differs" (labChip), "Asking Claude" while it
 //     waits, "Claude didn't answer" when it failed
@@ -17,7 +17,8 @@
 import { esc, slug, on, emit } from "../ui.js";
 import { FOLDER_NAMES, VERDICT } from "../config.js";
 import { claudeRead, readCode, unsureFields, markConfident, patternFromFilename, folderName, FIELD_ORDER } from "../classify.js";
-import { putLabRead, updateLabRead, watchLabSettings, saveLabSettings } from "../store.js";
+import { putLabRead, updateLabRead, putComparison } from "../store.js";
+import { compareEnabled as labCompareEnabled, setCompare } from "../lab.js";
 import { saveRule, ruleFor } from "../senders.js";
 import { openSheet } from "../ui/sheet.js";
 import { section, segmented, primaryButton, verdictStamp } from "../ui/components.js";
@@ -88,25 +89,11 @@ export function compareCards(rules, claude) {
 // The card's fields as stored on a read (no confidence or alternatives).
 export const cardFields = (c) => (c ? Object.fromEntries([...SCORED, ...PROSE].map((f) => [f, c[f] ?? (f === "sensitive" ? false : f === "paperless" ? { possible: false, issuer: "", how: "" } : "")])) : null);
 
-// ---------- compare mode setting (users/{uid}/lab/settings) ----------
-let compareOn = true;
-let unwatch = null;
-const settingListeners = new Set();
-export const compareEnabled = () => compareOn;
-export function onCompareSetting(fn) { settingListeners.add(fn); return () => settingListeners.delete(fn); }
-export async function setCompareEnabled(v) {
-  compareOn = !!v;
-  settingListeners.forEach((fn) => fn(compareOn));
-  try { await saveLabSettings({ compareWithClaude: compareOn }); } catch (e) { console.warn("Couldn't save the lab setting", e); }
-}
-on("session:started", () => {
-  if (unwatch) unwatch();
-  unwatch = watchLabSettings((s) => {
-    const v = s.compareWithClaude !== false;
-    if (v !== compareOn) { compareOn = v; settingListeners.forEach((fn) => fn(compareOn)); }
-  }, (e) => console.warn("Lab settings didn't load", e));
-});
-on("session:ended", () => { if (unwatch) unwatch(); unwatch = null; compareOn = true; });
+// ---------- compare mode setting ----------
+// One setting for the whole lab: lab.js owns it (users/{uid}/lab/data/config/lab, on by default)
+// and draws its switch in Settings, Lab. These two are kept for the reader's callers and tests.
+export const compareEnabled = () => labCompareEnabled();
+export const setCompareEnabled = (v) => setCompare(v).catch((e) => console.warn("Couldn't save the lab setting", e));
 
 // ---------- recording reads and asking Claude ----------
 const MAX_ASKS = 2;           // Claude compares at once, like the live reading queue
@@ -123,7 +110,7 @@ function readRecord(item) {
     textSource: lab.textSource, textChars: lab.textChars, ocrPages: lab.ocrPages || 0, ms: lab.ms,
     rules: cardFields(card), rulesConfidence: card.confidence || null, appliedRule: card.appliedRule || "",
     unsure, needsLook: unsure.length > 0,
-    compare: compareOn ? "pending" : "off",
+    compare: compareEnabled() ? "pending" : "off",
     contentHash: item.contentHash || "",
   };
 }
@@ -138,7 +125,7 @@ async function record(item, source) {
   lab.compare = rec.compare;
   lab.claude = null; lab.agreement = null; lab.picks = null;
   try { await putLabRead(lab.readId, rec); } catch (e) { console.warn("Couldn't save the lab read", e); }
-  if (!compareOn) return;
+  if (rec.compare === "off") return;
   emit("lab:compared", { id: item.id });
   await new Promise((r) => { queue.push(r); pump(); });
   try {
@@ -149,7 +136,13 @@ async function record(item, source) {
     lab.agreement = compareCards(lab.rules, card);
     lab.compare = "done";
     compareStats.answered++;
-    await updateLabRead(lab.readId, { compare: "done", claude: cardFields(card), model, agree: lab.agreement.fields, agrees: lab.agreement.agrees, comparedAt: new Date().toISOString() })
+    const comparedAt = new Date().toISOString();
+    await updateLabRead(lab.readId, { compare: "done", claude: cardFields(card), model, agree: lab.agreement.fields, agrees: lab.agreement.agrees, comparedAt })
+      .catch((e) => console.warn("Couldn't save the comparison", e));
+    // The Rules vs Claude row in Settings, Lab (lab.js) reads users/{uid}/lab/data/compare.
+    const agree = { ...lab.agreement.fields, "paperless.possible": lab.agreement.fields.paperless };
+    delete agree.paperless;
+    await putComparison(lab.readId, { at: comparedAt, agree, rules: cardFields(lab.rules), claude: cardFields(card) })
       .catch((e) => console.warn("Couldn't save the comparison", e));
   } catch (e) {
     console.warn("Compare didn't run", e);

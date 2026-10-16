@@ -1,1 +1,17 @@
-{ "projects": { "default": "paper-trail-bw" } }
+{
+  "projects": {
+    "default": "paper-trail-bw"
+  },
+  "targets": {
+    "paper-trail-bw": {
+      "hosting": {
+        "live": [
+          "paper-trail-bw"
+        ],
+        "lab": [
+          "paper-trail-lab"
+        ]
+      }
+    }
+  }
+}

@@ -27,8 +27,9 @@ import { reviewState } from "./review.js";
 import { queueStats } from "./classify.js";
 import "./senders.js";
 import * as labCompare from "./lab/compare.js";   // compare mode (#92): listens for lab:read
-import * as labStats from "./lab/stats.js";       // Settings, Lab: compare toggle and Lab Stats
+import * as labStats from "./lab/stats.js";       // Lab Stats, opened from Settings, Lab (lab.js)
 import { startShell, shellSignedIn } from "./shell.js";
+import "./lab.js";      // the lab build (#92): badge, Lab settings, Rules vs Claude; inert on the live site
 
 let unwatch = [];
 let shown = null;        // uid the app is showing

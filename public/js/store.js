@@ -71,24 +71,33 @@ export const watchSenders = (cb, err) => B.watch(PATHS.senders, null, cb, err);
 export const setSenderRule = (rule) => B.set(`${PATHS.senders}/${rule.key}`, rule);
 export const deleteSenderRule = (key) => B.del(`${PATHS.senders}/${key}`);
 
-// ---------- the lab reader (#92): users/{uid}/lab/... ----------
-// lab/reader/reads/{readId}: one per lab read: the rules' card, where the text came from, Needs a
-// look, and with compare mode Claude's card, the per-field agreement and Bryce's picks (ground truth).
-// lab/settings: { compareWithClaude } (missing means on). Owners: lab/compare.js, lab/stats.js.
-// Deep-cleaned of undefined, which Firestore refuses.
-export const LAB_PATHS = { reads: "lab/reader/reads", settings: "lab/settings" };
+// ---------- the lab build (#92) ----------
+// On the lab site every path above already sits under users/{uid}/lab/data/ (backend.js adds
+// DATA_ROOT), so the lab's docs, paperless, senders and config never touch the real archive. Three
+// more, lab only (docs/web-contract.md, "Lab"):
+// users/{uid}/lab/data/config/lab: { reader: "rules", compareWithClaude } (compare defaults on).
+export const LAB_SETTINGS_PATH = "config/lab";
+export const watchLabSettings = (cb, err) => B.watch("config", null, (list) => {
+  const { id, ...rest } = list.find((d) => d.id === "lab") || {};
+  cb(rest);
+}, err);
+export async function saveLabSettings(patch) {
+  const cur = (await B.get(LAB_SETTINGS_PATH).catch(() => null)) || {};
+  const next = { ...cur, ...patch };
+  delete next.id;
+  await B.set(LAB_SETTINGS_PATH, defined(next));
+  return next;
+}
+// users/{uid}/lab/data/compare/{itemId}: one per document read with compare on: { at, agree
+// { field: true|false }, rules, claude }. Written by the reader, read for the stats row.
+export const putComparison = (id, rec) => B.set(`compare/${id}`, defined(rec));
+export const watchComparisons = (cb, err) => B.watch("compare", "at", cb, err);
+// users/{uid}/lab/data/reads/{readId}: one per lab read: the rules' card, where the text came from,
+// Needs a look, and with compare mode Claude's card, the per-field agreement and Bryce's picks
+// (ground truth). Owners: lab/compare.js, lab/stats.js. Deep-cleaned of undefined, which Firestore
+// refuses.
+export const LAB_PATHS = { reads: "reads" };
 const plain = (o) => JSON.parse(JSON.stringify(o));
 export const watchLabReads = (cb, err) => B.watch(LAB_PATHS.reads, "createdAt", cb, err);
 export const putLabRead = (id, rec) => B.set(`${LAB_PATHS.reads}/${id}`, plain(rec));
 export const updateLabRead = (id, patch) => B.update(`${LAB_PATHS.reads}/${id}`, plain(patch));
-export const watchLabSettings = (cb, err) => B.watch("lab", null, (list) => {
-  const { id, ...rest } = list.find((d) => d.id === "settings") || {};
-  cb(rest);
-}, err);
-export async function saveLabSettings(patch) {
-  const cur = (await B.get(LAB_PATHS.settings).catch(() => null)) || {};
-  const next = { ...cur, ...patch };
-  delete next.id;
-  await B.set(LAB_PATHS.settings, plain(next));
-  return next;
-}

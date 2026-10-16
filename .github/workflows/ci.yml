@@ -25,6 +25,9 @@
 #   lab reader the lab reader on ?lab (tools/lab_reader_test.mjs): reading with the text layer, OCR and
 #              the rules (no classify call with compare off), the rules worker, local split, compare
 #              mode's chip and sheet, picks as ground truth and sender rules, Lab Stats
+#   lab OCR    PaddleOCR in a Web Worker on ?lab&ocr (tools/lab_ocr_test.mjs, #101, #98): a scanned PDF
+#              and a photo read for real with the CPU slowed 4x, no main-thread task over 100 ms,
+#              the models in Cache Storage, and the Tesseract fallback when the models can't load
 #   lab match  the lab's on-device matcher (tools/lab_match_test.mjs, #102): sender autocorrect, the
 #              learning loop (examples), sender rules first, who decided each field in the compare
 #              sheet, the switch, and no long task from the matcher at 4x CPU throttling. CI uses a
@@ -87,6 +90,9 @@ jobs:
       - name: The lab reader, compare mode and Lab Stats (#92)
         if: always()
         run: node tools/lab_reader_test.mjs
+      - name: The lab OCR, PaddleOCR in a worker (#101, #98)
+        if: always()
+        run: node tools/lab_ocr_test.mjs
       - name: The lab's on-device matcher (#102)
         if: always()
         run: node tools/lab_match_test.mjs

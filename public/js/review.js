@@ -26,6 +26,7 @@ import { currentUser } from "./auth.js";
 import { findByHash } from "./store.js";
 import { readItem, proposeSplit, SPLIT } from "./classify.js";
 import { READER } from "./lab/reader.js";
+import { ocrPdfPages, ocrImage } from "./lab/ocr.js";
 import { openPdfDoc, pageImage, pdfPageText, ocr, assemblePdf, sha256Hex } from "./media.js";
 import { primaryButton, statusPill, choiceChip } from "./ui/components.js";
 import { icon } from "./ui/icons.js";
@@ -428,9 +429,15 @@ class Review {
           const doc = await this.pdfDocFor(p);
           const own = await pdfPageText(doc, p.index + 1).catch(() => "");
           if (own.replace(/\s+/g, "")) return { text: own, words: [], width: 0, via: "text" };
+          if (READER === "rules") {   // the lab (#101): the OCR worker draws and reads the page, off the main thread
+            const got = await ocrPdfPages(p.pdf, [p.index + 1], { doc, turns: p.turns, onProgress: (q) => { if (onProgress && typeof q.pct === "number") onProgress(q.pct); } });
+            return { text: (got.get(p.index + 1) || {}).text || "", words: [], width: 0, via: "ocr" };
+          }
           return { ...(await ocr(await pageImage(p, 2000, 0.9, doc), 0, { onProgress })), words: [], width: 0, via: "ocr" };
         }
-        const r = await ocr(p.image, p.turns, { onProgress });
+        const r = READER === "rules"   // the lab (#101): PaddleOCR in its worker
+          ? await ocrImage(p.image, p.turns, { onProgress: (q) => { if (onProgress && typeof q.pct === "number") onProgress(q.pct); } })
+          : await ocr(p.image, p.turns, { onProgress });
         return { text: r.text, words: r.words, width: r.width, via: "ocr" };
       })());
     }

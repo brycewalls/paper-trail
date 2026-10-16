@@ -200,3 +200,17 @@
     --spring-smooth: ease-out; --spring-smooth-ms: 200ms;
   }
 }
+
+/* ---------- The no-AI lab build (#92) ----------
+   Only paper-trail-lab.web.app uses these (css/lab.css, under html.pt-lab): the Lab badge and the
+   tab bar's tint, so the lab is never mistaken for the live app. Violet, apart from the blue accent
+   and the three verdict colors. */
+:root {
+  --lab: #6e36c9;
+  --lab-soft: #efe7fb;
+  --lab-on: #ffffff;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --lab: #c3a1ff; --lab-soft: #2a1d42; --lab-on: #1a0f2e; }
+}
+:root[data-theme="dark"] { --lab: #c3a1ff; --lab-soft: #2a1d42; --lab-on: #1a0f2e; }

@@ -328,6 +328,62 @@ test("callback, web: the target comes from config, and a bad config value falls 
   assert.ok(tricked.location.startsWith(`${oauth.WEB_REDIRECT}?`), tricked.location);
 });
 
+// ---------- the lab build's return (#92): a lab_ nonce picks the lab host from the allowlist ----------
+const LAB_NONCE = `lab_${b64url(crypto.randomBytes(24))}`;
+const LAB_STATE = `${LAB_NONCE}.${CHALLENGE}`;
+const labParams = (location) => {
+  assert.ok(location.startsWith("https://paper-trail-lab.web.app/#/auth/done?"), location);
+  return Object.fromEntries(new URLSearchParams(location.split("#/auth/done?")[1]));
+};
+
+test("lab nonces are lab_ plus 32 characters; the allowlist holds exactly the live and lab hosts", () => {
+  assert.equal(LAB_NONCE.length, 36);
+  assert.ok(oauth.isWebNonce(LAB_NONCE));
+  assert.equal(oauth.webKind(LAB_NONCE), "lab");
+  assert.equal(oauth.webKind(WEB_NONCE), "web");
+  assert.equal(oauth.webKind(STATE.split(".")[0]), "", "an iPhone nonce");
+  for (const bad of ["lab_short", `lab_${"a".repeat(31)}`, `lab_${"a".repeat(33)}`, `LAB_${"a".repeat(32)}`, `dev_${"a".repeat(32)}`, `labx${"a".repeat(32)}`]) {
+    assert.equal(oauth.webKind(bad), "", bad);
+  }
+  assert.deepEqual(Object.keys(oauth.WEB_TARGETS).sort(), ["lab", "web"]);
+  assert.equal(oauth.WEB_TARGETS.web, "https://paper-trail-bw.web.app/#/auth/done");
+  assert.equal(oauth.WEB_TARGETS.lab, "https://paper-trail-lab.web.app/#/auth/done");
+  assert.ok(Object.isFrozen(oauth.WEB_TARGETS));
+});
+
+test("callback, lab: a lab nonce goes back to the lab site, and its handoff redeems the same way", async () => {
+  const out = await oauth.oauthCallback({ code: "4/code", state: LAB_STATE }, deps);
+  assert.equal(out.status, 302);
+  assert.equal(out.location.split("#")[0], "https://paper-trail-lab.web.app/", "nothing before the fragment");
+  const p = labParams(out.location);
+  assert.equal(p.state, LAB_STATE);
+  assert.equal(handoffs.get(p.handoff).nonce, LAB_NONCE);
+  const r = await oauth.oauthRedeem({ handoff: p.handoff, state: LAB_STATE, verifier: VERIFIER }, deps);
+  assert.equal(r.status, 200);
+  assert.equal(r.json.driveConnected, true);
+});
+
+test("callback, lab: errors go back to the lab site too", async () => {
+  assert.deepEqual(labParams((await oauth.oauthCallback({ error: "access_denied", state: LAB_STATE }, deps)).location), { error: "canceled", state: LAB_STATE });
+  google.json.id_token = idToken({ ...OWNER_CLAIMS, email: "someone@else.test", sub: "g-999" });
+  assert.deepEqual(labParams((await oauth.oauthCallback({ code: "c", state: LAB_STATE }, deps)).location), { error: "not_allowed", email: "someone@else.test", state: LAB_STATE });
+});
+
+test("callback, lab: WEB_APP_REDIRECT moves only the live return, and nothing in the request picks a host", async () => {
+  const cfg = deps.config;
+  deps.config = () => ({ ...cfg(), webRedirect: "https://preview--paper-trail-bw.web.app/#/auth/done" });
+  labParams((await oauth.oauthCallback({ error: "access_denied", state: LAB_STATE }, deps)).location);
+  const live = await oauth.oauthCallback({ error: "access_denied", state: WEB_STATE }, deps);
+  assert.ok(live.location.startsWith("https://preview--paper-trail-bw.web.app/#/auth/done?"), live.location);
+  deps.config = cfg;
+  const tricked = await oauth.oauthCallback({ error: "access_denied", state: LAB_STATE, host: "evil.test", webRedirect: "https://evil.test/#/auth/done" }, deps);
+  labParams(tricked.location);
+  // the iPhone app and the live web app are unchanged
+  assert.ok((await oauth.oauthCallback({ code: "c", state: STATE }, deps)).location.startsWith("papertrail://auth?"));
+  webParams((await oauth.oauthCallback({ error: "access_denied", state: WEB_STATE }, deps)).location);
+  assert.equal(oauth.returnTarget(STATE.split(".")[0], {}), oauth.APP_REDIRECT);
+});
+
 // ---------- wiring ----------
 test("index.js exports the three functions with the client secret bound", () => {
   for (const name of ["oauthCallback", "oauthRedeem", "driveToken", "classify"]) assert.ok(fns[name], name);

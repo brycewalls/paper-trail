@@ -44,7 +44,7 @@ All under `public/js/`. Entry `main.js` (a module script in `index.html`). jsPDF
 | Layer | Module | Owner | Owns |
 |---|---|---|---|
 | 0 | `boot.js` | auth | A classic script in `<head>`, run before the first paint: marks `<html>` with `pt-cached` when `pt-last-user` is in localStorage, so a cached account sees the app at once, never the sign-in screen (#14). No imports. |
-| 0 | `config.js` | shared | Constants only: Firebase config, Drive URLs, `FOLDER_NAMES`, `YEAR_FOLDERS`, `VERDICT`, read limits, `DENIED`, `VERSION`, `params`, `LOCAL`, `FAKE`. |
+| 0 | `config.js` | shared | Constants only: Firebase config, Drive URLs, `FOLDER_NAMES`, `YEAR_FOLDERS`, `VERDICT`, read limits, `DENIED`, `VERSION`, `APP_NAME`, `params`, `LOCAL`, `FAKE`, and the lab's `LAB`, `LAB_HOSTS`, `LAB_SITE`, `DATA_ROOT` (see "Lab"). |
 | 0 | `ui.js` | shared | `$`, `esc`, `slug`, `cleanName`, `mb`, `errCode`, `reduceMotion`, `prefs` (localStorage), the event bus `on` / `emit`, the legacy `setStatus` / `setSaveNote`. |
 | 0 | `md5.js` | outbox | `md5(bytes)` hex, for Drive's `md5Checksum` (#18); `sha256Hex(bytesOrBlob)` for `contentHash` (#2). |
 | 0 | `items.js` | deck | The deck's in-memory items, already in `PipelineItem` names and stages (`stage`, `decision`, `decidedAt`, `card`, `unsureFields`, `skippedAt`, `createdAt`, `uid`), plus the legacy outbox's `status`. Retired when the deck moves onto `db.js`; nothing new may import it. |
@@ -61,6 +61,7 @@ All under `public/js/`. Entry `main.js` (a module script in `index.html`). jsPDF
 | 2 | `store.js` | browse (shared: each owner adds its own named functions) | Every Firestore read and write by name: docs, paperless, senders, config. Capture added `findByHash`, `watchSenders`, `setSenderRule`, `deleteSenderRule`; outbox `getDoc`, `putDoc`, `getSender`, `createSender`, `getSettings`, `watchSettings`, `saveSettings`. |
 | 3 | `drive.js` | outbox | Drive REST: `drive()`, `withRetry`, `DriveError`, `DRIVE_COPY`, `ensureFolders`, `ensureYearFolder`, `startUpload`, `putChunk`, `uploadStatus`, `metadata`, `download`, `trash`, `search`, `CHUNK`. Gets tokens only from `auth.driveAccessToken()` (`auth.invalidateDriveToken()` on a 401, then one more try). `needsDrive`, `setNeedsDrive` (the outbox's pause); `reconnect()` runs `auth.reconnectDrive()`. The Reconnect banner is auth's; `renderDrive()` is a legacy alias for `auth.renderReconnect()`. |
 | 3 | `settings.js` | auth | The Settings sheet from the avatar; `registerSettingsSection` for every other owner's rows. |
+| 4 | `lab.js` | lab | The no-AI lab build (#92), inert unless `LAB`: the Lab badge and sign-in copy (`mountLabChrome`), lab settings (`labSettings`, `compareEnabled`, `setCompare`), `COMPARE_FIELDS`, `agreementStats(records)`, `LAB_COPY`, and the Settings "Lab" section (order 25). See "Lab". |
 | 4 | `media.js` | capture | Canvas, pdf.js and jsPDF helpers: page renders, photos to PDF, the hidden text layer (#22), `pdfText(file)` for the PDF's own text. |
 | 5 | `classify.js` | deck (capture owns `proposeSplit`) | The read: `buildPayload`, `classifyItem(item, onProgress, { senderHints })` (always `wantConfidence: true`), `normalize` (keeps `confidence`, `alternatives`, `appliedRule`), `readError`, `readErrorCode`, `READ_COPY`, confidence (`FIELD_ORDER`, `unsureFields`, `UNSURE_BELOW = 0.75`, `isConfident`, `markConfident`), sender rules (`applySenderRule`, `renderFilename`, `patternFromFilename`: the twins of `functions/lib.js` and `SenderRuleEngine`), `proposeSplit(pages)`, `readItem(item, { pdf })`, `setSenderRules`, `FILENAME_TOKENS`, `ruleFromCard`, `folderName`. A reading queue with at most two reads at once. |
 | 5 | `senders.js` | deck | Sender rules: watches `senders` while signed in and hands them to `classify.setSenderRules`; `ruleList()`, `ruleFor`, `saveRule(rule)`, `forgetRule(key)`, `rememberSender(card)` (the check-fields sheet and card detail; never throws), and the Sender rules screen (4.12, #21) in a sheet over Settings (`openSenderRules`). |
@@ -80,7 +81,7 @@ All under `public/js/`. Entry `main.js` (a module script in `index.html`). jsPDF
 | 8 | `shell.js` | shared | The app shell: tab views, pushed screens, nav bars, the dock (accessory and tab bar, search mode), avatar, the Scan menu, keyboard. Exports `scanMenuItems`, `bindScanMenu`, `setAccessoryHidden`, `shellSignedIn`, `startShell`, `pushScreen`, `goTab`, `currentTabEl`. |
 | 9 | `main.js` | shared | Boot, the fake test hooks (`window.__PT__`), what a sign-in or sign-out does across modules. No feature code. |
 
-CSS: `css/tokens.css` (tokens only), `css/components.css` (shared components), `css/shell.css` (the shell and sign-in), `css/app.css` (legacy screens, aliasing the old variable names to tokens; each owner deletes its section as it rebuilds). A new surface may add `css/<module>.css`, linked after `components.css`.
+CSS: `css/tokens.css` (tokens only), `css/components.css` (shared components), `css/shell.css` (the shell and sign-in), `css/app.css` (legacy screens, aliasing the old variable names to tokens; each owner deletes its section as it rebuilds). A new surface may add `css/<module>.css`, linked after `components.css`. `css/lab.css` (owner lab) draws only under `html.pt-lab`.
 
 ## Screens and routes
 
@@ -315,6 +316,20 @@ Goal: the same server token flow as the iPhone app (ARCHITECTURE "Auth"), so Dri
 - **Components** (`js/ui/components.js`, styles in `css/components.css`): see the module map. Sheets, menus and toasts mount in `#overlay`, inside the column.
 - **Haptics**: `haptic()` vibrates where the browser can (Android); iOS Safari has no web haptics, so the spec's haptic moments are silent there.
 - **Gallery**: `public/dev/gallery.html` shows every component, light and dark (`?theme=dark`). Not deployed (`firebase.json` ignores `dev/`). Check it after any change to `js/ui/` or the CSS.
+
+## Lab (the no-AI build, #92)
+
+Branch `exp/no-ai` only. The same `public/` serves two Hosting sites in project paper-trail-bw: the live app (`hosting:live`, https://paper-trail-bw.web.app, deployed only from `main` by `tools/deploy.sh`) and the lab (`hosting:lab`, https://paper-trail-lab.web.app, deployed only by `tools/deploy-lab.sh`). Targets are in `.firebaserc`.
+
+- **Which build.** `LAB` in `config.js` is true on the lab hosts (`LAB_HOSTS`) and on localhost with `?lab` (tests: `?fake=1&lab=1`). `boot.js` makes the same test before the first paint and sets `<html class="pt-lab">`, the title, `lab.webmanifest` and the Home Screen title. Feature code reads `LAB`; it never tests the hostname itself.
+- **Firestore.** `DATA_ROOT` is `["lab", "data"]` in the lab, so `backend.js` puts every path under `users/{uid}/lab/data/` (docs, paperless, senders, config, and the lab's own two below). `store.js` paths don't change. The rules give `users/{uid}/lab/**` the same owner-only rule as the rest (`tools/rules-check.mjs` has the lab cases).
+  - `config/lab`: `{ reader: "rules", compareWithClaude: boolean }`. Compare is on when the field is missing. `store.watchLabSettings`, `store.saveLabSettings`.
+  - `compare/{itemId}`: `{ at (ISO), agree: { <field>: boolean }, rules, claude }`, one per document read with compare on. `<field>` is one of `lab.COMPARE_FIELDS` (`title`, `docType`, `issuer`, `docDate`, `summary`, `folder`, `filename`, `verdict`, `verdictReason`, `retention`, `sensitive`, `paperless.possible`, `paperless.issuer`, `paperless.how`); a field left out wasn't scored. `rules` and `claude` are the two cards as read. `store.putComparison(id, rec)`, `store.watchComparisons`.
+- **Drive.** `ROOT_FOLDER` is "Paperwork Archive (Lab)", with the same `FOLDER_NAMES` and year folders, cached in the lab's own `config/drive`. The real archive is never opened.
+- **Local data.** IndexedDB and localStorage are per origin, so the lab site's pipeline and preferences are its own.
+- **Sign-in.** `auth.webNonce()` starts `lab_` in the lab. `oauthCallback` picks the return host from a fixed allowlist by that prefix (`WEB_TARGETS` in `functions/oauth.js`: `web` the live site, `lab` the lab site); the request can never name a host. Google's redirect URI stays https://paper-trail-bw.web.app/oauth/callback; the lab's `/oauth/redeem` goes through its own rewrite to the same function.
+- **Reading.** The lab reads with no AI (the reader's own modules). It calls the `classify` function only for compare mode, and only while `lab.compareEnabled()` is true. Claude's answer is stored in `compare/` and never filed.
+- **Looks.** The Lab badge (`.lab-badge`) on the sign-in title and each tab's nav bar, and the tab bar in `--lab` violet (tokens.css) instead of the blue accent.
 
 ## Checks
 

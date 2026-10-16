@@ -123,12 +123,16 @@ try {
 
     // Settings, Shred hold.
     await page.click("#view-piles [data-avatar]");
-    await page.waitForSelector("#set-shred-hold");
-    check(await text(page, "#set-shred-hold") === "Shred hold3 days", "Settings shows Shred hold · 3 days");
-    await page.click("#set-shred-hold");
-    check((await texts(page, ".menu .menu-item")).join("|") === "None|1 day|3 days|7 days", "the hold picker offers None, 1, 3 and 7 days");
-    await page.click(".menu .menu-item:has-text('None')");
+    // The Shred hold row is the outbox's (contract), inside the one Sorting section.
+    await page.waitForSelector("[data-shred-hold]");
+    check(/Shred hold\s*3 days/.test(await text(page, "[data-shred-hold]")), "Settings shows Shred hold · 3 days");
+    await page.click("[data-shred-hold]");
+    await page.waitForSelector("[data-hold='0']");
+    check((await texts(page, ".hold-choice .row-title")).join("|") === "None|1 day|3 days|7 days", "the hold picker offers None, 1, 3 and 7 days");
+    await page.click("[data-hold='0']");
     check(await until(page, () => window.__PT_FAKE__.db.get("config/settings").shredHoldDays === 0), "picking None saves shredHoldDays 0 to the account");
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(350);
     await page.click("[data-settings-done]");
     await page.waitForTimeout(350);
     await page.click("[data-seg=shred]");
@@ -239,7 +243,7 @@ try {
   {
     const { ctx, page } = await open("#/piles");
     await until(page, () => document.querySelector("[data-seg=shred]")?.textContent.trim() === "Shred 5");
-    await page.evaluate(() => document.getElementById("btn-signout").click());
+    await page.evaluate(async () => (await import("/public/js/auth.js")).signOut({ confirm: false }));
     check(await until(page, () => !document.querySelector("#gate").hidden), "signing out shows the sign-in screen");
     check(await until(page, () => document.querySelector("[data-seg=shred]")?.textContent.trim() === "Shred 0"), "and Piles forgets the library");
     await ctx.close();

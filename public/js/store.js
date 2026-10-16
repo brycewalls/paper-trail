@@ -4,7 +4,7 @@
 import { B } from "./backend.js";
 import { slug, emit } from "./ui.js";
 
-export const PATHS = { docs: "docs", paperless: "paperless", driveConfig: "config/drive" };
+export const PATHS = { docs: "docs", paperless: "paperless", senders: "senders", driveConfig: "config/drive" };
 
 // The first read after sign-in. A permission-denied here means the account isn't on the allowlist.
 export const checkAccess = () => B.get(PATHS.driveConfig);
@@ -14,7 +14,10 @@ export const getDriveConfig = () => B.get(PATHS.driveConfig);
 export const setDriveConfig = (data) => B.set(PATHS.driveConfig, data);
 
 // Live lists. Each returns an unsubscribe function.
-export const watchDocs = (cb, err) => B.watch(PATHS.docs, "filedAt", cb, err);
+// watchDocs also keeps the latest list for findByHash (capture, #2), so the duplicate check needs no
+// extra query.
+let knownDocs = [];
+export function watchDocs(cb, err) { knownDocs = []; return B.watch(PATHS.docs, "filedAt", (list) => { knownDocs = list; cb(list); }, err); }
 export const watchPaperless = (cb, err) => B.watch(PATHS.paperless, null, cb, err);
 
 // users/{uid}/docs/{auto id}: one per sorted document; plus users/{uid}/paperless/{slug(issuer)}
@@ -32,18 +35,38 @@ export const updateDoc = (id, data) => B.update(PATHS.docs + "/" + id, data);
 export const removeDoc = (id) => B.del(PATHS.docs + "/" + id);
 export const updateSender = (id, data) => B.update(PATHS.paperless + "/" + id, data);
 
-// ---------- browse (Piles, Search, Paperless; #18, #22, #23) ----------
-// users/{uid}/config/settings: shredHoldDays (0, 1, 3, 7; default 3) and other per-account settings.
-// Watched through the config collection (a single-doc listener isn't in the backend interface), so
-// a missing doc reads as {}.
-PATHS.settings = "config/settings";
+// ---------- outbox (#17, #18) ----------
+// users/{uid}/docs/{outboxId}: the outbox writes each record under the pipeline item's id, so a
+// retry overwrites instead of writing a second copy. Undefined fields are left out (Firestore
+// refuses them).
+const defined = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
+export const getDoc = (id) => B.get(PATHS.docs + "/" + id);
+export const putDoc = (id, rec) => B.set(PATHS.docs + "/" + id, defined(rec));
+// users/{uid}/paperless/{slug(issuer)}: created the first time a paperless-capable doc files.
+export const getSender = (id) => B.get(PATHS.paperless + "/" + id);
+export const createSender = (id, data) => B.set(PATHS.paperless + "/" + id, defined(data));
+
+// users/{uid}/config/settings: shredHoldDays (0, 1, 3, 7; default 3), offerBulkFile (web only).
+export const SETTINGS_PATH = "config/settings";
+export const getSettings = () => B.get(SETTINGS_PATH);
+// Watches config/settings; cb gets the settings object ({} when it doesn't exist yet).
 export const watchSettings = (cb, err) => B.watch("config", null, (list) => {
-  const s = list.find((d) => d.id === "settings") || {};
-  const { id, ...rest } = s;
+  const { id, ...rest } = list.find((d) => d.id === "settings") || {};
   cb(rest);
 }, err);
-// Merges a patch into config/settings, creating it when it isn't there yet (update() would fail).
+// Merges a patch into config/settings, keeping keys the other app or feature wrote.
 export async function saveSettings(patch) {
-  const cur = (await B.get(PATHS.settings)) || {};
-  await B.set(PATHS.settings, { ...cur, ...patch });
+  const cur = (await B.get(SETTINGS_PATH).catch(() => null)) || {};
+  const next = { ...cur, ...patch };
+  delete next.id;
+  await B.set(SETTINGS_PATH, defined(next));
+  return next;
 }
+// ---------- capture (#2) ----------
+// A filed doc with these exact bytes (SHA-256 hex), from the docs already watched; null when none.
+export const findByHash = (hash) => (hash && knownDocs.find((d) => d.contentHash === hash)) || null;
+
+// ---------- sender rules (#21): users/{uid}/senders/{slug(issuer)} ----------
+export const watchSenders = (cb, err) => B.watch(PATHS.senders, null, cb, err);
+export const setSenderRule = (rule) => B.set(`${PATHS.senders}/${rule.key}`, rule);
+export const deleteSenderRule = (key) => B.del(`${PATHS.senders}/${key}`);

@@ -58,7 +58,7 @@ const OWNERS = [
   [/\bB\.fetch\(/, ["drive.js"], "Drive's fetch (B.fetch)"],
   [/\bB\.classify\(/, ["classify.js"], "the classify callable (B.classify)"],
   [/\bB\.call\(/, ["auth.js", "classify.js"], "other callables (B.call)"],
-  [/\bB\.(onUser|signIn|reconnect|signOut)\(/, ["auth.js"], "Auth (B.onUser/signIn/reconnect/signOut)"],
+  [/\bB\.(onUser|authorize|redeem|signInWithTokens|signOut)\(/, ["auth.js"], "Auth (B.onUser/authorize/redeem/signInWithTokens/signOut)"],
   [/\bindexedDB\b/, ["db.js"], "IndexedDB"],
 ];
 for (const [re, owners, what] of OWNERS) {
@@ -90,8 +90,8 @@ const hexes = ["public/css/components.css", "public/css/shell.css"].flatMap((p) 
   .map((l, i) => [i + 1, l.replace(/\/\*.*?\*\//g, "")]).filter(([, l]) => /#[0-9a-fA-F]{3,8}\b/.test(l)).map(([n]) => `${p}:${n}`));
 check(!hexes.length, `no hex colors outside tokens.css${hexes.length ? ": " + hexes.join(", ") : ""}`);
 
-// 7. Verdicts are drawn only by verdictBadge() (spec 3.4). Legacy deck and piles are exempt until rebuilt.
-const LEGACY = new Set(["deck.js", "piles.js"]);
+// 7. Verdicts are drawn only by verdictBadge() (spec 3.4). Legacy piles is exempt until rebuilt.
+const LEGACY = new Set(["piles.js"]);
 const drawn = files.filter((f) => f !== "ui/components.js" && !LEGACY.has(f) && /verdict-badge|class="[^"]*\bv-(shred|scan_shred|keep_original)/.test(src[f]));
 check(!drawn.length, `verdicts are drawn only by ui/components.js verdictBadge()${drawn.length ? ": also " + drawn.join(", ") : ""}`);
 

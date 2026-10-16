@@ -3,6 +3,7 @@
 // check the iPhone app makes. Also used by the fake Drive (tools/fake/fake-backend.js) to answer
 // files.get with a real md5Checksum. Owner: outbox. Leaf module: imports nothing.
 //   md5(uint8ArrayOrArrayBuffer) -> "9e107d9d372bb6826bd81d3542a419d6"
+//   await sha256Hex(bytesOrBlob)   -> the contentHash both apps write (#2), SHA-256 as lowercase hex
 const S = [7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20,
   4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21];
 const K = Array.from({ length: 64 }, (_, i) => (Math.floor(Math.abs(Math.sin(i + 1)) * 2 ** 32) >>> 0));
@@ -37,4 +38,12 @@ export function md5(input) {
   const out = new DataView(new ArrayBuffer(16));
   [a0, b0, c0, d0].forEach((v, i) => out.setUint32(i * 4, v, true));
   return [...new Uint8Array(out.buffer)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// SHA-256 through Web Crypto: the docs record's contentHash and the duplicate check (#2), the same
+// value the iPhone app's ContentHash.sha256Hex writes.
+export async function sha256Hex(input) {
+  const buf = input instanceof Blob ? await input.arrayBuffer() : input instanceof Uint8Array ? input : new Uint8Array(input);
+  const d = await crypto.subtle.digest("SHA-256", buf);
+  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }

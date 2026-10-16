@@ -1,11 +1,12 @@
 // scanner.js: Scan document, the full-screen camera scanner (#scanner). Owns the camera, live edge
 // detection, capture, the review step and its corner handles, flattening, the page strip, and the
-// Color / Document and Auto-capture toggles. Done hands the pages to the deck as one document
-// (deck.addAsOne), the same path as Photograph a multi-page document.
+// Color / Document and Auto-capture toggles. Owner: capture. Since the capture build (#83) it no
+// longer adds to the deck itself: capture.js opens it with openScanner({ onDone, onPickFiles }) from
+// the Scan menu's "Scan document", and Done hands the pages (upright JPEG Blobs) to onDone, which
+// puts them in the scan review (spec 4.11).
 import { FIREBASE } from "./config.js";
 import { $, esc, reduceMotion, prefs } from "./ui.js";
 import { canvasBlob, makeCanvas } from "./media.js";
-import { addAsOne } from "./deck.js";
 
 // ---------- the document scanner ----------
 // Scan document opens the rear camera full screen. jscanify (MIT) on OpenCV.js (Apache 2.0) finds the
@@ -13,8 +14,7 @@ import { addAsOne } from "./deck.js";
 // grabs the full video frame, the review step shows draggable corners (the whole frame when no page
 // was found), and Keep page flattens it with a perspective warp to about 200 dpi letter: 1700 px on
 // the short side, JPEG 0.85, with an optional light whitening pass (Document). Done hands the pages
-// to the same photos-to-one-PDF path as "Photograph a multi-page document", so a scan joins the deck
-// exactly like a chosen file. Both libraries load the first time the scanner opens, pinned and
+// to the scan review (capture.js), where the pages are grouped, split and read like any import. Both libraries load the first time the scanner opens, pinned and
 // checked with SRI: OpenCV.js is about 9 MB (about 2 to 3 MB over the wire, then cached).
 const SCAN_LIBS = [
   { src: "https://cdn.jsdelivr.net/npm/jscanify@1.4.2/src/opencv.js", integrity: "sha384-gIQOiZ94Y7O29uYShJN17TQmC+8BFBNvRQ9dw9Uj9jTXckygNQz59FfqlrMzh3KT" },
@@ -28,13 +28,13 @@ const PAGE_SHORT = 1700, PAGE_MAX = 3400, PAGE_Q = 0.85;
 const STEADY_TICKS = 8;      // detections in a row that barely move before auto-capture fires
 const MODE_KEY = "pt-scan-mode", AUTO_KEY = "pt-scan-auto";
 const SCAN_ERRORS = {
-  insecure: ["The camera needs a secure connection", `Open Paper Trail at ${FIREBASE.site} to scan. Choose documents works here.`],
-  unsupported: ["This browser can't use the camera", "Choose documents still works. Pick PDFs or photos instead."],
+  insecure: ["The camera needs a secure connection", `Open Paper Trail at ${FIREBASE.site} to scan. Import from Files works here.`],
+  unsupported: ["This browser can't use the camera", "Import from Files still works. Pick PDFs or photos instead."],
   denied: ["Camera access is off", "Paper Trail needs the camera to scan. On iPhone, open Settings, then Apps, then Safari, then Camera, and choose Ask or Allow. Then tap Try again."],
-  notfound: ["No camera found", "This device doesn't have a camera Paper Trail can use. Choose documents works instead."],
+  notfound: ["No camera found", "This device doesn't have a camera Paper Trail can use. Import from Files works instead."],
   busy: ["The camera is busy", "Another app may be using it. Close that app, then tap Try again."],
   stopped: ["The camera stopped", "Tap Try again to turn it back on. Pages you already kept are still here."],
-  unknown: ["The camera didn't start", "Tap Try again. If it keeps happening, use Choose documents instead."],
+  unknown: ["The camera didn't start", "Tap Try again. If it keeps happening, use Import from Files instead."],
 };
 
 export const sc = {
@@ -148,8 +148,12 @@ function detectOn(src, w, h) {
 }
 
 // ---------- scanner: open, close, camera ----------
-function openScanner() {
+let handlers = { onDone: () => {}, onPickFiles: () => {} };
+let opener = null;
+export function openScanner(opts = {}) {
   if (sc.open) return;
+  handlers = { onDone: opts.onDone || (() => {}), onPickFiles: opts.onPickFiles || (() => {}) };
+  opener = document.activeElement;
   Object.assign(sc, { open: true, pages: [], retakeIndex: null, note: null, live: null, prev: null, steady: 0, armed: true });
   $("scanner").hidden = false;
   $("app").inert = true;
@@ -175,7 +179,8 @@ function closeScanner() {
   $("scanner").hidden = true;
   $("app").inert = false;
   document.documentElement.classList.remove("scanning");
-  $("btn-scan").focus();
+  if (opener && opener.isConnected && !opener.closest("[inert]")) opener.focus({ preventScroll: true });
+  opener = null;
 }
 function cancelScan() {
   const n = sc.pages.length;
@@ -186,9 +191,10 @@ function cancelScan() {
 function finishScan() {
   const n = sc.pages.length;
   if (!n || sc.busy) return;
-  const files = sc.pages.map((p, i) => new File([p.blob], `scan-page-${i + 1}.jpg`, { type: "image/jpeg" }));
+  const blobs = sc.pages.map((p) => p.blob);
+  const done = handlers.onDone;
   closeScanner();
-  addAsOne(files, `Scan, ${n} page${n > 1 ? "s" : ""}`);
+  done(blobs);
 }
 
 function stopCamera() {
@@ -560,7 +566,6 @@ function syncToggles() {
   $("sc-auto").setAttribute("aria-pressed", String(sc.auto));
 }
 
-$("btn-scan").addEventListener("click", openScanner);
 $("sc-cancel").addEventListener("click", cancelScan);
 $("sc-done").addEventListener("click", finishScan);
 $("sc-shutter").addEventListener("click", () => capture(false));
@@ -575,7 +580,7 @@ $("sc-delete").addEventListener("click", () => {
   leaveReview(false);
 });
 $("sc-retry").addEventListener("click", () => { showCamera(); startCamera(); });
-$("sc-pick").addEventListener("click", () => { if (cancelScan()) $("file").click(); });
+$("sc-pick").addEventListener("click", () => { const pick = handlers.onPickFiles; if (cancelScan()) pick(); });
 $("sc-auto").addEventListener("click", () => {
   sc.auto = !sc.auto; sc.armed = true; sc.steady = 0;
   prefs.set(AUTO_KEY, sc.auto ? "1" : "0");

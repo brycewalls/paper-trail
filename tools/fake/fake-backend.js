@@ -5,9 +5,11 @@
 // serves public/ only). Options, all in the query string:
 //   as=stranger      sign in as an account that isn't on the allowlist (the private screen)
 //   signedout        start signed out (the sign-in screen)
-//   nodrive          start without a Drive token (the Connect Drive link)
-//   drive401         the first upload gets a 401, to exercise Reconnect Drive
-//   readfail         the first read fails with rate_limited, to exercise Try again
+//   nodrive          the server holds no Drive grant yet (driveToken answers drive_revoked) and the
+//                    next consent comes back without the Drive scope (4.1 step 2)
+//   drive401         the first upload gets a 401 (a fresh token fixes it, nothing shows)
+//   readfail         the first read fails with rate_limited, to exercise Try again; readfail=N fails
+//                    the first N calls (the reading queue retries a rate limit twice by itself)
 // Added for the web v2 build (#83, docs/web-contract.md, "Fake backend"):
 //   seed             start with a filed library: docs in every pile and state, paperless senders in
 //                    every status, two sender rules and config/settings (for Piles, Search, Paperless),
@@ -17,6 +19,27 @@
 //   driverevoked     the driveToken callable answers drive_revoked (Reconnect Drive, spec 4.16)
 //   offline          every Drive request fails as a network error (the outbox's offline state)
 //   slowupload       uploads take about 4 seconds, so progress and the undo hold can be watched
+//   dupe=<sha256>    a filed doc ("2025 W-2", filed Oct 2) with that contentHash, so a capture of
+//                    the same bytes shows the duplicate line (#2). Tests pass the hash of the file
+//                    they import; an imported PDF is filed byte for byte, so its hash is the file's
+//   splitfail        split mode answers bad_request, like a function deployed before split mode
+// Added for auth (#14, #15, #3):
+//   oauth=canceled|not_allowed|failed   the next Google consent comes back with that error
+//   slowauth         Firebase takes 1.5 s to confirm the session, so "no check on open" can be seen
+//   lostsession      Firebase confirms nobody is signed in, even with a cached user (session revoked)
+// The session and the server's Drive grant survive a reload (sessionStorage pt-fake-auth), like
+// Firebase's own persistence, because the sign-in flow is a full-page redirect. B.authorize(url)
+// stands in for Google and oauthCallback: it records the URL and reloads the page on
+// #/auth/done?handoff=fake&state=... (or ?error=...). B.redeem checks the verifier against the state.
+// Added by the outbox (#17, #1, #18):
+//   md5mismatch      the first file uploaded reports a wrong md5Checksum (one re-upload, #18)
+//   md5pending       the first files.get answers without md5Checksum (Drive still working it out)
+//   uploadfail=N     the first N upload sessions are refused (403), to walk the retry backoff
+//   chunk=N, fastretry   (read by outbox.js on the fake path) N-byte chunks; retries after 1 to 4 s
+// Uploads are resumable like Drive's: PUTs with Content-Range: bytes a-b/total answer 308 with a
+// Range header until the last byte, then 200 with the file; Content-Range: bytes */total asks how
+// much has arrived.
+// Read by the page itself on the fake path (deck): hold=<seconds> shortens the 10-second undo hold.
 // Drive also answers files.get (metadata with a real md5Checksum), files.update with trashed: true,
 // alt=media downloads and fullText search over what was uploaded; B.call("driveToken") mints the
 // fake token.
@@ -81,11 +104,30 @@ function seedLibrary(db, state) {
   }
 }
 
+const AUTH_KEY = "pt-fake-auth";
+const loadAuth = () => { try { return JSON.parse(sessionStorage.getItem(AUTH_KEY) || "null"); } catch { return null; } };
+const saveAuth = (a) => { try { sessionStorage.setItem(AUTH_KEY, JSON.stringify(a)); } catch { /* private mode */ } };
+const b64url = (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
 export function createFakeBackend(params) {
-  const OWNER = { uid: "fake-owner", email: "bryce.evan.walls@gmail.com" };
-  const STRANGER = { uid: "fake-stranger", email: "someone@example.com" };
+  const OWNER = { uid: "fake-owner", email: "bryce.evan.walls@gmail.com", name: "Bryce Walls" };
+  const STRANGER = { uid: "fake-stranger", email: "someone@example.com", name: "Someone Else" };
+  const ACCOUNTS = { owner: OWNER, stranger: STRANGER };
+  // What survives a reload: who Firebase has signed in, and whether the server holds a Drive grant.
+  const auth = loadAuth() || {
+    user: params.has("signedout") ? null : params.get("as") === "stranger" ? "stranger" : "owner",
+    drive: params.has("driverevoked") || params.has("nodrive") ? "revoked" : "ok",
+    noDriveConsent: params.has("nodrive"),
+    oauthError: params.get("oauth") || "",
+    pending: null,           // the consent in flight: { state, account, driveConnected }
+    authorizeUrls: [],
+    redeems: 0,
+  };
+  saveAuth(auth);
+  const persist = () => saveAuth(auth);
   const state = {
-    user: params.has("signedout") ? null : params.get("as") === "stranger" ? STRANGER : OWNER,
+    auth,
+    user: ACCOUNTS[auth.user] || null,
     db: new Map(),             // "docs/abc" -> data
     listeners: [],             // { name, order, cb }
     files: [],                 // { id, name, parents, size, bytes, mimeType }
@@ -93,17 +135,25 @@ export function createFakeBackend(params) {
     sessions: new Map(),       // upload session URL -> metadata
     classifyCalls: [],
     drive401: params.has("drive401"),
-    readfail: params.has("readfail"),
+    readfail: params.has("readfail") ? Math.max(1, Number(params.get("readfail")) || 1) : 0,
     unsure: params.has("unsure"),
-    driveRevoked: params.has("driverevoked"),
+    get driveRevoked() { return auth.drive === "revoked"; },
+    set driveRevoked(v) { auth.drive = v ? "revoked" : "ok"; persist(); },
     offline: params.has("offline"),
     slowUpload: params.has("slowupload"),
+    md5mismatch: params.has("md5mismatch"),
+    md5pending: params.has("md5pending"),
+    uploadFail: Number(params.get("uploadfail")) || 0,
+    chunks: [],                // { session, from, to, total } for every resumable PUT
     calls: [],                 // { name, data } for every B.call
     authCb: null,
     nextId: 1,
   };
   window.__PT_FAKE__ = state;
   if (params.has("seed")) seedLibrary(state.db, state);
+  if (params.get("dupe")) state.db.set("docs/dupe-w2", { title: "2025 W-2", docType: "W-2", issuer: "Northwind Logistics", docDate: "2026-01-30", folder: "02 Taxes",
+    filename: "2026-01-30_W-2_Northwind-Logistics", verdict: "scan_shred", filed: true, physical: "to_shred", pages: 1, source: "web",
+    filedAt: `${new Date().getFullYear()}-10-02T15:00:00.000Z`, contentHash: params.get("dupe").toLowerCase() });
   const id = (p) => `${p}${state.nextId++}`;
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const denied = () => Object.assign(new Error("Missing or insufficient permissions."), { code: "permission-denied" });
@@ -116,13 +166,12 @@ export function createFakeBackend(params) {
       l.cb(list);
     }
   }
-  if (state.user && allowed() && !params.has("nodrive")) {
-    try { sessionStorage.setItem("pt-drive-token", JSON.stringify({ token: "fake-token", uid: OWNER.uid, exp: Date.now() + 3300000 })); } catch { /* ignore */ }
-  }
 
   const json = (obj, status = 200, headers = {}) => new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json", ...headers } });
+  const aborted = (opts) => { if (opts.signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError"); };
   async function fakeFetch(url, opts = {}) {
     await wait(120);
+    aborted(opts);
     if (state.offline) throw new TypeError("Failed to fetch");
     const u = new URL(url);
     const method = (opts.method || "GET").toUpperCase();
@@ -131,18 +180,43 @@ export function createFakeBackend(params) {
     if (u.hostname === "fake-upload.test" && method === "PUT") {
       const meta = state.sessions.get(url);
       if (!meta) return json({ error: { code: 404 } }, 404);
-      const bytes = new Uint8Array(await opts.body.arrayBuffer());
-      if (state.slowUpload) await wait(4000);
-      const file = { id: id("file-"), name: meta.name, parents: meta.parents, mimeType: meta.mimeType, size: bytes.length, bytes, md5Checksum: md5(bytes), trashed: false };
-      state.files.push(file);
-      return json({ id: file.id, webViewLink: `https://drive.google.com/file/d/${file.id}/view`, md5Checksum: file.md5Checksum, size: String(file.size) });
+      const fileReply = (f) => json({ id: f.id, name: f.name, webViewLink: `https://drive.google.com/file/d/${f.id}/view`, md5Checksum: f.md5Checksum, size: String(f.size), trashed: false });
+      const incomplete = () => new Response(null, { status: 308, headers: meta.received ? { Range: `bytes=0-${meta.received - 1}` } : {} });
+      const finish = (bytes) => {
+        let sum = md5(bytes);
+        if (state.md5mismatch) { state.md5mismatch = false; sum = md5(new Uint8Array([...bytes, 0])); }
+        const file = { id: id("file-"), name: meta.name, parents: meta.parents, mimeType: meta.mimeType, size: bytes.length, bytes, md5Checksum: sum, trashed: false };
+        state.files.push(file);
+        meta.file = file;
+        return fileReply(file);
+      };
+      const range = String((opts.headers && opts.headers["Content-Range"]) || "");
+      if (/^bytes \*\/\d+$/.test(range)) { state.chunks.push({ session: url, status: true }); return meta.file ? fileReply(meta.file) : incomplete(); }   // where does it stand?
+      const body = new Uint8Array(opts.body ? await new Response(opts.body).arrayBuffer() : new ArrayBuffer(0));
+      const m = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(range);
+      if (!m) {                                            // one PUT of the whole file
+        if (state.slowUpload) await wait(4000);
+        return finish(body);
+      }
+      const [from, to, total] = [Number(m[1]), Number(m[2]), Number(m[3])];
+      state.chunks.push({ session: url, from, to, total });
+      if (meta.file) return fileReply(meta.file);
+      if (from !== meta.received) return incomplete();     // Drive keeps what it has; the client resends from there
+      if (state.slowUpload) await wait(Math.max(150, 4000 * body.length / total));
+      aborted(opts);
+      if (state.offline) throw new TypeError("Failed to fetch");
+      if (!meta.bytes) meta.bytes = new Uint8Array(total);
+      meta.bytes.set(body, from);
+      meta.received = to + 1;
+      return meta.received >= total ? finish(meta.bytes) : incomplete();
     }
     if (u.pathname === "/upload/drive/v3/files" && method === "POST") {
       if (state.drive401) { state.drive401 = false; return json({ error: { code: 401, status: "UNAUTHENTICATED" } }, 401); }
+      if (state.uploadFail > 0) { state.uploadFail--; return json({ error: { code: 403, errors: [{ reason: "forbidden" }], message: "The user does not have sufficient permissions" } }, 403); }
       const meta = JSON.parse(opts.body);
       if (!state.folders.some((f) => f.id === meta.parents[0])) return json({ error: { code: 404, errors: [{ reason: "notFound" }] } }, 404);
       const session = `https://fake-upload.test/session/${id("s")}`;
-      state.sessions.set(session, meta);
+      state.sessions.set(session, { ...meta, size: Number((opts.headers || {})["X-Upload-Content-Length"]) || 0, received: 0, bytes: null, file: null });
       return new Response(null, { status: 200, headers: { Location: session } });
     }
     const one = u.pathname.match(/^\/drive\/v3\/files\/([^/]+)$/);
@@ -151,6 +225,7 @@ export function createFakeBackend(params) {
       if (!f) return json({ error: { code: 404, errors: [{ reason: "notFound" }] } }, 404);
       if (method === "PATCH") { Object.assign(f, JSON.parse(opts.body || "{}")); return json({ id: f.id, trashed: f.trashed }); }
       if (u.searchParams.get("alt") === "media") return new Response(f.bytes, { status: 200, headers: { "Content-Type": f.mimeType || "application/pdf" } });
+      if (state.md5pending) { state.md5pending = false; return json({ id: f.id, name: f.name, size: String(f.size), trashed: !!f.trashed }); }
       return json({ id: f.id, name: f.name, md5Checksum: f.md5Checksum, size: String(f.size), trashed: !!f.trashed, parents: f.parents, webViewLink: `https://drive.google.com/file/d/${f.id}/view` });
     }
     if (u.pathname === "/drive/v3/files" && method === "GET" && /fullText contains/.test(u.searchParams.get("q") || "")) {
@@ -174,22 +249,71 @@ export function createFakeBackend(params) {
   }
 
   return {
-    onUser(cb) { state.authCb = cb; setTimeout(() => cb(state.user), 50); },
-    async signIn() {
-      await wait(200);
-      state.user = OWNER;
-      setTimeout(() => state.authCb(state.user), 0);
-      return { uid: OWNER.uid, token: "fake-token" };
+    onUser(cb) {
+      state.authCb = cb;
+      if (params.has("lostsession") && !auth.lostApplied) { auth.lostApplied = true; auth.user = null; persist(); state.user = null; }
+      setTimeout(() => cb(state.user && { ...state.user }), params.has("slowauth") ? 1500 : 50);
     },
-    async reconnect() { await wait(200); return { uid: state.user.uid, token: "fake-token" }; },
-    async signOut() { state.user = null; state.listeners = []; state.authCb(null); },
+    // Google and oauthCallback in one step: the consent picks the stranger first with ?as=stranger,
+    // the owner otherwise; ?oauth= and ?nodrive shape the answer once each.
+    authorize(url) {
+      const u = new URL(url);
+      const st = u.searchParams.get("state") || "";
+      auth.authorizeUrls.push(url);
+      const back = new URLSearchParams();
+      if (auth.oauthError) {
+        back.set("error", auth.oauthError);
+        if (auth.oauthError === "not_allowed") back.set("email", STRANGER.email);
+        auth.oauthError = "";
+      } else {
+        const hint = u.searchParams.get("login_hint");
+        const account = hint ? Object.keys(ACCOUNTS).find((k) => ACCOUNTS[k].email === hint) || "owner" : params.get("as") === "stranger" && !auth.pickedOnce ? "stranger" : "owner";
+        auth.pickedOnce = true;
+        if (account === "stranger") { back.set("error", "not_allowed"); back.set("email", STRANGER.email); }
+        else {
+          const wantsDrive = (u.searchParams.get("scope") || "").includes("drive.file");
+          const driveConnected = wantsDrive && !auth.noDriveConsent;
+          auth.noDriveConsent = false;
+          if (driveConnected) auth.drive = "ok";
+          auth.pending = { state: st, account, driveConnected };
+          back.set("handoff", "fake");
+        }
+      }
+      back.set("state", st);
+      persist();
+      location.replace(`${location.pathname}${location.search}#/auth/done?${back}`);
+      location.reload();
+    },
+    async redeem({ handoff, state: st, verifier }) {
+      await wait(120);
+      auth.redeems++;
+      const p = auth.pending;
+      auth.pending = null;
+      persist();
+      if (handoff !== "fake" || !p) throw Object.assign(new Error("expired"), { code: "oauth/expired" });
+      const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
+      if (p.state !== st || st.split(".")[1] !== b64url(digest)) throw Object.assign(new Error("mismatch"), { code: "oauth/mismatch" });
+      const a = ACCOUNTS[p.account];
+      return { idToken: `fake-id-${p.account}`, accessToken: p.driveConnected ? "fake-token" : "fake-token-no-drive", expiresIn: 3599, email: a.email, name: a.name, driveConnected: p.driveConnected };
+    },
+    async signInWithTokens({ idToken }) {
+      await wait(80);
+      const key = String(idToken || "").replace(/^fake-id-/, "");
+      if (!ACCOUNTS[key]) throw Object.assign(new Error("bad credential"), { code: "auth/invalid-credential" });
+      auth.user = key; persist();
+      state.user = ACCOUNTS[key];
+      setTimeout(() => state.authCb && state.authCb({ ...state.user }), 0);
+      return { ...state.user };
+    },
+    async signOut() { auth.user = null; persist(); state.user = null; state.listeners = []; state.authCb && state.authCb(null); },
     async classify(payload) {
       state.classifyCalls.push(payload);
       await wait(400 + Math.random() * 500);
-      if (state.readfail) { state.readfail = false; throw Object.assign(new Error("rate"), { code: "functions/resource-exhausted", details: { code: "rate_limited" } }); }
+      if (state.readfail > 0) { state.readfail--; throw Object.assign(new Error("rate"), { code: "functions/resource-exhausted", details: { code: "rate_limited" } }); }
       if (!payload || (payload.kind === "pdf" && !payload.pdf) || (payload.kind === "images" && !payload.images?.length)) throw Object.assign(new Error("bad"), { code: "functions/invalid-argument", details: { code: "bad_request" } });
       // Split mode (#19): a new document starts at every page whose text says "page 1".
       if (payload.mode === "split") {
+        if (params.has("splitfail")) throw Object.assign(new Error("bad"), { code: "functions/invalid-argument", details: { code: "bad_request" } });
         const pages = payload.pages || [];
         const starts = pages.map((p, i) => (i === 0 || /\bpage 1\b/i.test(p.text || "") ? i : -1)).filter((i) => i >= 0);
         return { split: { documents: starts.map((s, k) => ({ start: s, end: (starts[k + 1] ?? pages.length) - 1, label: String(pages[s].text || "Document").split(/\s+/).slice(0, 4).join(" ").slice(0, 60) })) }, model: "fake" };
@@ -203,10 +327,29 @@ export function createFakeBackend(params) {
           ? { overall: 0.55, fields: { issuer: 0.6, docDate: 0.55 }, sparse: true } : { overall: 1, fields: {}, sparse: true };
         if (state.unsure && sample === SAMPLES[0]) result.alternatives = { issuer: ["Duke Energy Progress"], docDate: ["2024-03-28"] };
       }
-      // Sender rules (#21): the rule whose key is the slug of the issuer applies.
-      const key = String(result.issuer || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-      const rule = (payload.senderHints || []).find((r) => r.key === key);
-      if (rule) { for (const f of ["folder", "verdict", "docType"]) if (rule[f]) result[f] = rule[f]; result.appliedRule = rule.key; }
+      // Sender rules (#21): the rule whose key is the slug of the issuer applies, the way
+      // functions/lib.js applySenderRule() does it: the rule's spelling, folder, verdict, type and
+      // filename pattern, and the fields it set become certain.
+      const sl = (v) => String(v || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "unknown";
+      const rule = (payload.senderHints || []).find((r) => r.key === sl(result.issuer));
+      if (rule) {
+        const set = ["issuer"];
+        result.issuer = rule.issuer || result.issuer;
+        for (const f of ["folder", "verdict"]) if (rule[f]) { result[f] = rule[f]; set.push(f); }
+        if (rule.docType) result.docType = rule.docType;
+        if (rule.filenamePattern) {
+          const d = result.docDate || "0000-00-00";
+          result.filename = rule.filenamePattern.replace(/\{date\}/g, d).replace(/\{yyyy\}/g, d.slice(0, 4)).replace(/\{mm\}/g, d.slice(5, 7))
+            .replace(/\{issuer\}/g, sl(result.issuer)).replace(/\{type\}/g, sl(result.docType));
+          set.push("filename");
+        }
+        if (result.confidence) {
+          for (const f of set) result.confidence.fields[f] = 1;
+          result.confidence.overall = Math.min(1, ...Object.values(result.confidence.fields));
+        }
+        if (result.alternatives) for (const f of set) delete result.alternatives[f];
+        result.appliedRule = rule.key;
+      }
       return { result, model: "fake" };
     },
     // Callables other than classify (#15). driveToken mints the fake token unless ?driverevoked.

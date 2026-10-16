@@ -184,13 +184,13 @@ button.list-row:active, a.list-row:active { background: var(--fill); }
 .radio-row { display: flex; align-items: center; gap: var(--s-3); min-height: var(--row-min); padding: 10px 14px; border-radius: 12px; cursor: pointer;
   background: var(--surface); box-shadow: inset 0 0 0 0.5px var(--separator); font: var(--t-body); letter-spacing: var(--tr-body); }
 .radio-row + .radio-row { margin-top: var(--s-2); }
-.radio-row input { position: absolute; opacity: 0; pointer-events: none; }
+.radio-row input[type=radio] { position: absolute; opacity: 0; pointer-events: none; }
 .radio-dot { flex: 0 0 auto; width: 20px; height: 20px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--tertiary); }
 .radio-row .row-title { flex: 1; min-width: 0; }
 .radio-hint { font: var(--t-caption); color: var(--muted); }
-.radio-row:has(input:checked) { box-shadow: inset 0 0 0 2px var(--accent); }
-.radio-row:has(input:checked) .radio-dot { box-shadow: inset 0 0 0 6px var(--accent); }
-.radio-row:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.radio-row:has(input[type=radio]:checked) { box-shadow: inset 0 0 0 2px var(--accent); }
+.radio-row:has(input[type=radio]:checked) .radio-dot { box-shadow: inset 0 0 0 6px var(--accent); }
+.radio-row:has(input[type=radio]:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* Segmented control */
 .segmented { display: flex; padding: 2px; gap: 2px; border-radius: var(--r-capsule); background: var(--fill); }
@@ -273,3 +273,16 @@ button.list-row:active, a.list-row:active { background: var(--fill); }
 .sheet-toolbar { flex: 0 0 auto; display: flex; justify-content: flex-end; gap: var(--s-2); padding: 0 var(--s-4); margin-top: -8px; }
 .sheet-head.large { padding-top: var(--s-2); }
 .sheet-head.large .sheet-title { font: var(--t-large-title); letter-spacing: var(--tr-large-title); }
+.radio-row.has-field { cursor: text; }
+.radio-field { flex: 1; min-width: 0; height: 28px; border: none; background: none; padding: 0; color: var(--ink); font: var(--t-body); letter-spacing: var(--tr-body); outline: none; }
+.radio-field.mono { font: var(--t-mono-caption); font-size: 15px; }
+.radio-row .row-title.t-mono { font: var(--t-mono-caption); font-size: 14px; }
+.radio-row { position: relative; }   /* holds its hidden radio, so focusing it never scrolls the sheet sideways */
+.radio-field:focus-visible { outline: none; }   /* the row already draws the 2 pt accent stroke */
+
+/* Settings: sections from different owners under one header draw as one group (settings.js joinGroups) */
+.group.join-next { margin-bottom: 0; }
+.group.join-next > .group-body { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.group.join-prev > .group-body { border-top-left-radius: 0; border-top-right-radius: 0; }
+.group.join-prev > .group-body > .list-row:first-child { position: relative; }
+.group.join-prev > .group-body > .list-row:first-child::before { content: ""; position: absolute; top: 0; right: 0; left: var(--sep-inset); height: 0.5px; background: var(--separator); }

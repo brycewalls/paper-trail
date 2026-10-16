@@ -234,20 +234,10 @@ export const loadFailedState = () => emptyState({ symbol: "exclamationmark.iclou
   actions: button("Try again", { "data-browse-retry": "" }) });
 
 // ---------- Reconnect Drive (spec 3.9, 4.16): on Piles while the server has no Drive token ----------
-export const reconnectBanner = () => (lib.driveStatus === "needsReconnect"
-  ? `<div class="group b-banner">${banner({ kind: "reconnect", bold: "Drive needs reconnecting.", text: "Your scans are safe on this phone and upload once it's back.",
-    actions: button("Reconnect Drive", { small: true, "data-browse-reconnect": "" }) })}</div>` : "");
-document.addEventListener("click", async (e) => {
-  if (e.target.closest("[data-browse-retry]")) { startLibrary(); return; }
-  const b = e.target.closest("[data-browse-reconnect]");
-  if (!b) return;
-  b.disabled = true;
-  try {
-    if (typeof Auth.reconnectDrive === "function") await Auth.reconnectDrive();
-    else $("btn-reconnect")?.click();
-  } catch { toast("Drive didn't reconnect. Try again in a minute."); }
-  finally { b.disabled = false; }
-});
+// The banner is auth's (one banner everywhere, with its working and failed states); Piles mounts it
+// again after every redraw.
+export function placeReconnect(el) { if (typeof Auth.mountReconnectBanner === "function") Auth.mountReconnectBanner(el); }
+document.addEventListener("click", (e) => { if (e.target.closest("[data-browse-retry]")) startLibrary(); });
 
 // ---------- the read-only document view (spec 4.13 read-only; pushed as doc:<id>) ----------
 // Deck's detail.js may register "doc" itself; when it hasn't, this one is registered the first time

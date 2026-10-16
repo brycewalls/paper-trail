@@ -146,10 +146,15 @@ export function toggleRow(title, { checked = false, id, subtitle = "", ...a } = 
     + (subtitle ? `<span class="row-subtitle">${esc(subtitle)}</span>` : "")
     + `</span><input type="checkbox" role="switch" class="switch" id="${esc(tid)}"${checked ? " checked" : ""}${attrs(a)}></label>`;
 }
-// Radio row (check-fields sheet): Claude's value with "likely" / "possible" trailing.
-export function radioRow(title, { checked = false, hint = "", name = "r", value, ...a } = {}) {
-  return `<label class="radio-row${checked ? " on" : ""}"><input type="radio" name="${esc(name)}" value="${esc(value ?? title)}"${checked ? " checked" : ""}${attrs(a)}>`
-    + `<span class="radio-dot" aria-hidden="true"></span><span class="row-title">${esc(title)}</span>${hint ? `<span class="radio-hint">${esc(hint)}</span>` : ""}</label>`;
+// Radio row (check-fields sheet): Claude's value with "likely" / "possible" trailing. mono draws the
+// title in SF Mono (filenames). field: { value, placeholder, label } turns the row's title into a
+// text field in place ("Something else", spec 3.8); the input gets class "radio-field".
+export function radioRow(title, { checked = false, hint = "", name = "r", value, mono = false, field, ...a } = {}) {
+  const body = field
+    ? `<input type="text" class="radio-field${mono ? " mono" : ""}" value="${esc(field.value || "")}" placeholder="${esc(field.placeholder || title)}" aria-label="${esc(field.label || title)}" autocomplete="off" spellcheck="false">`
+    : `<span class="row-title${mono ? " t-mono" : ""}">${esc(title)}</span>`;
+  return `<label class="radio-row${checked ? " on" : ""}${field ? " has-field" : ""}"><input type="radio" name="${esc(name)}" value="${esc(value ?? title)}"${checked ? " checked" : ""}${field ? ` aria-label="${esc(title)}"` : ""}${attrs(a)}>`
+    + `<span class="radio-dot" aria-hidden="true"></span>${body}${hint ? `<span class="radio-hint">${esc(hint)}</span>` : ""}</label>`;
 }
 
 // ---------- Segmented control (Piles: "Shred 9", "Keep 3", "All filed 64") ----------

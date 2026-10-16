@@ -43,31 +43,32 @@ All under `public/js/`. Entry `main.js` (a module script in `index.html`). jsPDF
 
 | Layer | Module | Owner | Owns |
 |---|---|---|---|
+| 0 | `boot.js` | auth | A classic script in `<head>`, run before the first paint: marks `<html>` with `pt-cached` when `pt-last-user` is in localStorage, so a cached account sees the app at once, never the sign-in screen (#14). No imports. |
 | 0 | `config.js` | shared | Constants only: Firebase config, Drive URLs, `FOLDER_NAMES`, `YEAR_FOLDERS`, `VERDICT`, read limits, `DENIED`, `VERSION`, `params`, `LOCAL`, `FAKE`. |
 | 0 | `ui.js` | shared | `$`, `esc`, `slug`, `cleanName`, `mb`, `errCode`, `reduceMotion`, `prefs` (localStorage), the event bus `on` / `emit`, the legacy `setStatus` / `setSaveNote`. |
-| 0 | `md5.js` | outbox | `md5(bytes)` hex, for Drive's `md5Checksum` (#18). |
-| 0 | `items.js` | deck | Legacy in-memory session items. Retired when the deck moves onto `db.js`; nothing new may import it. |
+| 0 | `md5.js` | outbox | `md5(bytes)` hex, for Drive's `md5Checksum` (#18); `sha256Hex(bytesOrBlob)` for `contentHash` (#2). |
+| 0 | `items.js` | deck | The deck's in-memory items, already in `PipelineItem` names and stages (`stage`, `decision`, `decidedAt`, `card`, `unsureFields`, `skippedAt`, `createdAt`, `uid`), plus the legacy outbox's `status`. Retired when the deck moves onto `db.js`; nothing new may import it. |
 | 0 | `ui/icons.js` | deck | `icon(name)`: the SF Symbol names the app uses, as line drawings. |
 | 0 | `ui/motion.js` | deck | `spring(name)` for the Web Animations API (reads the CSS springs), `reduceMotion()`, `haptic(kind)`. |
-| 1 | `ui/components.js` | deck | Every shared component as an HTML string: `verdictBadge`, `sensitiveChip`, `retentionChip`, `unsurePill`, `filterChip`, `choiceChip`, `statusPill`, `progressRing`, `docThumb`, `primaryButton`, `button`, `glassCircle`, `avatarButton`, `initialsOf`, `banner`, `emptyState`, `navBar`, `section`, `row`, `valueRow`, `toggleRow`, `radioRow`, `segmented`, `unsureRow`, `highlight`, `outboxAccessory`, `accessoryTitle`. |
+| 1 | `ui/components.js` | deck | Every shared component as an HTML string: `verdictBadge`, `sensitiveChip`, `retentionChip`, `unsurePill`, `filterChip`, `choiceChip`, `statusPill`, `progressRing`, `docThumb`, `primaryButton`, `button`, `glassCircle`, `avatarButton`, `initialsOf`, `banner`, `emptyState`, `navBar`, `section`, `row`, `valueRow`, `toggleRow`, `radioRow` (with `mono`, and `field` for "Something else" as a text field in place), `segmented`, `unsureRow`, `highlight`, `outboxAccessory`, `accessoryTitle`. |
 | 1 | `ui/sheet.js` | deck | `openSheet` (medium and large detents, grabber, drag to dismiss, focus trap), `actionSheet` (the confirmation dialog), `sheetOpen()`. |
 | 1 | `ui/menu.js` | deck | `openMenu`, `bindMenu`, `closeMenu`: the glass pull-down menu. |
 | 1 | `ui/toast.js` | deck | `toast(text, { action })`, `hideToast()`. |
 | 1 | `router.js` | shared | Hash routes, per-tab stacks, `go`, `push`, `back`, `replaceQuery`, `route`, `lastTab`, `registerScreen`, `screens`. Emits `route:changed`. |
 | 1 | `backend.js` | shared | `B` (Firebase, or the fake with `?fake`) and `initBackend()`. |
 | 1 | `db.js` (new) | outbox | IndexedDB: the pipeline store, blobs, review sessions (see "Local pipeline"). Emits `pipeline:changed`. |
-| 2 | `auth.js` | auth | Session and sign-in: `currentUser()`, `watchUser()`, the web OAuth code flow, `driveAccessToken()`, `reconnectDrive()`, `driveStatus()`, `signOut()`, the gate (`showGate`, `authMsg`). Emits `drive:status`, `auth:token` (legacy). |
-| 2 | `store.js` | browse (shared: each owner adds its own named functions) | Every Firestore read and write by name: docs, paperless, senders, config. |
-| 3 | `drive.js` | outbox | Drive REST: `drive()`, `withRetry`, `DriveError`, `DRIVE_COPY`, `ensureFolders`, `ensureYearFolder`, `startUpload`, `putChunk`, `uploadStatus`, `metadata`, `download`, `trash`, `search`. Gets tokens only from `auth.driveAccessToken()`. Draws the Reconnect banner state (`renderDrive`). |
+| 2 | `auth.js` | auth | Session and sign-in: `currentUser()`, `watchUser()`, `startAuth()`, `finishReturn()`, `cachedSession()`, `markNotAllowed()`, the web OAuth code flow, `driveAccessToken()`, `invalidateDriveToken()`, `reconnectDrive()`, `driveStatus()`, `signOut()`, the sign-in screen (`showGate`, `hideGate`), the Reconnect Drive banner (`mountReconnectBanner`, `watchDriveUi`). Emits `drive:status`. |
+| 2 | `store.js` | browse (shared: each owner adds its own named functions) | Every Firestore read and write by name: docs, paperless, senders, config. Capture added `findByHash`, `watchSenders`, `setSenderRule`, `deleteSenderRule`; outbox `getDoc`, `putDoc`, `getSender`, `createSender`, `getSettings`, `watchSettings`, `saveSettings`. |
+| 3 | `drive.js` | outbox | Drive REST: `drive()`, `withRetry`, `DriveError`, `DRIVE_COPY`, `ensureFolders`, `ensureYearFolder`, `startUpload`, `putChunk`, `uploadStatus`, `metadata`, `download`, `trash`, `search`, `CHUNK`. Gets tokens only from `auth.driveAccessToken()` (`auth.invalidateDriveToken()` on a 401, then one more try). `needsDrive`, `setNeedsDrive` (the outbox's pause); `reconnect()` runs `auth.reconnectDrive()`. The Reconnect banner is auth's; `renderDrive()` is a legacy alias for `auth.renderReconnect()`. |
 | 3 | `settings.js` | auth | The Settings sheet from the avatar; `registerSettingsSection` for every other owner's rows. |
 | 4 | `media.js` | capture | Canvas, pdf.js and jsPDF helpers: page renders, photos to PDF, the hidden text layer (#22), `pdfText(file)` for the PDF's own text. |
-| 5 | `classify.js` | deck (capture owns `proposeSplit`) | The read: `buildPayload`, `classifyItem`, `normalize`, `readError`, `READ_COPY`, confidence (`unsureFields`, `UNSURE_BELOW = 0.75`, `isConfident`), sender hints and `applySenderRule` (the twin of `functions/lib.js applySenderRule()` and `SenderRuleEngine.apply`), `proposeSplit(pages)`. A reading queue with at most two reads at once. |
-| 5 | `senders.js` (new) | deck | Sender rules: watch, save from the check-fields sheet, edit and forget (4.12), filename patterns (#27). |
-| 5 | `outbox.js` | outbox | The engine: `release(id)` after the undo hold, `retry(id)`, `retryAll()`, `sendBack(id)`, `status()`, resume on load. Emits `outbox:status`. |
-| 6 | `outbox-view.js` (new) | outbox | The Outbox screen (`registerScreen("outbox")`), Earlier (`"earlier"`), the Shred hold settings row. |
-| 6 | `deck.js` | deck | Sort: the deck, card, gestures, overlays, action row, undo hold, Skip and the Skipped sheet, bulk file, Keep original confirm, empty states. Today: the legacy deck (`addEach`, `addAsOne`, `pump`, `renderDeck`), rebuilt in place. |
-| 6 | `checkfields.js` (new) | deck | The check-fields sheet (3.8). |
-| 6 | `detail.js` (new) | deck | Card detail and edit (4.13), and its read-only mode for filed docs (`registerScreen("card")`, `registerScreen("doc")`). |
+| 5 | `classify.js` | deck (capture owns `proposeSplit`) | The read: `buildPayload`, `classifyItem(item, onProgress, { senderHints })` (always `wantConfidence: true`), `normalize` (keeps `confidence`, `alternatives`, `appliedRule`), `readError`, `readErrorCode`, `READ_COPY`, confidence (`FIELD_ORDER`, `unsureFields`, `UNSURE_BELOW = 0.75`, `isConfident`, `markConfident`), sender rules (`applySenderRule`, `renderFilename`, `patternFromFilename`: the twins of `functions/lib.js` and `SenderRuleEngine`), `proposeSplit(pages)`, `readItem(item, { pdf })`, `setSenderRules`, `FILENAME_TOKENS`, `ruleFromCard`, `folderName`. A reading queue with at most two reads at once. |
+| 5 | `senders.js` | deck | Sender rules: watches `senders` while signed in and hands them to `classify.setSenderRules`; `ruleList()`, `ruleFor`, `saveRule(rule)`, `forgetRule(key)`, `rememberSender(card)` (the check-fields sheet and card detail; never throws), and the Sender rules screen (4.12, #21) in a sheet over Settings (`openSenderRules`). |
+| 5 | `outbox.js` | outbox | The engine: `release(id)` after the undo hold, `retry(id)`, `retryAll()`, `sendBack(id)`, `status()`, `entries()`, `refreshStatus()`, resume on load. The pure rules the view and tests share (`driveTarget`, `buildRecord`, `searchTerms`, `accessoryState`, `subtitle`, row copy, `COPY`, `RETRY_DELAYS`, `UNDO_MS`). Legacy `enqueue(it)` / `logShred(it)` / `clearOutbox()` for the in-memory deck until it moves onto `db.js`. Emits `outbox:status`, `doc:verified`. |
+| 6 | `outbox-view.js` | outbox | The Outbox screen (`registerScreen("outbox")`), Earlier (`"earlier"`), the Shred hold settings row and picker (`registerSettingsSection` id `shred-hold`, order 31), `shredHoldDays()`, `holdLabel(d)`. Styles in `css/outbox.css`. |
+| 6 | `deck.js` | deck | Sort: the deck, card, gestures, overlays, action row, undo hold, Skip and the Skipped sheet, bulk file, Keep original confirm, empty states, keyboard, the "Sorting" Settings section. Still adds documents and reads them (`addEach`, `addAsOne`, `pump`) until capture.js and db.js take over. Imports `shell.js` for `bindScanMenu` (the empty states' Scan menu, #79). |
+| 6 | `checkfields.js` | deck | The check-fields sheet (3.8): `openCheckFields({ card, fields, focus })` resolves `{ card, remember }` or null; `openFolderPicker(current)`. |
+| 6 | `detail.js` | deck | Card detail and edit (4.13), and its read-only mode for filed docs (`registerScreen("card")`, `registerScreen("doc")`). Imports `deck.js`; `main.js` imports it once so the screens register. |
 | 5 | `browse.js` | browse | What Piles, Search and Paperless share: the live library (docs, paperless and `config/settings` listeners from `session:started`, `onBrowse(fn)`), the safe-to-shred rule (`shredState`), the shred hold (`holdDays`), PileFormat strings, document rows (labeled thumbnail, trailing swipe actions with keyboard and menu twins), the Reconnect banner on Piles, and the read-only document view (`openDoc(id, words)`, which registers `"doc"` on first use unless `detail.js` already did). |
 | 6 | `piles.js` | browse | Piles (4.5): Shred, Keep and All filed, the safe banner, Mark n as shredded, Put away and Take out, the Sensitive filter, and the Settings "Shred hold" row (order 31; joins deck's Sorting section when it's there). |
 | 6 | `search.js` | browse | Search (4.6): chips, recents (per device, localStorage `pt-recent-searches` until `db.js` `kv` lands), results, highlight, snippets, Also in Drive (`drive.search()` when outbox adds it, the Drive REST call through `drive()` until then). |
@@ -99,7 +100,7 @@ Phone first, exactly like the spec at 390 to 430 px. Wider than that, the same c
 | `#/paperless/done-senders` | Every Confirmed and Can't stop sender, from the grouped Done row | browse | |
 | `#/auth/done?...` | Sign-in return (not a tab) | auth | See "Auth". |
 | sheet | Settings (4.9) | auth | `openSettings()`; never a route. |
-| sheet | Check fields (3.8), bulk file, Skipped (3.13), Shred hold picker | deck, outbox | `openSheet()`. |
+| sheet | Check fields (3.8), bulk file, Skipped (3.13), folder picker, Shred hold picker | deck, outbox | `openSheet()`. |
 | full screen | Scanner, scan review (4.11), page viewer (4.11.1) | capture | Over the column; set `#app` inert while open, as the scanner does today. |
 
 A pushed screen registers once at import: `registerScreen("outbox", { title: "Outbox", mount(el, { param, tab, query, body, setTitle }), unmount(el) })`. The shell draws its nav bar (large title, back button labeled with the screen below) and calls `mount` with `body` to render into. Until the owner registers it, the shell shows a placeholder for `outbox`.
@@ -138,7 +139,7 @@ Database `paper-trail`, version 1:
 | `items` | `id` (`crypto.randomUUID()`) | One document on its way through, fields below. Index `stage`, index `createdAt`. |
 | `blobs` | string | `items/<id>.pdf`, `items/<id>.thumb.jpg` (600 px long side), `review/<session>/<n>.jpg` (review pages). |
 | `reviews` | `session` | A scan review left open (`ReviewSession`): pages, groups, labels, held state. Reopens on the next launch. |
-| `kv` | string | Small per-device values: `lastUser` (for #14), recent searches, `lastTab`. |
+| `kv` | string | Small per-device values: recent searches, `lastTab`. (The cached user for #14 is in localStorage, `pt-last-user`, because boot has to read it synchronously.) |
 
 Item fields (same names and stage strings as `PipelineItem`, never renamed):
 
@@ -155,7 +156,8 @@ Item fields (same names and stage strings as `PipelineItem`, never renamed):
 | `pages`, `sizeBytes`, `contentHash`, `md5`, `ocrText` | Set by capture (hash, text) and the outbox (md5 just before upload). |
 | `uploadURL`, `bytesSent` | The resumable session and progress. |
 | `driveId`, `driveUrl`, `docId` | Set as the upload and record land. |
-| `filedAt`, `verifiedAt`, `nextRetryAt`, `reuploads`, `failedStage`, `errorMessage` | Outbox bookkeeping, as on the iPhone. |
+| `filedAt`, `verifiedAt`, `nextRetryAt`, `attempts`, `reuploads`, `failedStage`, `errorMessage` | Outbox bookkeeping, as on the iPhone. |
+| `filesPurged`, `origin` | The PDF and thumbnail were cleaned up 10 minutes after the item finished; where the item came from (`legacy-deck` for the in-memory deck's bridge). |
 | `session` | Named session (#26, later). |
 
 `db.js` exports: `openDb()`, `getItem(id)`, `putItem(item)`, `updateItem(id, patch)`, `deleteItem(id)`, `listItems({ stage, uid })`, `putBlob(key, blob)`, `getBlob(key)`, `deleteBlob(key)`, `putReview(r)`, `getReview(s)`, `deleteReview(s)`, `kvGet(k)`, `kvSet(k, v)`, `clearAccount(uid)`. Every write emits `pipeline:changed` with `{ id, stage }`. Blobs are deleted when an item is `verified` (or `filed` with `shredOnly`) plus 10 minutes, so a late Undo can still send the card back.
@@ -168,7 +170,10 @@ The exports other owners may call. Each owner adds its fake support in the same 
 
 **auth.js** (auth)
 - `currentUser()` → `{ uid, email, name }` or `null`, available synchronously at boot from the cached session (#14).
-- `watchUser(cb)`: called with the confirmed user or `null`.
+- `watchUser(cb)`: `cb(user, { confirmed })` with the account to show, or `null` while the sign-in screen is up. The first call can come from the cache (`confirmed: false`) before Firebase answers; start Firestore listeners only on `confirmed: true` (main.js does).
+- `startAuth()`, `finishReturn()`, `cachedSession()`, `markNotAllowed(email)`: main.js's boot and the allowlist probe (see "Auth").
+- `invalidateDriveToken()`: drive.js calls it on a 401, so the retry mints a fresh token.
+- `mountReconnectBanner(host)` → unmount: the live Reconnect Drive banner (3.9) at the top of `host`. Auth mounts it in `#sort-body` and `#piles-body` at start; the outbox calls it on the Outbox screen, and any owner that redraws its screen's body calls it again (harmless when it's already there). `watchDriveUi(fn)` → unwatch: redraw a Reconnect control (status, working state, failure line).
 - `driveAccessToken()` → `Promise<string>`: cached until a minute before expiry; concurrent callers share one mint; throws `DriveAuthError("drive_revoked")` when Drive needs reconnecting, `("drive_unavailable")` when Google didn't answer (retryable), never prompts.
 - `driveStatus()` → `"connected" | "needsReconnect" | "unknown"`; changes only on the server's word (spec 4.16).
 - `reconnectDrive()`: runs the code flow again with the Drive scope (a full-page redirect; the page comes back through `#/auth/done`).
@@ -177,21 +182,23 @@ The exports other owners may call. Each owner adds its fake support in the same 
 
 **drive.js** (outbox): `ensureFolders(forceRebuild)`, `ensureYearFolder(folderName, year)` (02 Taxes, 03 Money & Banking and 05 Medical only, `YEAR_FOLDERS` in config), `startUpload({ name, folderId, mimeType, size })` → session URL, `putChunk(url, blob, from)`, `uploadStatus(url, size)` (`Content-Range: bytes */size`) → bytes Drive has, `metadata(fileId)` → `{ id, name, md5Checksum, size, webViewLink, trashed }`, `download(fileId)` → Blob, `trash(fileId)`, `search(text)` → files inside the archive (#22). Requests ask for `fields=id,webViewLink,md5Checksum,size`. A 401 calls `auth.driveAccessToken()` once more, then raises `DriveError("unauthorized")`.
 
-**outbox.js** (outbox): `release(id)` (the deck calls it when a hold ends: the next decision, 10 s, or leaving Sort), `sendBack(id)` → `boolean` (cancel the upload, or trash the Drive copy and delete the record; the card goes back on top), `retry(id)`, `retryAll()`, `status()` (the accessory state). Uploads one item at a time, oldest decision first; backoff 1, 2, 5, 15 minutes; offline waits for `online`; `drive_revoked` pauses without spending a retry. Emits `outbox:status` with the accessory state (shape under `outboxAccessory` in `ui/components.js`, precedence reconnect, attention, uploading, offline, idle) plus `{ counts: { uploading, waiting, attention, filedToday }, lastUploadAt }`.
+**outbox.js** (outbox): the deck writes `{ stage: "queued", decision, decidedAt }` at the swipe, so a reload mid-hold keeps the decision; the outbox leaves a queued item alone (and out of every count) until `release(id)` or 10 s after `decidedAt`. Undo inside the hold just resets the item; after it, `sendBack(id)`. `release(id)` (the deck calls it when a hold ends: the next decision, 10 s, or leaving Sort; it also moves a `ready` item with a decision to `queued`), `sendBack(id)` → `boolean` (cancel the upload, or trash the Drive copy and delete the record; the card goes back on top), `retry(id)`, `retryAll()`, `status()` (the accessory state). Uploads one item at a time, oldest decision first; backoff 1, 2, 5, 15 minutes; offline waits for `online`; `drive_revoked` pauses without spending a retry. Emits `outbox:status` with the accessory state (shape under `outboxAccessory` in `ui/components.js`, precedence reconnect, attention, uploading, offline, idle) plus `{ counts: { uploading, waiting, attention, filedToday }, lastUploadAt }`.
 
 **classify.js** (deck; capture owns `proposeSplit`): `readItem(item)` (queue, two at a time, first read alone when no read answered in 4 minutes), `buildPayload(item)` (the iPhone app's `ClassifyPayload`: with at least 120 non-space characters of text, `kind: "images"`, one 1000 px JPEG of page 1, `ocrText`, `ocrPrimary: true`; otherwise the PDF whole up to 10 pages and about 9 MB, or the first 10 pages at 1568 px), always `wantConfidence: true` and `senderHints`, `normalize(r)`, `unsureFields(card)`, `isConfident(card)`, `applySenderRule(card, rules)` (when a reply has no `appliedRule`), `readError(e)`, `READ_COPY`, `proposeSplit(pages)` → `[{ start, end, label }]` (split mode; a `bad_request` from an older function leaves the pages as they are).
 
-**store.js** (browse, shared): `checkAccess`, `getDriveConfig`, `setDriveConfig`, `watchDocs`, `watchPaperless`, `watchSettings(cb)` (browse: `config/settings` through the `config` collection listener, `{}` when missing), `saveRecord` (legacy), `putDoc(id, rec)` (outbox), `updateDoc`, `removeDoc`, `updateSender`, `createSender(id, data)` (outbox), `watchSenders`, `setSenderRule`, `deleteSenderRule` (deck), `saveSettings(patch)` (browse built it: merges into `config/settings`, creating it; outbox and deck use it), `findByHash(hash)` (capture, #2: from the docs already watched, no extra query).
+**store.js** (browse, shared): `checkAccess`, `getDriveConfig`, `setDriveConfig`, `watchDocs`, `watchPaperless`, `saveRecord` (legacy), `getDoc(id)`, `putDoc(id, rec)` (outbox), `updateDoc`, `removeDoc`, `updateSender`, `getSender(id)`, `createSender(id, data)` (outbox), `watchSenders`, `setSenderRule`, `deleteSenderRule` (deck), `getSettings`, `watchSettings(cb)` (cb gets the settings object, `{}` when missing), `saveSettings(patch)` (merges into `config/settings`; outbox, deck), `findByHash(hash)` (capture, #2: from the docs already watched, no extra query; the outbox writes `contentHash` on every record it files).
 
 **capture.js** (capture): listens for `capture:request` `{ source: "camera" | "files" | "photos" }` from every Scan menu; emits `capture:sent` `{ ids }` once items are in `db.js` at `captured` (or `reading`). Sort's empty states call `bindScanMenu(button)` from `shell.js`, so every entry point is the same menu (#79).
 
 **deck.js** (deck): listens for `capture:sent` and `pipeline:changed`; calls `outbox.release` and `outbox.sendBack`; emits `deck:decided` `{ id, decision }` and `deck:skipped` `{ id }`.
+- Exports for other screens: `file(it)`, `shred(it, { confirmed })`, `skip(it)` and `fileTogether(list)` (each returns `"decided" | "needsCheck" | "needsKeepConfirm" | "unavailable"`), `undo()`, `releaseHeld()`, `act(side, it)` (the animated path the buttons use), `deckCards()`, `skippedCards()`, `sortSkipped()`, `sortNow(it)`, `getItem(id)`, `saveEdits(it, card, { remember })`, `retryRead(it)`, `checks(it)`, and the formatting helpers (`fmtDate`, `folderName`, `folderPath`, `meta`, `dateLabel`).
+- The hold: a decision is held for 10 s (decision 4), released by the next decision, the timer, leaving the Sort tab or the page going to the background. Releasing sets `decision`, `decidedAt` and `stage: "queued"`, then calls `outbox.release(id)` when the outbox exports it, else the legacy `enqueue` / `logShred`. Undo after the release needs `outbox.sendBack(id)`; until the outbox exports it, Undo turns off once a decision is released.
 
 **browse** (piles, search, paperless): read Firestore through `store.js` and pending items through `db.js`; push `doc:<id>` with `pushScreen("doc", id)`.
 
 **shell.js**: `bindScanMenu(el)`, `scanMenuItems()`, `setAccessoryHidden(key, hidden)`, `pushScreen(name, param)`, `goTab(tab)`.
 
-**settings.js** (auth): `registerSettingsSection({ id, order, render, bind })`. Orders: 30 Sorting (deck: Sender rules `· 14 ›`, the bulk toggle and its footer; outbox: Shred hold), 40 Scanning and privacy (capture: Shutter, hidden until #32; auth: Lock, see below), 50 Data (#31, later). Face ID lock (4.10) has no web equivalent worth building now; auth may add a WebAuthn lock later behind the same row.
+**settings.js** (auth): `registerSettingsSection({ id, order, render, bind })`. Settings is drawn by `settings.js` (no static markup in `index.html`): the account row (opens Account: Email and Sign out), Google Drive (status, Reconnect Drive, Folder, Last upload), the registered sections, the footer. Last upload is the newest `outbox:status` `lastUploadAt` (or a legacy `record:saved` with `filed`). Orders: 30 Sorting (one "Sorting" header: senders.js's Sender rules `· 14 ›` at 30, outbox's Shred hold at 31, deck's bulk toggle and its footer at 32), 40 Scanning and privacy (capture: Shutter, hidden until #32; auth: Lock, see below), 50 Data (#31, later). Face ID lock (4.10) has no web equivalent worth building now; auth may add a WebAuthn lock later behind the same row.
 
 ## Events
 
@@ -204,18 +211,17 @@ The exports other owners may call. Each owner adds its fake support in the same 
 | `session:ended` | none | `main.js` | features | Signed out. |
 | `drive:status` | `{ status }` | `auth.js` | `drive.js`, `outbox.js`, `settings.js` | Drive connected or needs reconnecting (server's word only). |
 | `capture:request` | `{ source }` | `shell.js` (Scan menu) | `capture.js` (the legacy shim in `main.js` until then) | A Scan menu item was picked. |
-| `capture:sent` | `{ ids }` | `capture.js` | `deck.js` | New items are in the pipeline. |
+| `capture:sent` | `{ ids }`, plus `items` and `blobs` until db.js lands | `review.js` (capture) | `deck.js` (`main.js` legacy bridge until then) | New items are in the pipeline. Without a pipeline store, `items` are the live item objects (each with `whenRead`, a promise that settles when Claude's read does) and `blobs[id]` is `{ pdf, thumb }`. |
 | `pipeline:changed` | `{ id, stage }` | `db.js` | `deck.js`, `outbox-view.js`, `search.js` | An item was written. |
 | `deck:decided` | `{ id, decision }` | `deck.js` | features | A swipe or its twin, before the hold. |
 | `deck:skipped` | `{ id }` | `deck.js` | features | A card went to the Skipped set. |
 | `outbox:status` | accessory state | `outbox.js` | `shell.js`, `outbox-view.js` | Anything the accessory shows changed. |
 | `doc:verified` | `{ docId }` | `outbox.js` | `piles.js` | Drive's checksum matched (#18). |
-| `sender:saved` | `{ key }` | `senders.js` | `classify.js` | A rule was saved or forgotten. |
-| `settings:changed` | `{ key, value }` | `store.js` watchers' owner | features | `config/settings` changed. |
+| `sender:saved` | `{ key }` | `senders.js` | `deck.js` | A rule was saved or forgotten. The deck applies a saved rule to the waiting cards from that sender that weren't edited. |
+| `settings:changed` | `{ key, value }` | `store.js` watchers' owner (`outbox-view.js` for `shredHoldDays`, `deck.js` for `offerBulkFile`) | features | `config/settings` changed. |
 | `search:input` | `{ q }` | `shell.js` | `search.js` | Every keystroke in the bottom field (debounce in search.js, 250 ms). |
 | `search:submit` | `{ q }` | `shell.js` | `search.js` | The Search key: save a recent. |
-| `auth:token` | `{ token, uid }` or `null` | `auth.js` | `drive.js` | Legacy: a popup sign-in returned a Drive token. Removed with #15. |
-| `drive:connected` | none | `drive.js` | `outbox.js` | Legacy: Reconnect got a fresh token. |
+| `drive:connected` | none | `drive.js` | `outbox.js` | Legacy: Drive is usable again (`drive:status` connected, or a pause timed out). |
 | `items:changed` | none | `outbox.js` | `deck.js` | Legacy: a session item changed. Replaced by `pipeline:changed`. |
 | `item:added` | item | `deck.js` | features | Legacy. |
 | `item:ready` | item | `deck.js` | features | Legacy. |
@@ -228,8 +234,10 @@ The exports other owners may call. Each owner adds its fake support in the same 
 
 | Method | Returns | Used by |
 |---|---|---|
-| `onUser(cb)` | cb gets `{ uid, email }` or `null` | `auth.js` |
-| `signIn()`, `reconnect()` | `{ uid, token }` (legacy popup) | `auth.js` |
+| `onUser(cb)` | cb gets `{ uid, email, name }` or `null` | `auth.js` |
+| `authorize(url)` | never returns (a full-page redirect to Google) | `auth.js` |
+| `redeem({ handoff, state, verifier })` | `{ idToken, accessToken, expiresIn, email, name, driveConnected }` (POST `/oauth/redeem`); throws `{ code: "oauth/<code>" }` | `auth.js` |
+| `signInWithTokens({ idToken, accessToken })` | `{ uid, email, name }` (Firebase `signInWithCredential`) | `auth.js` |
 | `signOut()` | | `auth.js` |
 | `classify(payload)` | the callable's response | `classify.js` |
 | `call(name, data)` | any other callable's data (`driveToken`) | `auth.js`, `classify.js` |
@@ -237,7 +245,7 @@ The exports other owners may call. Each owner adds its fake support in the same 
 | `add`, `get`, `set`, `update`, `del` | | `store.js` |
 | `fetch(url, opts)` | `Response` | `drive.js` |
 
-Reserved for auth (#14, #15), added to both backends in auth's PR: `signInWithTokens({ idToken, accessToken })` (Firebase `signInWithCredential(GoogleAuthProvider.credential(idToken, accessToken))`), `redeem({ handoff, state, verifier })` (POST `/oauth/redeem`), `cachedUser()` (the persisted user, synchronously from `kv`/localStorage).
+The popup methods (`signIn()`, `reconnect()`) are gone (#15): no popups. The cached user is auth's own (localStorage `pt-last-user`), not a backend method, so both backends behave the same.
 
 ## Fake backend
 
@@ -245,26 +253,40 @@ Reserved for auth (#14, #15), added to both backends in auth's PR: `signInWithTo
 
 | Switch | What it does | For |
 |---|---|---|
-| `signedout`, `as=stranger` | Start signed out, or as an account off the list | auth |
-| `nodrive`, `drive401` | No Drive token; the first upload gets a 401 | auth, outbox |
-| `driverevoked` | `call("driveToken")` answers `drive_revoked` | auth, outbox (4.16) |
+| `signedout`, `as=stranger` | Start signed out, or as an account off the list (with `signedout`, the first Google consent picks the stranger and comes back `not_allowed`) | auth |
+| `nodrive` | The server holds no Drive grant (`driveToken` answers `drive_revoked`) and the next consent comes back without the Drive scope (4.1 step 2) | auth |
+| `drive401` | The first upload gets a 401; a fresh token fixes it | auth, outbox |
+| `driverevoked` | `call("driveToken")` answers `drive_revoked` until a Reconnect consent | auth, outbox (4.16) |
+| `oauth=canceled\|not_allowed\|failed` | The next Google consent comes back with that error | auth |
+| `slowauth` | Firebase takes 1.5 s to confirm the session (no check on open, #14) | auth |
+| `lostsession` | Firebase confirms nobody is signed in, even with a cached user | auth |
 | `offline` | Every Drive request fails as a network error | outbox |
 | `slowupload` | Uploads take about 4 s | outbox (progress, undo hold) |
 | `readfail` | The first read fails with `rate_limited` | deck |
 | `unsure` | Reads asking for confidence come back unsure of sender and date, with alternatives (A2) | deck |
+| `dupe=<sha256>` | A filed doc ("2025 W-2", filed Oct 2) with that `contentHash`, for the duplicate line (#2) | capture |
+| `splitfail` | Split mode answers `bad_request`, like a function from before split mode | capture |
+| `readfail=N` | The first N reads fail with `rate_limited` (`readfail` alone: one; the queue retries twice by itself) | deck, capture |
 | `seed` | A filed library: docs in every pile and state (verified and not, shredded, keep, stored, a left swipe), five paperless senders in every status with a "still mailing" flag, two sender rules, `config/settings` | browse |
+| `hold=<seconds>` | The deck's undo hold is this long instead of 10 s (read by `deck.js` on the fake path only) | deck, tests |
 
-Already answered: `call("driveToken")`, split mode (`mode: "split"`, a new document at every page whose text says "page 1"), `wantConfidence` (sparse), `senderHints` (`appliedRule`), Drive `files.get` with a real `md5Checksum`, `files.update` with `trashed: true`, `alt=media`, `fullText contains` search, and uploads returning `md5Checksum` and `size`.
+Already answered: `call("driveToken")`, split mode (`mode: "split"`, a new document at every page whose text says "page 1"), `wantConfidence` (sparse), `senderHints` (applied like `functions/lib.js applySenderRule()`: spelling, folder, verdict, type, filename pattern, those fields certain, `appliedRule`), Drive `files.get` with a real `md5Checksum`, `files.update` with `trashed: true`, `alt=media`, `fullText contains` search, and uploads returning `md5Checksum` and `size`.
 
-Each owner adds, in its own PR: auth, `redeem` and `signInWithTokens` plus a `?oauth=canceled|not_allowed|failed` switch for the return route; outbox, resumable chunks and `Content-Range: bytes */N` status (308 with `Range`), and `?md5mismatch` (the first upload's checksum is wrong); capture, a `?dupe` switch where `findByHash` matches; browse, nothing beyond `seed` unless it needs it.
+The session and the server's Drive grant survive a reload (sessionStorage `pt-fake-auth`), like Firebase's persistence, because sign-in is a full-page redirect: `B.authorize(url)` records the URL and reloads on `#/auth/done?handoff=fake&state=...` (or `?error=...`), and `B.redeem` checks the verifier against the state. Use a fresh browser context per test.
 
-Test hooks: `window.__PT__ = { addFiles, addPhotos, items(), scanner }` today. Add to it, don't rename; once the pipeline moves to `db.js`, `items()` returns the db's items.
+Each owner adds, in its own PR: outbox (done): resumable chunks and `Content-Range: bytes */N` status (308 with `Range`), `?md5mismatch` (the first upload's checksum is wrong), `?md5pending` (the first `files.get` has no checksum), `?uploadfail=N` (the first N sessions are refused), and, read by `outbox.js` on the fake path, `?chunk=N` and `?fastretry` (retries after 1 to 4 s); the fake honors `AbortSignal`; capture, `?dupe=<sha256>` and `?splitfail` (done); browse, nothing beyond `seed` unless it needs it.
+
+OCR on the fake path: nothing loads unless the page asks with `?ocr`; tests put a stand-in on `window.__PT_OCR__` (blob, turns) → text.
+
+Test hooks: `window.__PT__ = { addFiles, addPhotos, items(), scanner, outbox, db, importFiles, importPhotos, scanned, review(), reads }` (`outbox` and `db` are the modules). Add to it, don't rename; once the pipeline moves to `db.js`, `items()` returns the db's items.
+
+**Capture and the pipeline store (capture PR).** `review.js` exports `attachStore(db)` and `resumeReview()`. Once `db.js` exists, `main.js` calls `attachStore` with the db module (it uses `putItem`, `updateItem`, `putBlob`, `getBlob`, `putReview`, `getReview`, `deleteReview`, `kvGet`, `kvSet`; the open review's session id is `kv.openReview`) and `resumeReview()` after `session:started`. From then on the review is saved after every change, items and their PDFs go to db.js, and `capture:sent` carries ids only. Until then the review lives in memory, its footnote says "Keep this page open until you send them." instead of the spec's, and leaving the page asks first.
 
 ## Auth (design for the auth agent, #14, #15, #3)
 
 Goal: the same server token flow as the iPhone app (ARCHITECTURE "Auth"), so Drive never disconnects, plus a web return target. No popups (they break in the Home Screen app on iOS and in some browsers), no Google Identity Services SDK.
 
-**On open (#14).** Firebase Auth keeps its persisted session (IndexedDB, `browserLocalPersistence`). At boot `auth.js` reads `kv.lastUser` (`{ uid, email, name }`, written at every confirmed sign-in, cleared at sign-out) synchronously and, when present, the app renders straight from it: no gate, no spinner, the deck from IndexedDB. `onAuthStateChanged` confirms in the background. Only a confirmed `null` (or a permission-denied allowlist probe) shows the sign-in screen. Firestore listeners start once Firebase has the user. `checkAccess()` moves to the background too: a denial then shows "This account isn't on the list."
+**On open (#14).** Firebase Auth keeps its persisted session (IndexedDB, `browserLocalPersistence`). At boot `auth.js` reads the last user (`{ uid, email, name }`, localStorage `pt-last-user`, because it has to be synchronous; written at every confirmed sign-in, cleared at sign-out and on an allowlist refusal) and, before the modules even load, `boot.js` keeps the sign-in screen from painting. When present, when present, the app renders straight from it: no gate, no spinner, the deck from IndexedDB. `onAuthStateChanged` confirms in the background. Only a confirmed `null` (or a permission-denied allowlist probe) shows the sign-in screen. Firestore listeners start once Firebase has the user. `checkAccess()` moves to the background too: a denial then shows "This account isn't on the list."
 
 **Sign in and Reconnect Drive (#15), web redirect variant:**
 
@@ -275,11 +297,15 @@ Goal: the same server token flow as the iPhone app (ARCHITECTURE "Auth"), so Dri
 5. `driveConnected: false` in the redeem reply means the consent skipped Drive: the sign-in screen's step 2 ("Signed in as {email}", "Connect Google Drive") per spec 4.1, which reruns the flow.
 6. From then on Drive tokens come only from `B.call("driveToken")` through `driveAccessToken()`. `drive_revoked` sets `needsReconnect` (spec 4.16: banner on Sort, Outbox and Piles, the accessory state, the Settings row). A network error changes nothing.
 
-**Function change for the integrator (backward compatible, not deployed by the feature PR):** in `functions/oauth.js`, `oauthCallback` picks the redirect from the parsed nonce: `isWebNonce = /^web_[A-Za-z0-9_-]{32}$/.test(nonce)`, and when true uses `WEB_REDIRECT = "https://paper-trail-bw.web.app/#/auth/done"` (a new `defineString("WEB_APP_REDIRECT")` with that default, never taken from the request, so it can't become an open redirect). Everything else stays: the same state regex already accepts a 36-character nonce, `oauthRedeem` is unchanged, the iPhone app's 22-character nonces still go to `papertrail://auth`. Add tests in `functions/test/oauth.test.mjs`: a web nonce redirects to the web target with the handoff in the fragment; an iPhone nonce still goes to `papertrail://`; errors go to the matching target; a nonce like `web_short` is treated as the iPhone's.
+**Function change (made in the auth PR, backward compatible, not deployed; the integrator deploys it with the web app):** in `functions/oauth.js`, `oauthCallback` picks the redirect from the parsed nonce: `isWebNonce = /^web_[A-Za-z0-9_-]{32}$/.test(nonce)`, and when true uses `WEB_REDIRECT = "https://paper-trail-bw.web.app/#/auth/done"` (a new `defineString("WEB_APP_REDIRECT")` with that default, never taken from the request, so it can't become an open redirect). Everything else stays: the same state regex already accepts a 36-character nonce, `oauthRedeem` is unchanged, the iPhone app's 22-character nonces still go to `papertrail://auth`. Add tests in `functions/test/oauth.test.mjs`: a web nonce redirects to the web target with the handoff in the fragment; an iPhone nonce still goes to `papertrail://`; errors go to the matching target; a nonce like `web_short` is treated as the iPhone's.
 
 **Setup Bryce does** (the auth PR lists it): nothing new in Google Cloud (the redirect URI is already registered for the iPhone flow); deploy functions and hosting when he says. No secret is handled by Claude.
 
-**Sign out.** The spec's confirm ("Sign out of Paper Trail? Your scans stay on this phone until they upload."), Firebase sign-out, clear `kv.lastUser` and the cached Drive token. Server tokens stay (the iPhone app keeps working).
+**Drive status** (`pt-drive-status` in localStorage, like the iPhone app's `AuthDefaults`, so the first frame is right): `connected` after a consent with Drive or a minted token, `needsReconnect` only on `drive_revoked`, `unknown` (shown as connected) otherwise. `pt-drive-consent` keeps step 2 locked across a reload. The Drive token is cached in memory and this tab's sessionStorage (`pt-drive-token`), never in localStorage or Firestore.
+
+**Until the outbox keeps scans in IndexedDB (#17)**, legacy deck items live in memory, so a Reconnect (a full-page redirect) and Sign out first say how many scans on the page would be lost.
+
+**Sign out.** The spec's confirm ("Sign out of Paper Trail? Your scans stay on this phone until they upload."), Firebase sign-out, clear `pt-last-user`, the Drive status and the cached Drive token. Server tokens stay (the iPhone app keeps working).
 
 **Local and fake.** `oauthCallback` can't send a browser back to localhost, so the real flow is tested on the deployed site; locally the fake's `redeem` and `signInWithTokens` stand in, with `#/auth/done?handoff=fake&state=<saved>`.
 
@@ -293,6 +319,6 @@ Goal: the same server token flow as the iPhone app (ARCHITECTURE "Auth"), so Dri
 ## Checks
 
 - `node tools/contract_check.mjs`: inline script in `index.html`, import cycles (`ui/` included), backend and IndexedDB owners, every event in the table above, the fake and Firebase backends' methods, no hex colors outside `tokens.css` (in `components.css` and `shell.css`), verdicts drawn only by `verdictBadge()` (legacy `deck.js` and `piles.js` exempt until rebuilt), no em dashes in `public/`, and every module in the module map above.
-- `node tools/smoke_test.mjs` (every page, 1440 and 390 px, gallery included), `node tools/deck_test.mjs`, `node tools/scanner_test.mjs`, a feature's own `tools/<feature>_test.mjs`, `node --test functions/test/*.test.mjs` (or `npm test` in `functions/`), and `node tools/rules-check.mjs` when rules change (needs `firebase login`).
+- `node tools/smoke_test.mjs` (every page, 1440 and 390 px, gallery included), `node tools/deck_test.mjs`, `node tools/sort_test.mjs` (deck: gestures, skip, hold, undo, check fields, bulk, detail), `node tools/shell_test.mjs`, `node tools/auth_test.mjs`, `node tools/outbox_test.mjs`, `node tools/capture_test.mjs`, `node tools/scanner_test.mjs`, a feature's own `tools/<feature>_test.mjs`, `node --test functions/test/*.test.mjs` (or `npm test` in `functions/`), and `node tools/rules-check.mjs` when rules change (needs `firebase login`).
 - GitHub Actions is out of minutes: run all of these on the Mac before every merge and paste the output into the PR. Never merge on a red run.
 - Verify in the built-in browser at 390 px and desktop, light and dark, with a clean console, against the spec and `direction-A.png`, using `?fake=1` (and `&seed` for browse).

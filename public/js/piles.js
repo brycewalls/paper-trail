@@ -4,10 +4,9 @@
 // Renders into #piles-body from the live library in browse.js and writes through store.js. The
 // counterpart of ios/PaperTrail/Features/Piles (PilesScreen, PilesViewModel).
 import { $, esc, prefs } from "./ui.js";
-import { updateDoc, saveSettings } from "./store.js";
+import { updateDoc } from "./store.js";
 import { lib, onBrowse, holdDays, shredState, parseISO, shortDay, monthTitle, daysUntil, days, folderName, isoNow,
-  thumb, swipeRow, bindRows, driveMenu, rerender, saveFailed, loadFailedState, reconnectBanner, openDoc } from "./browse.js";
-import { registerSettingsSection } from "./settings.js";
+  thumb, swipeRow, bindRows, driveMenu, rerender, saveFailed, loadFailedState, placeReconnect, openDoc } from "./browse.js";
 import { icon } from "./ui/icons.js";
 import { verdictBadge, statusPill, section, row, banner, emptyState, segmented } from "./ui/components.js";
 import { bindMenu, openMenu } from "./ui/menu.js";
@@ -101,14 +100,15 @@ export function renderPiles() {
     filter.classList.toggle("on", ui.filter !== "all");
     filter.setAttribute("aria-label", ui.filter === "all" ? "Filter" : "Filter, showing Sensitive");
   }
-  if (lib.failed && !lib.docsLoaded) { rerender(body, reconnectBanner() + loadFailedState()); return; }
+  if (lib.failed && !lib.docsLoaded) { rerender(body, loadFailedState()); placeReconnect(body); return; }
   const seg = `<div class="b-seg">${segmented([
     { value: "shred", label: `Shred ${m.pile.length}` },
     { value: "keep", label: `Keep ${m.toPutAway.length + m.inBinder.length}` },
     { value: "all", label: `All filed ${m.filedAll.length}` },
   ], { selected: ui.segment, label: "Pile", "data-key": "seg" })}</div>`;
   const content = ui.segment === "shred" ? shredSegment(m) : ui.segment === "keep" ? keepSegment(m) : allSegment(m);
-  rerender(body, reconnectBanner() + seg + content);
+  rerender(body, seg + content);
+  placeReconnect(body);
 }
 
 // ---------- actions ----------
@@ -170,28 +170,4 @@ function bind() {
 }
 bind();
 
-// ---------- Settings, Sorting: "Shred hold · 3 days ›" (spec 4.9; #18) ----------
-// The iPhone app files this row under outbox (ShredHoldSetting.swift); spec 4.9 lists it for piles.
-// When deck's Sorting section is in the sheet, the row joins it; otherwise it brings its own header.
-export const holdLabel = (n) => (n === 0 ? "None" : days(n));
-const HOLD_CHOICES = [0, 1, 3, 7];
-const HOLD_FOOTER = "A document counts as safe to shred once its Drive copy is confirmed and this many days have passed.";
-const holdRow = () => row({ title: "Shred hold", trailing: `<span class="row-value" data-hold-value>${esc(holdLabel(holdDays()))}</span>`, chevron: true, id: "set-shred-hold", "aria-haspopup": "menu" });
-try {
-  registerSettingsSection({
-    id: "shred-hold", order: 31,
-    render: () => section(holdRow(), { header: "Sorting", footer: HOLD_FOOTER }),
-    bind(el) {
-      const sorting = el.previousElementSibling?.matches?.('[data-settings-section="sorting"]') ? el.previousElementSibling.querySelector(".group-body") : null;
-      if (sorting) { sorting.insertAdjacentHTML("beforeend", holdRow()); el.innerHTML = ""; }
-      const btn = (sorting || el).querySelector("#set-shred-hold");
-      btn.addEventListener("click", () => openMenu(btn, HOLD_CHOICES.map((n) => ({
-        label: holdLabel(n), symbol: n === holdDays() ? "checkmark" : undefined,
-        action: async () => {
-          btn.querySelector("[data-hold-value]").textContent = holdLabel(n);
-          try { await saveSettings({ shredHoldDays: n }); } catch { saveFailed(); btn.querySelector("[data-hold-value]").textContent = holdLabel(holdDays()); }
-        },
-      })), { align: "end" }));
-    },
-  });
-} catch (e) { console.warn(e.message); }
+// Settings, Sorting: the "Shred hold" row is the outbox's (outbox-view.js), as on the iPhone.

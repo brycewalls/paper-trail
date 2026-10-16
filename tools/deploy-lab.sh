@@ -29,7 +29,8 @@ for arg in "$@"; do
 done
 
 # The lab target must map to the lab site, and only to it, or this would publish somewhere else.
-SITES=$(node -e 'const t=require("./.firebaserc").targets["paper-trail-bw"].hosting; console.log(JSON.stringify(t.lab||[]))')
+# .firebaserc has no .json extension, so require() would parse it as JavaScript: read it as JSON.
+SITES=$(node -e 'const t=JSON.parse(require("fs").readFileSync(".firebaserc","utf8")).targets["paper-trail-bw"].hosting; console.log(JSON.stringify(t.lab||[]))')
 if [ "$SITES" != '["paper-trail-lab"]' ]; then
   echo "The lab hosting target maps to $SITES, not [\"paper-trail-lab\"]. Fix .firebaserc first."
   exit 2

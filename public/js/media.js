@@ -5,7 +5,9 @@
 // twins of the iPhone app's PageAssembler, TextRecognizer and DocumentBuilder:
 //   pdfText(file)            the PDF's own text, one string per page (pdf.js text content)
 //   ocr(blob, turns, { onProgress })  on-device OCR of a page picture (Tesseract.js, loaded the first
-//                            time, one page at a time); onProgress(0..1) while it recognizes (lab, #92)
+//                            time, one page at a time); onProgress(0..1) while it recognizes (lab, #92).
+//                            tesseractOcr is the same function, named for the lab's fallback (#101)
+//   renderPageRgba(doc, n, edge, turns)  one PDF page drawn at OCR size: its pixels and a lazy JPEG (lab, #101)
 //   assemblePdf(pages)       one PDF from review pages: pictures with a hidden text layer (#22),
 //                            imported PDF pages copied as they are (pdf-lib), turned pages turned
 //   uprightJpeg, pageImage   upright page pictures at a given size, for thumbnails and the viewer
@@ -41,6 +43,22 @@ export async function renderPage(doc, n, edge, q, turns = 0) {
   await page.render({ canvasContext: cx, viewport: vp }).promise;
   page.cleanup();
   return canvasBlob(cv, q);
+}
+// One PDF page drawn for OCR (the lab's fallback when its worker can't draw PDFs, #101): the RGBA
+// pixels, and the JPEG only if something asks for it.
+export async function renderPageRgba(doc, n, edge, turns = 0) {
+  const page = await doc.getPage(n);
+  const rotation = (page.rotate + 90 * (turns % 4)) % 360;
+  const base = page.getViewport({ scale: 1, rotation });
+  const vp = page.getViewport({ scale: Math.min(4, edge / Math.max(base.width, base.height)), rotation });
+  const cv = document.createElement("canvas");
+  cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+  const cx = cv.getContext("2d", { willReadFrequently: true });
+  cx.fillStyle = "#fff"; cx.fillRect(0, 0, cv.width, cv.height);
+  await page.render({ canvasContext: cx, viewport: vp }).promise;
+  page.cleanup();
+  const { data } = cx.getImageData(0, 0, cv.width, cv.height);
+  return { data, width: cv.width, height: cv.height, blob: () => canvasBlob(cv, 0.9) };
 }
 // A photo, upright (EXIF orientation applied), scaled so its long side is at most `edge`.
 export async function photoJpeg(file, edge, q) {
@@ -195,12 +213,14 @@ function loadTesseract() {
   return ocrWorker;
 }
 // Reads a page picture. Resolves { text, words: [{ text, x, y, w, h }] (in the upright picture's
-// pixels), width, height }; never throws.
+// pixels), width, height }; never throws. The lab reads with PaddleOCR instead (lab/ocr.js, #101),
+// which comes back here, to tesseractOcr, only when PaddleOCR can't load.
 export function ocr(blob, turns = 0, { onProgress } = {}) {
   const run = ocrTurn.then(() => ocrOne(blob, turns, onProgress));
   ocrTurn = run.catch(() => {});
   return run;
 }
+export const tesseractOcr = ocr;
 async function ocrOne(blob, turns, onProgress) {
   const empty = { text: "", words: [], width: 0, height: 0 };
   try {

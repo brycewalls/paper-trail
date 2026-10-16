@@ -2,3 +2,5 @@
 # Example: build/template.html
 # design/ holds sketch boards (wide on purpose), not app pages (#40).
 design/
+# tools/lab/ocr-bench.html is the OCR benchmark's harness (#101), driven by tools/lab/ocr-bench.mjs.
+tools/lab/ocr-bench.html

@@ -183,7 +183,7 @@ try {
       window.__PT_FAKE__.answer = () => {
         const it = window.__PT__.lab.compare.recent.at(-1);
         const r = structuredClone(it.lab.rules);
-        return { ...r, issuer: "Maple Court Property Group", folder: "01 Identity & Legal", verdict: "keep_original", filename: `${r.docDate || "0000-00-00"}_maple-court-lease`, retention: "Permanently" };
+        return { ...r, issuer: "Maple Court Property Group", folder: "01 Identity & Legal", verdict: "keep_original", filename: `${r.docDate || "0000-00-00"}_property-group-rental-contract`, retention: "Permanently" };
       };
     });
     await importAndSend(page, [{ name: "lease.pdf", mimeType: "application/pdf", buffer: LEASE }]);

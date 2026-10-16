@@ -19,6 +19,7 @@ import { FOLDER_NAMES, VERDICT } from "../config.js";
 import { claudeRead, readCode, unsureFields, markConfident, patternFromFilename, folderName, FIELD_ORDER } from "../classify.js";
 import { putLabRead, updateLabRead, putComparison } from "../store.js";
 import { compareEnabled as labCompareEnabled, setCompare } from "../lab.js";
+import { docKind, sameIssuer } from "./rules/compare.js";
 import { saveRule, ruleFor } from "../senders.js";
 import { openSheet } from "../ui/sheet.js";
 import { section, segmented, primaryButton, verdictStamp } from "../ui/components.js";
@@ -71,8 +72,11 @@ export function fieldAgrees(field, a, b) {
     case "docDate": case "folder": case "verdict": return String(x || "") === String(y || "");
     case "sensitive": return !!x === !!y;
     case "paperless": return !!(x && x.possible) === !!(y && y.possible);
-    case "issuer": return squash(x) === squash(y) || contains(x, y);
-    case "docType": return squash(x) === squash(y) || contains(x, y) || overlap(x, y) >= 0.5;
+    // Sender and type also agree when the eval's tests say so (lab/rules/compare.js: "Wells Fargo
+    // Bank, N.A." and "Wells Fargo"; "EOB" and "Explanation of benefits"), so the app and
+    // tools/lab/eval-rules.mjs never disagree about what counts as the same answer.
+    case "issuer": return squash(x) === squash(y) || contains(x, y) || sameIssuer(x, y);
+    case "docType": return squash(x) === squash(y) || contains(x, y) || overlap(x, y) >= 0.5 || (!!docKind(x) && docKind(x) === docKind(y));
     case "filename": return slug(x) === slug(y) || (dateIn(x) === dateIn(y) && overlap(String(x).replace(/\d{4}-\d{2}-\d{2}/, ""), String(y).replace(/\d{4}-\d{2}-\d{2}/, "")) >= 0.5);
     case "title": return overlap(x, y) >= 0.5 || contains(x, y);
     case "retention": return retentionClass(x) === retentionClass(y);

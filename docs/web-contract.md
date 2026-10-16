@@ -80,10 +80,18 @@ All under `public/js/`. Entry `main.js` (a module script in `index.html`). jsPDF
 | 7 | `viewer.js` (new) | capture | The full-screen page viewer (4.11.1). |
 | 8 | `shell.js` | shared | The app shell: tab views, pushed screens, nav bars, the dock (accessory and tab bar, search mode), avatar, the Scan menu, keyboard. Exports `scanMenuItems`, `bindScanMenu`, `setAccessoryHidden`, `shellSignedIn`, `startShell`, `pushScreen`, `goTab`, `currentTabEl`. |
 | 9 | `main.js` | shared | Boot, the fake test hooks (`window.__PT__`), what a sign-in or sign-out does across modules. No feature code. |
-| 0 | `lab/rules-stub.js` | lab reader | Lab build only (#92): a temporary stand-in with the rules engine's interface, until `lab/rules/` (feat/lab-rules) lands. Deleted by the integrator. |
-| 0 | `lab/engine.js` | lab reader | The one door to the rules engine: `runRules(textPages, meta)`. The integrator points it at `lab/rules/`. |
-| 1 | `lab/rules-worker.js` | lab reader | A module Web Worker that runs `runRules` off the main thread. |
-| 4 | `lab/reader.js` | lab reader | The lab's reader, no AI: `READER`, `readText` (pdf.js text layer, Tesseract OCR for pages without text, with progress), `labRead`, `localSplit` (stack mode by page markers), `progressCopy`. Imported by `classify.js`. |
+| 0 | `lab/rules/text.js` | lab | The no-AI rules engine's text matching (#92): OCR-folded phrase search (exact, squashed, near), word-bounded names, title case. Pure, no DOM. |
+| 0 | `lab/rules/fields.js` | lab | Dates (labels, ranges, OCR slips), tax years, labeled amounts, last 4 digits. Pure, no DOM. |
+| 0 | `lab/rules/tables.js` | lab | Document type to folder, verdict, retention, paperless, filename and title words; paperless how-to by sender kind. Pure data. |
+| 0 | `lab/rules/sensitive.js` | lab | Full SSN, account and routing numbers, medical terms. Pure, no DOM. |
+| 0 | `lab/rules/compare.js` | lab | Field-by-field agreement of two cards (compare mode and `tools/lab/eval-rules.mjs`): `agreement(a, b)`, `docKind`, `sameIssuer`. Pure, no DOM. |
+| 1 | `lab/rules/senders.js` | lab | Known senders (`lab/rules/known-senders.json`, extensible), letterhead, label values, agencies, vital record issuers. Pure, no DOM. |
+| 1 | `lab/rules/types.js` | lab | The ordered document-type detectors and `scoreTypes`, `MIN_SCORE`. Pure, no DOM. |
+| 1 | `lab/rules/templates.js` | lab | Title, filename and summary templates in Claude's card shapes. Pure, no DOM. |
+| 2 | `lab/rules/engine.js` | lab | `readByRules({ pages, pageCount, filename, senderRules, today })`: the classify-shaped card with per-field confidence, alternatives and `rules` (why), with no AI. Sender rules applied like `functions/lib.js`. Runs in Node for `node --test tools/lab/*.test.mjs`. |
+| 3 | `lab/engine.js` | lab reader | The one door to the rules engine: `runRules(textPages, meta)`, an adapter over `lab/rules/engine.js` `readByRules`. |
+| 4 | `lab/rules-worker.js` | lab reader | A module Web Worker that runs `runRules` off the main thread. |
+| 5 | `lab/reader.js` | lab reader | The lab's reader, no AI: `READER`, `readText` (pdf.js text layer, Tesseract OCR for pages without text, with progress), `labRead`, `localSplit` (stack mode by page markers), `progressCopy`. Imported by `classify.js`. |
 | 6 | `lab/compare.js` | lab reader | Compare mode: records each lab read, asks `classify.claudeRead` in the background when it's on, scores the fields (`fieldAgrees`, `compareCards`, `SCORED`, `ROUTING`), the card chip (`labChip`), the compare sheet (`openCompare`) and `savePicks` (ground truth, sender rules). Imported by `deck.js`. |
 | 7 | `lab/stats.js` | lab reader | Lab Stats (`openLabStats`, `computeStats`), opened from the Lab Stats row in the Settings section `lab.js` draws. |
 

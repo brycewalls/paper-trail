@@ -7,7 +7,8 @@
 //   signedout        start signed out (the sign-in screen)
 //   nodrive          start without a Drive token (the Connect Drive link)
 //   drive401         the first upload gets a 401, to exercise Reconnect Drive
-//   readfail         the first read fails with rate_limited, to exercise Try again
+//   readfail         the first read fails with rate_limited, to exercise Try again; readfail=N fails
+//                    the first N calls (the reading queue retries a rate limit twice by itself)
 // Added for the web v2 build (#83, docs/web-contract.md, "Fake backend"):
 //   seed             start with a filed library: docs in every pile and state, paperless senders in
 //                    every status, two sender rules and config/settings (for Piles, Search, Paperless)
@@ -16,6 +17,10 @@
 //   driverevoked     the driveToken callable answers drive_revoked (Reconnect Drive, spec 4.16)
 //   offline          every Drive request fails as a network error (the outbox's offline state)
 //   slowupload       uploads take about 4 seconds, so progress and the undo hold can be watched
+//   dupe=<sha256>    a filed doc ("2025 W-2", filed Oct 2) with that contentHash, so a capture of
+//                    the same bytes shows the duplicate line (#2). Tests pass the hash of the file
+//                    they import; an imported PDF is filed byte for byte, so its hash is the file's
+//   splitfail        split mode answers bad_request, like a function deployed before split mode
 // Drive also answers files.get (metadata with a real md5Checksum), files.update with trashed: true,
 // alt=media downloads and fullText search over what was uploaded; B.call("driveToken") mints the
 // fake token.
@@ -84,7 +89,7 @@ export function createFakeBackend(params) {
     sessions: new Map(),       // upload session URL -> metadata
     classifyCalls: [],
     drive401: params.has("drive401"),
-    readfail: params.has("readfail"),
+    readfail: params.has("readfail") ? Math.max(1, Number(params.get("readfail")) || 1) : 0,
     unsure: params.has("unsure"),
     driveRevoked: params.has("driverevoked"),
     offline: params.has("offline"),
@@ -95,6 +100,9 @@ export function createFakeBackend(params) {
   };
   window.__PT_FAKE__ = state;
   if (params.has("seed")) seedLibrary(state.db);
+  if (params.get("dupe")) state.db.set("docs/dupe-w2", { title: "2025 W-2", docType: "W-2", issuer: "Northwind Logistics", docDate: "2026-01-30", folder: "02 Taxes",
+    filename: "2026-01-30_W-2_Northwind-Logistics", verdict: "scan_shred", filed: true, physical: "to_shred", pages: 1, source: "web",
+    filedAt: `${new Date().getFullYear()}-10-02T15:00:00.000Z`, contentHash: params.get("dupe").toLowerCase() });
   const id = (p) => `${p}${state.nextId++}`;
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const denied = () => Object.assign(new Error("Missing or insufficient permissions."), { code: "permission-denied" });
@@ -177,10 +185,11 @@ export function createFakeBackend(params) {
     async classify(payload) {
       state.classifyCalls.push(payload);
       await wait(400 + Math.random() * 500);
-      if (state.readfail) { state.readfail = false; throw Object.assign(new Error("rate"), { code: "functions/resource-exhausted", details: { code: "rate_limited" } }); }
+      if (state.readfail > 0) { state.readfail--; throw Object.assign(new Error("rate"), { code: "functions/resource-exhausted", details: { code: "rate_limited" } }); }
       if (!payload || (payload.kind === "pdf" && !payload.pdf) || (payload.kind === "images" && !payload.images?.length)) throw Object.assign(new Error("bad"), { code: "functions/invalid-argument", details: { code: "bad_request" } });
       // Split mode (#19): a new document starts at every page whose text says "page 1".
       if (payload.mode === "split") {
+        if (params.has("splitfail")) throw Object.assign(new Error("bad"), { code: "functions/invalid-argument", details: { code: "bad_request" } });
         const pages = payload.pages || [];
         const starts = pages.map((p, i) => (i === 0 || /\bpage 1\b/i.test(p.text || "") ? i : -1)).filter((i) => i >= 0);
         return { split: { documents: starts.map((s, k) => ({ start: s, end: (starts[k + 1] ?? pages.length) - 1, label: String(pages[s].text || "Document").split(/\s+/).slice(0, 4).join(" ").slice(0, 60) })) }, model: "fake" };

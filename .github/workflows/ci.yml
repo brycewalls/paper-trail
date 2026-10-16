@@ -9,6 +9,8 @@
 #              accessory, Search's bottom field, the Scan menu, Settings, sheets and the dialog, themes
 #   scanner    drives Scan document with a fake camera (a generated video of a tilted page): edges
 #              found, the page flattened, Done adds one item that files as one PDF, Cancel adds none
+#   capture    the Scan menu's sources, the scan review (split, join, stack mode, duplicates), the page
+#              viewer, the reading queue and sender rules, against the fake backend (#83)
 #   functions  the classify function's unit tests, Claude stood in
 #   ios        the iPhone app (ios/): xcodegen, a simulator build and the unit tests. macOS minutes
 #              cost 10x on a private repo, so it runs only when ios/ changed or the PR targets ios.
@@ -45,6 +47,9 @@ jobs:
       - name: Scan a document with a fake camera
         if: always()
         run: node tools/scanner_test.mjs
+      - name: Capture, the scan review, stack mode and sender rules
+        if: always()
+        run: node tools/capture_test.mjs
       - name: Keep the screenshots
         if: always()
         uses: actions/upload-artifact@v4

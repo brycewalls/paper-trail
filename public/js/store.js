@@ -4,7 +4,7 @@
 import { B } from "./backend.js";
 import { slug, emit } from "./ui.js";
 
-export const PATHS = { docs: "docs", paperless: "paperless", driveConfig: "config/drive" };
+export const PATHS = { docs: "docs", paperless: "paperless", senders: "senders", driveConfig: "config/drive" };
 
 // The first read after sign-in. A permission-denied here means the account isn't on the allowlist.
 export const checkAccess = () => B.get(PATHS.driveConfig);
@@ -14,7 +14,10 @@ export const getDriveConfig = () => B.get(PATHS.driveConfig);
 export const setDriveConfig = (data) => B.set(PATHS.driveConfig, data);
 
 // Live lists. Each returns an unsubscribe function.
-export const watchDocs = (cb, err) => B.watch(PATHS.docs, "filedAt", cb, err);
+// watchDocs also keeps the latest list for findByHash (capture, #2), so the duplicate check needs no
+// extra query.
+let knownDocs = [];
+export function watchDocs(cb, err) { knownDocs = []; return B.watch(PATHS.docs, "filedAt", (list) => { knownDocs = list; cb(list); }, err); }
 export const watchPaperless = (cb, err) => B.watch(PATHS.paperless, null, cb, err);
 
 // users/{uid}/docs/{auto id}: one per sorted document; plus users/{uid}/paperless/{slug(issuer)}
@@ -31,3 +34,12 @@ export async function saveRecord(it, extra) {
 export const updateDoc = (id, data) => B.update(PATHS.docs + "/" + id, data);
 export const removeDoc = (id) => B.del(PATHS.docs + "/" + id);
 export const updateSender = (id, data) => B.update(PATHS.paperless + "/" + id, data);
+
+// ---------- capture (#2) ----------
+// A filed doc with these exact bytes (SHA-256 hex), from the docs already watched; null when none.
+export const findByHash = (hash) => (hash && knownDocs.find((d) => d.contentHash === hash)) || null;
+
+// ---------- sender rules (#21): users/{uid}/senders/{slug(issuer)} ----------
+export const watchSenders = (cb, err) => B.watch(PATHS.senders, null, cb, err);
+export const setSenderRule = (rule) => B.set(`${PATHS.senders}/${rule.key}`, rule);
+export const deleteSenderRule = (key) => B.del(`${PATHS.senders}/${key}`);

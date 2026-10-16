@@ -1,0 +1,34 @@
+feature,area,priority,original,clone,notes
+Camera capture of a single piece,capture,must,yes,no,PaperKarma: camera button; Paper Trail already captures. Source 2
+Pick an existing photo from the gallery,capture,must,yes,no,PaperKarma allows gallery photos. Source 2
+Capture guidance (shoot logo or return address close up),capture,could,yes,no,"PaperKarma asks for a clear close-up of name, logo or return address. Paper Trail reads the whole page so this matters less"
+Photo kept as proof of receipt,capture,could,yes,no,PaperKarma keeps the photo as proof. Paper Trail already keeps the original in Drive
+Batch capture of many pieces in one session,capture,must,unknown,no,Not described for PaperKarma (one request per mailer). Paper Trail's deck already batches; keep it
+Sender recognition from the photo,reading,must,yes,no,"PaperKarma matches against 100,000+ mailers; method undisclosed; users say right only about a quarter of the time. Paper Trail uses Claude"
+Top matches picker when the sender is wrong,reading,must,yes,no,PaperKarma shows top 10 matches plus name search. Steal as a one-tap 'not this?' of existing senders and folders
+Remember a corrected sender for next time,reading,should,unknown,no,Not described by PaperKarma. Paper Trail can store per-sender corrections in Firestore
+Flag non-stoppable mail (EDDM / Current Resident / political),reading,could,yes,no,PaperKarma refuses these; users dislike no appeal. Paper Trail can just verdict them shred
+Detect who the piece is addressed to (person and address),reading,should,yes,no,PaperKarma makes the user pick a saved identity. Claude can read it off the page
+Names and addresses book (self / family / previous occupant),filing,should,yes,no,"Unlimited identities at PaperKarma. Paper Trail: route previous-occupant mail to shred, family mail to its own folder"
+Per-sender ledger grouping documents across scans,filing,must,no,no,PaperKarma tracks per mailer request; Paper Trail should group its docs and paperless items by sender
+Request history list with status chips,review,must,yes,no,"PaperKarma: Success, Processing, Failed, Pending. Paper Trail: To do, Requested, Waiting a cycle, Confirmed, Can't stop"
+Plain explanation of each status,review,should,yes,no,"PaperKarma explains in FAQ only, not in the moment; reviewers complain about weeks in Processing"
+Expectation timer (results in N weeks / next cycle),review,must,yes,no,PaperKarma sets an 8 to 12 week window; banks say first eStatement next cycle. Show a check-after date
+'Is this mailer still sending?' follow-up,review,must,yes,no,PaperKarma asks the user; Paper Trail can detect it automatically when a paperless sender's paper shows up in a new scan
+Reprocess or escalate a failed request,review,could,yes,no,PaperKarma support reprocesses. Paper Trail equivalent: reopen the sender's steps
+Search past requests or senders,search,should,unknown,no,No search seen in PaperKarma. Paper Trail needs search across filed docs and senders
+Opt-out registry checklist (OptOutPrescreen / DMAchoice / Catalog Choice),paperless,should,no,no,"PaperKarma recommends the stack in a blog guide, not in-app. One-time checklist card in Paper Trail"
+Junk mail verdict with the right opt-out link,paperless,should,yes,no,PaperKarma sends opt-outs itself. Paper Trail can hand Bryce the correct link or registry per piece
+Send opt-outs on the user's behalf,paperless,could,yes,no,Needs mailer channels and a proxy email; out of scope for a personal app
+Go-paperless steps per sender (click path and caveats),paperless,must,no,no,"PaperKarma explicitly does not handle bills or statements. Joint holders enroll separately, utilities may need account number and ZIP"
+Paperless credit or incentive note,paperless,could,no,no,Some utilities pay a credit (Muskegon $0.75/month). Claude can mention it if the bill says so
+Suggest a new sender to the database,other,could,yes,no,PaperKarma yearly plan feature. Not needed; Claude reads any sender
+Impact counters (pieces handled / senders stopped),ux,should,yes,no,PaperKarma markets opt-outs sent and trees. Paper Trail: shredded / filed / switched totals on home
+Fast per-piece flow (about 30 seconds),ux,must,yes,no,Most praised thing in reviews. Paper Trail's swipe deck already matches; protect it
+No login friction on return visits,ux,must,unknown,no,PaperKarma sign-up form drew complaints. Paper Trail: persistent auth and server-side Drive refresh token
+Free tier then subscription paywall,other,could,yes,no,"4 free requests then $3.99/mo, $15.99/6mo, $24.99/yr, $59.99 lifetime. Not relevant to a personal app"
+Encryption at rest and TLS,security,must,yes,no,PaperKarma: AWS encryption at rest and TLS. Paper Trail: Firebase and Drive defaults
+Proxy email so real address is never shared,security,could,yes,no,PaperKarma relays email to mailers. Only relevant if Paper Trail ever sends requests
+No tracking SDKs,security,must,no,no,PaperKarma's App Store label lists contact info and usage data as used to track you despite 'never sell' claims
+Account and data deletion,security,should,yes,no,PaperKarma: by email only and permanent. Paper Trail: a self-serve wipe of Firestore log
+Sync to cloud storage of the original,sync,must,no,no,PaperKarma stores nothing but the request. Paper Trail's Drive filing is its core advantage

@@ -55,7 +55,18 @@ const CASES = [
   ["unverified owner address writes", { auth: unverified, path: fp(doc), method: "create", resource: { data: { title: "x" } } }, "DENY"],
   ["owner reads another uid's tree", { auth: owner, path: fp("users/other_uid/docs/d1"), method: "get" }, "DENY"],
   ["outside users/", { auth: owner, path: fp("public/x"), method: "get" }, "DENY"],
+  // Reserved for v2 (docs/v2-contract.md): these hold with today's rules and must keep holding.
+  ["owner writes a sender rule (#21)", { auth: owner, path: fp(`users/${uid}/senders/duke-energy`), method: "create", resource: { data: { folder: "06 Home" } } }, "ALLOW"],
+  ["owner writes a doc's full text (#22)", { auth: owner, path: fp(`${doc}/text/0`), method: "create", resource: { data: { text: "x" } } }, "ALLOW"],
+  ["owner reads the server-only Drive auth (#15)", { auth: owner, path: fp(`driveAuth/${uid}`), method: "get" }, "DENY"],
+  ["owner writes the server-only Drive auth (#15)", { auth: owner, path: fp(`driveAuth/${uid}`), method: "create", resource: { data: { refreshToken: "x" } } }, "DENY"],
   ["signed out", { path: fp(doc), method: "get" }, "DENY"],
+  ["owner reads a Drive refresh token", { auth: owner, path: fp("oauthTokens/google_sub"), method: "get" }, "DENY"],
+  ["owner lists the Drive refresh tokens", { auth: owner, path: fp("oauthTokens"), method: "list" }, "DENY"],
+  ["owner writes a Drive refresh token", { auth: owner, path: fp("oauthTokens/google_sub"), method: "create", resource: { data: { refreshToken: "x" } } }, "DENY"],
+  ["owner reads a sign-in handoff", { auth: owner, path: fp("oauthHandoffs/h1"), method: "get" }, "DENY"],
+  ["owner lists the sign-in handoffs", { auth: owner, path: fp("oauthHandoffs"), method: "list" }, "DENY"],
+  ["signed out reads a sign-in handoff", { path: fp("oauthHandoffs/h1"), method: "get" }, "DENY"],
 ];
 
 try {

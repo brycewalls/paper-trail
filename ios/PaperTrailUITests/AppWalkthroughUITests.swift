@@ -1,0 +1,517 @@
+// Owner: qa. Taps through the whole app in sample mode the way Bryce would, and saves a screenshot
+// at every stop (docs/design-spec.md sections 4.2 to 4.15). Each test launches fresh, so one
+// broken screen doesn't hide the rest.
+//
+// The sample deck (SampleData.cards): Duke Energy bill (confident), Blue Cross EOB (date and
+// verdict unsure), Honda Civic title (Keep original) and a furniture flyer (Shred). Tests read the
+// top card's title instead of assuming the order.
+import XCTest
+
+final class AppWalkthroughUITests: PaperTrailUITestCase {
+
+    // MARK: Sort: swipes, Undo, File (#44), Keep original, check fields, Outbox
+
+    func testSortDeckOutboxAndRememberedSender() {
+        launch()
+        waitFor(card, 20, "The sample deck never showed a card")
+        XCTAssertTrue(eventually { !self.topCardLabel.isEmpty })
+        shot("01-sort-deck")
+
+        var swipedRight = false, swipedLeft = false, undone = false
+        var filedWithButton = false, keepConfirmed = false, checked = false
+
+        for _ in 0..<8 {
+            guard card.exists else { break }
+            let label = topCardLabel
+            if label.hasPrefix("Duke Energy") {
+                if !swipedRight {
+                    swipeCard(right: true)
+                    XCTAssertTrue(eventually { !self.topCardLabel.hasPrefix("Duke Energy") }, "Swipe right didn't file the card")
+                    swipedRight = true
+                    shot("02-sort-after-swipe-right")
+                    let undo = element("deck.undo")
+                    XCTAssertTrue(undo.isEnabled, "Undo should be on after a swipe")
+                    undo.tap()
+                    XCTAssertTrue(eventually { self.topCardLabel.hasPrefix("Duke Energy") }, "Undo didn't bring the card back")
+                    undone = true
+                    pause(0.8)
+                    shot("03-sort-after-undo")
+                } else {
+                    // #44: the File button under the card crashed in preview 0.
+                    element("deck.file").tap()
+                    XCTAssertTrue(eventually { !self.topCardLabel.hasPrefix("Duke Energy") }, "File button didn't file the card")
+                    XCTAssertEqual(app.state, .runningForeground, "App went away after File (#44)")
+                    filedWithButton = true
+                    shot("04-sort-after-file-button")
+                }
+            } else if label.hasPrefix("Blue Cross") {
+                // An unsure card: File opens the check-fields sheet instead (3.8, 4.3).
+                element("deck.file").tap()
+                let confirm = waitFor(element("checkFields.confirm"), 5, "File on an unsure card didn't open the check-fields sheet")
+                pause(0.8)
+                shot("05-check-fields-sheet")
+                let remember = element("checkFields.remember")
+                XCTAssertTrue(remember.exists, "No Remember for this sender toggle")
+                XCTAssertEqual(remember.value as? String, "1", "Remember for this sender should start on")
+                XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Next time, Blue Cross'")).firstMatch.exists,
+                              "Missing the footer under Remember for this sender")
+                if !confirm.isHittable { app.swipeUp() }
+                confirm.tap()
+                XCTAssertTrue(eventually { !self.element("checkFields.confirm").exists }, "Sheet didn't close after Confirm and file")
+                XCTAssertTrue(eventually { !self.topCardLabel.hasPrefix("Blue Cross") }, "Confirm and file didn't file the card")
+                checked = true
+                shot("06-sort-after-check-fields")
+            } else if label.hasPrefix("Honda Civic") {
+                // A Keep original card: Shred always asks first (4.14).
+                element("deck.shred").tap()
+                let anyway = dialogButton("Shred anyway")
+                waitFor(anyway, 5, "Shred on a Keep original didn't ask first")
+                XCTAssertTrue(app.staticTexts["Shred a Keep original?"].exists, "Dialog title should read 'Shred a Keep original?'")
+                shot("07-keep-original-confirm")
+                anyway.tap()
+                XCTAssertTrue(eventually { !self.topCardLabel.hasPrefix("Honda Civic") }, "Shred anyway didn't shred the card")
+                keepConfirmed = true
+            } else if label.hasPrefix("Furniture") {
+                swipeCard(right: false)
+                XCTAssertTrue(eventually { !self.topCardLabel.hasPrefix("Furniture") }, "Swipe left didn't shred the card")
+                swipedLeft = true
+                shot("08-sort-after-swipe-left")
+            } else {
+                XCTFail("Unexpected top card: \(label)")
+                break
+            }
+            pause(0.6)
+        }
+
+        XCTAssertTrue(swipedRight && undone && filedWithButton && checked && keepConfirmed && swipedLeft,
+                      "Didn't reach every deck action: right \(swipedRight) undo \(undone) file \(filedWithButton) check \(checked) keep \(keepConfirmed) left \(swipedLeft)")
+        waitFor(app.staticTexts["All sorted"], 5, "The empty deck should read All sorted")
+        shot("09-sort-all-sorted")
+
+        // Outbox bar and screen (3.7, 4.4). Wait out the 10 second undo hold so every card is released.
+        let accessory = waitFor(element("outbox.accessory"), 5, "No outbox bar above the tab bar")
+        pause(11)
+        shot("10-outbox-bar")
+        XCTAssertTrue(eventually(5) { (accessory.value as? String)?.contains("filed today") == true },
+                      "Outbox bar should say how many were filed today, got \(accessory.value ?? "nil")")
+        accessory.tap()
+        waitFor(app.navigationBars["Outbox"], 5, "Outbox screen didn't open")
+        pause(1)
+        shot("11-outbox-screen")
+        XCTAssertTrue(app.staticTexts["FILED TODAY"].exists || app.staticTexts["Filed today"].exists, "Outbox should list Filed today")
+        goBack()
+        waitFor(app.navigationBars["Sort"], 5)
+
+        // "Remember for this sender" saved a rule: it shows in Settings › Sender rules (4.12).
+        element("avatar").tap()
+        waitFor(element("settings.senderRules"), 5).tap()
+        waitFor(app.navigationBars["Sender rules"], 5)
+        XCTAssertTrue(eventually(5) { self.app.staticTexts["Blue Cross"].exists }, "Remember for this sender didn't save a Blue Cross rule")
+        shot("12-sender-rules-after-remember")
+    }
+
+    // MARK: Piles: Mark shredded, Put away (4.5)
+
+    func testPilesMarkShreddedAndPutAway() {
+        launch()
+        waitFor(tab("Piles")).tap()
+        waitFor(app.navigationBars["Piles"])
+        let mark = waitFor(element("piles.markShredded"), 10, "No Mark as shredded button on the Shred pile")
+        pause(0.8)
+        shot("20-piles-shred")
+        // #64: scrolled to the end, the last row rests above the button instead of under it.
+        let list = app.collectionViews.firstMatch
+        for _ in 0..<4 { list.swipeUp() }
+        pause(0.8)
+        shot("20b-piles-shred-end")
+        if let last = list.cells.allElementsBoundByIndex.last(where: { $0.isHittable }) {
+            XCTAssertLessThanOrEqual(last.frame.maxY, mark.frame.minY + 1,
+                                     "The last Shred row sits under Mark as shredded (#64)")
+        }
+        for _ in 0..<4 { list.swipeDown() }
+        pause(0.5)
+        let markTitle = mark.label
+        XCTAssertTrue(markTitle.hasPrefix("Mark ") && markTitle.hasSuffix(" as shredded"), "Button reads \(markTitle)")
+        mark.tap()
+        let confirm = dialogButton(markTitle)
+        waitFor(confirm, 5, "Mark as shredded didn't ask to confirm")
+        shot("21-piles-mark-confirm")
+        confirm.tap()
+        XCTAssertTrue(eventually { !self.element("piles.markShredded").exists }, "Mark button should go once nothing is safe")
+        shot("22-piles-after-mark")
+
+        let segment = element("piles.segment")
+        segment.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Keep'")).firstMatch.tap()
+        let passport = waitFor(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Passport renewal receipt'")).firstMatch, 5)
+        shot("23-piles-keep")
+        passport.swipeLeft()
+        waitFor(app.buttons["Put away"], 5, "No Put away swipe action").tap()
+        // A row in the binder carries the archivebox, read as "Put away" (spec 3.10).
+        XCTAssertTrue(eventually { passport.label.contains("Put away") }, "Passport should move to In the binder, got \(passport.label)")
+        shot("24-piles-after-put-away")
+
+        segment.buttons.matching(NSPredicate(format: "label BEGINSWITH 'All filed'")).firstMatch.tap()
+        pause(0.8)
+        shot("25-piles-all-filed")
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH '2025 W-2'")).firstMatch.tap()
+        waitFor(app.buttons["Open in Drive"], 5, "Document view should offer Open in Drive")
+        shot("26-piles-document")
+    }
+
+    // MARK: Search (4.6)
+
+    func testSearchTypeAndOpenResult() {
+        launch()
+        waitFor(tab("Search")).tap()
+        pause(1.5)
+        shot("30-search-start")
+        let field = app.searchFields.firstMatch
+        // #51 is fixed (#63): the island opens a bottom field, so a missing field is a real failure.
+        waitFor(field, 5, "No search field after tapping Search (#51)")
+        field.tap()
+        field.typeText("w-2 2023")
+        let result = element("search.result")
+        waitFor(result, 5, "Typing 'w-2 2023' found nothing")
+        pause(0.6)
+        shot("31-search-results")
+        let chip = app.buttons["2023"].firstMatch
+        XCTAssertTrue(chip.exists, "No 2023 chip")
+        XCTAssertTrue(chip.isSelected, "Typing a year should turn its chip on (4.6)")
+        XCTAssertTrue(result.label.contains("2023 W-2"), "First result should be the 2023 W-2, got \(result.label)")
+        result.tap()
+        waitFor(app.buttons["Open in Drive"], 5, "Result didn't open the document view")
+        shot("32-search-document")
+    }
+
+    // MARK: Tab bar and the search island (#62)
+
+    /// Each tab shows its own screen, and only Search has a search field: #51 once put a field
+    /// under every tab's title. The pushed Outbox has none either.
+    func testTabsHaveNoStraySearchField() {
+        launch()
+        waitFor(card, 20)
+        for name in ["Sort", "Piles", "Paperless"] {
+            tab(name).tap()
+            waitFor(app.navigationBars[name], 5, "The \(name) tab didn't show its screen")
+            XCTAssertTrue(eventually { self.tab(name).isSelected }, "\(name) isn't the selected tab")
+            pause(0.6)
+            XCTAssertEqual(app.searchFields.count, 0, "\(name) shows a search field (#51)")
+        }
+        tab("Sort").tap()
+        waitFor(element("outbox.accessory"), 5, "No outbox bar above the tab bar").tap()
+        waitFor(app.navigationBars["Outbox"], 5, "Outbox screen didn't open")
+        pause(0.6)
+        XCTAssertEqual(app.searchFields.count, 0, "The pushed Outbox shows a search field (#51)")
+        goBack()
+        waitFor(app.navigationBars["Sort"], 5)
+
+        tab("Search").tap()
+        XCTAssertEqual(app.searchFields.count, 1, "Search should have exactly one field")
+        shot("34-search-island")
+    }
+
+    /// The rest of the throwaway #51 flow: the keyboard's Search key saves a recent, clearing the
+    /// field brings the recents back, a recent searches again, and closing returns to the tab
+    /// that was showing before Search.
+    func testSearchSubmitClearRecentAndClose() {
+        launch()
+        waitFor(card, 20)
+        tab("Piles").tap()
+        waitFor(app.navigationBars["Piles"], 5)
+        tab("Search").tap()
+        let field = waitFor(app.searchFields.firstMatch, 5, "No search field after tapping Search (#51)")
+        removeRecent("brightline")
+        field.tap()
+        field.typeText("brightline")
+        let result = waitFor(element("search.result"), 5, "Typing 'brightline' found nothing")
+        XCTAssertTrue(result.label.contains("Brightline Wireless"), "First result should be the Brightline Wireless bill, got \(result.label)")
+        field.typeText("\n")
+        pause(0.6)
+        shot("35-search-submitted")
+
+        clear(field)
+        XCTAssertTrue(eventually { !self.element("search.result").exists }, "Clearing the field left the results up")
+        let recent = app.buttons["brightline"].firstMatch
+        waitFor(recent, 5, "The Search key didn't save 'brightline' as a recent")
+        shot("36-search-recents")
+        recent.tap()
+        waitFor(element("search.result"), 5, "Tapping a recent didn't search again")
+        XCTAssertEqual(field.value as? String, "brightline", "Tapping a recent should fill the field")
+
+        clear(field)
+        removeRecent("brightline")
+        close(field)
+        XCTAssertTrue(eventually { self.app.navigationBars["Piles"].exists && self.tab("Piles").isSelected },
+                      "Closing Search should return to Piles")
+        XCTAssertEqual(app.searchFields.count, 0, "Piles shows a search field after closing Search")
+        shot("37-search-closed")
+    }
+
+    // MARK: Paperless (4.7)
+
+    func testPaperlessChangeStatus() {
+        launch()
+        waitFor(tab("Paperless")).tap()
+        waitFor(app.navigationBars["Paperless"])
+        let brightline = waitFor(element("paperless.sender.brightline-wireless"), 5)
+        pause(0.6)
+        shot("40-paperless")
+        brightline.tap()
+        let picker = waitFor(element("paperless.status"), 5, "Sender detail has no Status picker")
+        shot("41-paperless-sender")
+        picker.tap()
+        waitFor(app.buttons["Requested"], 5, "Status menu didn't open").tap()
+        // #57: the detail has to hear its own write.
+        XCTAssertTrue(eventually(5, { self.app.buttons["It's confirmed"].exists }),
+                      "Requested should switch the button to It's confirmed (#57)")
+        shot("42-paperless-sender-requested")
+        goBack()
+        XCTAssertTrue(eventually {
+            let row = self.element("paperless.sender.brightline-wireless")
+            return row.exists && row.label.contains("Requested")
+        }, "Brightline should now read Requested in the ledger")
+        shot("43-paperless-after-status")
+    }
+
+    // MARK: Search helpers
+
+    /// The field's clear button (the x inside it).
+    private func clear(_ field: XCUIElement) {
+        let x = field.buttons.firstMatch
+        if x.exists { x.tap() } else {
+            field.tap()
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 20))
+        }
+    }
+
+    /// The island's close button, which ends the search and returns to the previous tab.
+    private func close(_ field: XCUIElement) {
+        let labels = ["Close", "Cancel", "close"]
+        if let button = labels.lazy.map({ self.app.buttons[$0].firstMatch }).first(where: { $0.exists && $0.isHittable }) {
+            button.tap()
+        } else {
+            XCTFail("No close button on the search field:\n\(app.debugDescription)")
+        }
+    }
+
+    /// Swipes a saved recent away, so the run starts and ends without it.
+    private func removeRecent(_ text: String) {
+        let row = app.buttons[text].firstMatch
+        guard row.exists else { return }
+        row.swipeLeft()
+        let remove = app.buttons["Remove"].firstMatch
+        if remove.waitForExistence(timeout: 3) { remove.tap() }
+        XCTAssertTrue(eventually { !self.app.buttons[text].exists }, "Couldn't remove the recent '\(text)'")
+    }
+
+    // MARK: Settings: sender rules, shred hold (4.9, 4.12)
+
+    func testSettingsSenderRulesAndShredHold() {
+        launch()
+        waitFor(card, 20)
+        element("avatar").tap()
+        waitFor(app.navigationBars["Settings"], 5, "Avatar didn't open Settings")
+        pause(0.8)
+        shot("50-settings")
+        element("settings.senderRules").tap()
+        waitFor(app.navigationBars["Sender rules"], 5)
+        let duke = waitFor(app.staticTexts["Duke Energy"], 5, "Sample rule Duke Energy missing")
+        shot("51-sender-rules")
+        duke.tap()
+        waitFor(app.navigationBars["Duke Energy"], 5, "Rule detail didn't open")
+        shot("52-sender-rule-detail")
+        goBack()
+        goBack()
+        let hold = waitFor(element("settings.shredHold"), 5)
+        hold.tap()
+        waitFor(app.navigationBars["Shred hold"], 5)
+        shot("53-shred-hold")
+        app.buttons["7 days"].tap()
+        XCTAssertTrue(eventually { self.app.buttons["7 days"].isSelected }, "7 days didn't take")
+        goBack()
+        XCTAssertTrue(eventually { self.element("settings.shredHold").label.contains("7 days") },
+                      "Shred hold row should read 7 days, got \(element("settings.shredHold").label)")
+        shot("54-settings-after-hold")
+        element("settings.done").tap()
+        XCTAssertTrue(eventually { !self.app.navigationBars["Settings"].exists }, "Done didn't close Settings")
+    }
+
+    // MARK: Scan menu (4.2, 4.11) through the simulator seam
+
+    func testScanMenuAndReview() {
+        launch()
+        waitFor(card, 20)
+        let before = topCardLabel
+        // #74: a plain tap opens the menu with all three sources (decision 1). It used to scan at once
+        // and hide both imports behind a long press.
+        let scan = element("sort.scan")
+        scan.tap()
+        waitFor(app.buttons["Scan document"], 5, "A tap on Scan should open the menu")
+        XCTAssertTrue(app.buttons["Import from Files"].exists, "The Scan menu is missing Import from Files (#74)")
+        XCTAssertTrue(app.buttons["Import from Photos"].exists, "The Scan menu is missing Import from Photos (#74)")
+        XCTAssertFalse(element("review.send").exists, "A tap on Scan started a scan instead of opening the menu (#74)")
+        shot("60-scan-menu")
+        // In the simulator, Scan document feeds the sample pages (SampleScanSource) instead of the camera.
+        app.buttons["Scan document"].tap()
+        let send = waitFor(element("review.send"), 15, "Scan didn't open the review screen")
+        XCTAssertTrue(eventually(15) { send.isEnabled })
+        pause(1)
+        shot("61-scan-review")
+        // #56: the app used to trap in CaptureStyle's dynamic color as the review closed. #67 moved
+        // capture onto the asset catalog colors; a crash here stays a hard failure.
+        send.tap()
+        XCTAssertTrue(eventually { !self.element("review.send").exists }, "Send didn't close the review")
+        XCTAssertTrue(card.waitForExistence(timeout: 10) && app.state == .runningForeground,
+                      "The deck didn't come back after Send to the deck (#56)")
+        pause(1.5)
+        shot("62-sort-after-scan")
+        XCTAssertFalse(before.isEmpty)
+        let subtitle = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'to go'")).firstMatch
+        XCTAssertTrue(eventually(15) { subtitle.exists && !subtitle.label.hasPrefix("4 to go") },
+                      "Deck count should grow after sending scans, got \(subtitle.exists ? subtitle.label : "no subtitle")")
+    }
+
+    /// #54: a scanned pile isn't read as one card while the split is still open. Its header waits,
+    /// and each document reads once "Split into documents" lands.
+    func testStackScanWaitsForTheSplit() {
+        launch(["-PTScanStack"])
+        waitFor(card, 20)
+        element("sort.scan").tap()
+        waitFor(app.buttons["Scan document"], 5, "A tap on Scan should open the menu").tap()
+        waitFor(element("review.send"), 15, "Scan didn't open the review screen")
+        // Header rows combine their text and pill, so match on what the label contains.
+        let held = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Reads when you split or send'")).firstMatch
+        let reading = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Reading' OR label CONTAINS 'Reads when'"))
+        waitFor(held, 15, "The six-page pile should wait for the split instead of reading")
+        XCTAssertTrue(element("review.send").isEnabled, "Send should work while the pile waits")
+        pause(0.6)
+        shot("63-scan-stack-held")
+        let split = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Split into documents'")).firstMatch
+        waitFor(split, 5, "No Split into documents row").tap()
+        XCTAssertTrue(eventually(20) { reading.count == 0 && self.app.staticTexts["6 pages, 4 documents"].exists },
+                      "Each split document should be read")
+        pause(0.6)
+        shot("64-scan-stack-split-read")
+        element("review.send").tap()
+        XCTAssertTrue(eventually { !self.element("review.send").exists }, "Send didn't close the review")
+    }
+
+    // MARK: Every scan entry point is the Scan menu (#79)
+
+    /// Asserts the three-choice Scan menu is open, and that the tap didn't start a scan on its own.
+    private func assertScanMenu(_ origin: String, file: StaticString = #filePath, line: UInt = #line) {
+        waitFor(app.buttons["Scan document"], 5, "\(origin) should open the Scan menu", file: file, line: line)
+        XCTAssertTrue(app.buttons["Import from Files"].exists, "\(origin): no Import from Files (#79)", file: file, line: line)
+        XCTAssertTrue(app.buttons["Import from Photos"].exists, "\(origin): no Import from Photos (#79)", file: file, line: line)
+    }
+
+    /// The bug in #79: "Scan more" under "All sorted" went straight into the scanner.
+    func testAllSortedScanMoreOpensTheScanMenu() {
+        launch(["-PTDeckState", "sorted"])
+        waitFor(app.staticTexts["All sorted"], 20, "The sorted sample deck should show All sorted")
+        let scanMore = waitFor(element("sort.scanMore"), 5, "No Scan more under All sorted")
+        pause(0.5)
+        shot("70-sort-all-sorted")
+        scanMore.tap()
+        assertScanMenu("Scan more under All sorted")
+        XCTAssertFalse(element("review.send").exists, "Scan more started a scan instead of opening the menu (#79)")
+        shot("71-sort-all-sorted-scan-menu")
+        app.buttons["Scan document"].tap()
+        waitFor(element("review.send"), 15, "Scan document from the empty state didn't open the review")
+        element("review.send").tap()
+        XCTAssertTrue(eventually { !self.element("review.send").exists }, "Send didn't close the review")
+    }
+
+    func testFirstRunScanOpensTheScanMenu() {
+        launch(["-PTDeckState", "first"])
+        waitFor(app.staticTexts["Scan your first stack"], 20)
+        element("sort.scanFirst").tap()
+        assertScanMenu("Scan on the first-time empty state")
+        XCTAssertFalse(element("review.send").exists, "Scan started a scan instead of opening the menu (#79)")
+        shot("72-sort-first-scan-menu")
+    }
+
+    func testReviewScanMoreOpensTheScanMenu() {
+        launch()
+        waitFor(card, 20)
+        element("sort.scan").tap()
+        waitFor(app.buttons["Scan document"], 5).tap()
+        waitFor(element("review.send"), 15, "Scan didn't open the review screen")
+        XCTAssertTrue(eventually { self.app.staticTexts["4 pages, 1 document"].exists })
+        element("review.more").tap()
+        assertScanMenu("The review's Scan more")
+        shot("73-review-scan-menu")
+        app.buttons["Scan document"].tap()
+        XCTAssertTrue(eventually(15) { self.app.staticTexts["8 pages, 1 document"].exists },
+                      "Scan document from the review should add to the same review")
+        element("review.send").tap()
+        XCTAssertTrue(eventually { !self.element("review.send").exists }, "Send didn't close the review")
+    }
+
+    // MARK: The full-screen page viewer (#78)
+
+    func testPageViewerZoomCutJoinAndClose() {
+        launch(["-PTScanStack"])
+        waitFor(card, 20)
+        element("sort.scan").tap()
+        waitFor(app.buttons["Scan document"], 5).tap()
+        waitFor(element("review.send"), 15, "Scan didn't open the review screen")
+        XCTAssertTrue(eventually { self.app.staticTexts["6 pages, 1 document"].exists })
+        let thumbnails = app.descendants(matching: .any).matching(identifier: "review.page")
+        XCTAssertTrue(eventually { thumbnails.count == 6 }, "The review should show six page thumbnails")
+
+        // Tap page 3: the viewer opens on it.
+        thumbnails.element(boundBy: 2).tap()
+        let done = waitFor(element("pager.done"), 5, "Tapping a page should open the viewer")
+        let title = { (text: String) in self.app.navigationBars.staticTexts[text].firstMatch }
+        waitFor(title("Page 3 of 6 · Document 1"), 5, "The viewer should open on the page tapped")
+        pause(1)
+        shot("74-page-viewer")
+
+        // The scissors cut after this page; the review behind follows at once.
+        element("pager.cut").tap()
+        waitFor(element("pager.joinAfter"), 5, "After a cut the scissors become Join with page 4")
+        XCTAssertEqual(element("pager.joinAfter").label, "Join with page 4")
+
+        // Swipe to page 4: it starts document 2, so it offers Join with page 3.
+        app.swipeLeft()
+        waitFor(title("Page 4 of 6 · Document 2"), 5, "Swiping left should show page 4 in document 2")
+        waitFor(element("pager.joinBefore"), 5)
+        pause(0.8)
+        shot("75-page-viewer-after-cut")
+
+        // Double-tap zooms in; a second double-tap zooms back out.
+        let page = app.descendants(matching: .any).matching(identifier: "pager.page").element(boundBy: 0)
+        app.windows.firstMatch.doubleTap()
+        pause(0.8)
+        shot("76-page-viewer-zoomed")
+        app.windows.firstMatch.doubleTap()
+        pause(0.6)
+        XCTAssertTrue(page.exists)
+
+        // Join with page 3 removes the cut again.
+        element("pager.joinBefore").tap()
+        waitFor(title("Page 4 of 6 · Document 1"), 5, "Join should put page 4 back in document 1")
+        element("pager.cut").tap()
+        waitFor(title("Page 4 of 6 · Document 1"), 5)
+
+        // Done closes back on the review, which kept the cut made in the viewer.
+        done.tap()
+        XCTAssertTrue(eventually { !self.element("pager.done").exists }, "Done didn't close the viewer")
+        XCTAssertTrue(eventually { self.app.staticTexts["6 pages, 2 documents"].exists },
+                      "The review should show the cut made in the viewer")
+        pause(0.8)
+        shot("77-review-after-viewer")
+
+        // A swipe down closes it too.
+        thumbnails.element(boundBy: 0).tap()
+        waitFor(element("pager.done"), 5)
+        waitFor(title("Page 1 of 6 · Document 1"), 5)
+        let middle = app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4))
+        middle.press(forDuration: 0.05, thenDragTo: middle.withOffset(CGVector(dx: 0, dy: 500)),
+                     withVelocity: .fast, thenHoldForDuration: 0)
+        XCTAssertTrue(eventually { !self.element("pager.done").exists }, "A swipe down should close the viewer")
+        element("review.send").tap()
+        XCTAssertTrue(eventually { !self.element("review.send").exists }, "Send didn't close the review")
+    }
+}

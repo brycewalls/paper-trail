@@ -1,8 +1,27 @@
 // The classify function's logic, kept apart from the Firebase wiring in index.js so the unit tests
 // can run it with a stand-in Claude client. Ported from the Paper Trail artifact
 // (Home Projects/Projects/2026-10 Paperwork Scan/paper-trail.html): same fields, same verdict rules,
-// same normalize(). What changed: the pages arrive as a PDF or as page images (no OCR text path),
-// and the reply is held to a JSON schema with structured outputs.
+// same normalize(). What changed: the pages arrive as a PDF or as page images, and the reply is held
+// to a JSON schema with structured outputs.
+//
+// Optional extras for the iPhone app (every one is opt-in, so the web app's requests and replies are
+// exactly what they were):
+//   ocrText         on-device OCR text, added to the user turn as a hint (#22)
+//   ocrPrimary      the OCR text is the main source and the images are only a downscaled first page
+//                   (#75). Only honored with kind "images" and non-empty ocrText
+//   wantConfidence  ask Claude which fields it isn't sure of, with a 0 to 1 score and up to two other
+//                   guesses each; the reply gains result.confidence {overall, fields, sparse} and
+//                   result.alternatives (#20). Since #75 the list is sparse: a field missing from
+//                   confidence.fields is one Claude was sure of
+//   senderHints     the user's sender rules (users/{uid}/senders). Claude sees the known sender names
+//                   so it spells them the same way, then applySenderRule() applies the matching rule
+//                   to the card deterministically and sets result.appliedRule (#21)
+//
+// Split mode (#19, stack mode): a request with mode: "split" carries a scanned pile instead of one
+// document: pages [{text, image?}] in scan order, each with its on-device OCR text and an optional
+// small thumbnail. The reply is { split: { documents: [{start, end, label}] }, model }: 0-based,
+// inclusive page ranges that cover every page once, in order, each with a short label. Requests
+// without mode are untouched, so the web app's reads stay byte for byte what they were.
 
 const FOLDER_NAMES = [
   "01 Identity & Legal",
@@ -24,6 +43,22 @@ const VERDICTS = ["shred", "scan_shred", "keep_original"];
 const MAX_BASE64_CHARS = 24 * 1024 * 1024;
 const MAX_IMAGES = 10;
 const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const MAX_OCR_CHARS = 20000;
+const MAX_SENDER_HINTS = 200;
+// Split mode (#19). The API takes up to 100 images in one request; text-only pages go past that.
+const MAX_SPLIT_PAGES = 300;
+const MAX_SPLIT_IMAGES = 100;
+const MAX_SPLIT_PAGE_CHARS = 2000;
+const MAX_SPLIT_TEXT_CHARS = 120000;
+const MAX_SPLIT_LABEL = 60;
+
+// Fields that get a confidence score (#20), in the order the app's check-fields sheet shows them.
+const CONFIDENCE_FIELDS = ["issuer", "docDate", "folder", "title", "filename", "verdict"];
+// Fields that can carry other guesses. The verdict is a three-way choice the app shows in full.
+const ALTERNATIVE_FIELDS = ["issuer", "docDate", "folder", "title", "filename"];
+const MAX_ALTERNATIVES = 2;
+// Claude lists a field only below this confidence (#75). A field it leaves out counts as sure.
+const SURE_ABOVE = 0.9;
 
 // Models that take the server-side refusal fallback (fallbacks: "default").
 const FALLBACK_MODELS = new Set(["claude-opus-5-5", "claude-opus-5", "claude-fable-5-1", "claude-sonnet-5-5"]);
@@ -57,6 +92,18 @@ Verdict rules:
 paperless.possible is true when the sender is a company that sends this kind of mail on a recurring basis and offers e-delivery (banks, utilities, insurers, brokerages, medical billing, phone and internet, loan servicers). False for one-off or government documents that can't be switched.
 Never write a full SSN or full account number in any field. If the pages are unreadable, set title to "Unreadable scan", verdict to "scan_shred", and use verdictReason to ask for a clearer scan.`;
 
+// Appended to the system prompt only when the request asks for confidence, so the web app's prompt
+// (and its cache) is untouched. Both are constants: nothing per request (dates, names, page counts)
+// ever goes in the system prompt, so every iPhone read shares one cached prefix (#75).
+// Since #75 Claude lists only the fields it is not sure of. Most documents list none, so the answer
+// is about 100 tokens shorter than six scores and six lists of guesses.
+const CONFIDENCE_PROMPT = `
+
+Also add an "unsure" list to the JSON object, for the fields a person should look at. Consider only ${CONFIDENCE_FIELDS.join(", ")}. List a field only when you are less than ${SURE_ABOVE} sure its value is right (a sender name that is only a logo, two dates that could be the document date, a folder that could go two ways). Leave out every field you are sure of; an empty list means you are sure of all of them. Each entry has:
+ "field": the field's name.
+ "confidence": a number from 0 to 1, how sure you are. Below 0.75 means a person should check it.
+ "alternatives": up to ${MAX_ALTERNATIVES} other plausible values, best first, in the same format as the field (docDate as YYYY-MM-DD, folder from the same list). An empty list when there is no other candidate.`;
+
 // Structured outputs hold the reply to this shape; normalize() still cleans it afterwards.
 const str = { type: "string" };
 const RESULT_SCHEMA = {
@@ -79,13 +126,53 @@ const RESULT_SCHEMA = {
   additionalProperties: false,
 };
 
-function userText({ kind, totalPages, sentPages }, today) {
+// The schema for a request: the web app's shape, plus the sparse "unsure" list when asked (#75).
+// Built once, so every request with confidence carries the identical schema (part of the prefix).
+const UNSURE_SCHEMA = {
+  type: "array",
+  items: {
+    type: "object",
+    properties: {
+      field: { type: "string", enum: CONFIDENCE_FIELDS },
+      confidence: { type: "number" },
+      alternatives: { type: "array", items: str },
+    },
+    required: ["field", "confidence", "alternatives"],
+    additionalProperties: false,
+  },
+};
+const CONFIDENCE_SCHEMA = {
+  ...RESULT_SCHEMA,
+  properties: { ...RESULT_SCHEMA.properties, unsure: UNSURE_SCHEMA },
+  required: [...RESULT_SCHEMA.required, "unsure"],
+};
+function schemaFor(wantConfidence) {
+  return wantConfidence ? CONFIDENCE_SCHEMA : RESULT_SCHEMA;
+}
+
+function userText({ kind, totalPages, sentPages, ocrPrimary }, today) {
   const total = Math.max(1, totalPages | 0), sent = Math.max(1, sentPages | 0);
   const pages = `${total} page${total > 1 ? "s" : ""}`;
+  if (ocrPrimary && kind === "images") {
+    const shown = sent > 1 ? `first ${sent} pages` : "first page";
+    return `The attached image is a scaled-down picture of the ${shown} of ONE document (${pages} in all). The text of the pages, read on the phone, is below. Today is ${today}.`;
+  }
   const source = kind === "pdf"
     ? `The attached PDF is ONE document (${pages} in all).`
     : `The ${sent} attached image(s) are the page(s) of ONE document, in order${total > sent ? ` (the first ${sent} of ${total})` : ""}.`;
   return `${source} Today is ${today}.`;
+}
+
+// The per-request extras for the user turn: known senders and the OCR text. Empty for the web app.
+function extrasText({ senderHints, ocrText, ocrPrimary }) {
+  const parts = [];
+  if (senderHints && senderHints.length) {
+    const names = senderHints.map((h) => h.issuer).filter(Boolean);
+    if (names.length) parts.push(`Senders this person has filed before. If the document is from one of them, write the issuer exactly as listed: ${JSON.stringify(names)}.`);
+  }
+  if (ocrText && ocrPrimary) parts.push(`Text of the pages, read on the phone (OCR, may have small errors; the picture shows the layout, logos and handwriting):\n<ocr>\n${ocrText}\n</ocr>`);
+  else if (ocrText) parts.push(`Text read from the pages on the phone (OCR, may have errors; the pages themselves win):\n<ocr>\n${ocrText}\n</ocr>`);
+  return parts.join("\n\n");
 }
 
 function normalize(r) {
@@ -110,6 +197,114 @@ function normalize(r) {
   };
 }
 
+const clamp01 = (n) => (typeof n === "number" && Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0);
+const round2 = (n) => Math.round(n * 100) / 100;
+
+// Turns Claude's sparse "unsure" list into the card's confidence and alternatives (#20, #75).
+// Only listed fields get a score; a field Claude left out was sure, and the app reads a missing
+// score as sure (CardConfidence.score). A listed field with a missing or bad score counts as 0, so it
+// shows up as unsure rather than slipping through. A field listed twice keeps its lowest score.
+// The overall score is the lowest field score, 1 when nothing is listed. Alternatives exist only
+// for listed fields, are cleaned like the field itself, never repeat the chosen value, and keep at
+// most two. confidence.sparse tells readers that missing means sure.
+function normalizeConfidence(raw, card) {
+  const r = raw && typeof raw === "object" ? raw : {};
+  const list = Array.isArray(r.unsure) ? r.unsure : [];
+  const fields = {};
+  const a = {};
+  for (const entry of list) {
+    if (!entry || typeof entry !== "object" || !CONFIDENCE_FIELDS.includes(entry.field)) continue;
+    const score = round2(clamp01(entry.confidence));
+    fields[entry.field] = entry.field in fields ? Math.min(fields[entry.field], score) : score;
+    if (ALTERNATIVE_FIELDS.includes(entry.field)) a[entry.field] = [...(a[entry.field] || []), ...(Array.isArray(entry.alternatives) ? entry.alternatives : [])];
+  }
+  const clean = {
+    issuer: (v) => String(v || "").trim().slice(0, 100),
+    title: (v) => String(v || "").trim().slice(0, 140),
+    docDate: (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || "")) ? String(v) : ""),
+    folder: (v) => (FOLDER_NAMES.includes(v) ? v : ""),
+    filename: (v) => cleanName(v).slice(0, 120),
+  };
+  const alternatives = {};
+  for (const f of ALTERNATIVE_FIELDS) {
+    if (!(f in a)) continue;
+    const seen = new Set([card[f]]);
+    const list = [];
+    for (const v of a[f]) {
+      const x = clean[f](v);
+      if (!x || seen.has(x)) continue;
+      seen.add(x); list.push(x);
+      if (list.length === MAX_ALTERNATIVES) break;
+    }
+    alternatives[f] = list;
+  }
+  return { confidence: { overall: overallOf(fields), fields, sparse: true }, alternatives };
+}
+// A field without a score is one Claude was sure of (#75), so it counts as 1.
+const overallOf = (fields) => round2(Math.min(...CONFIDENCE_FIELDS.map((f) => (f in fields ? fields[f] : 1))));
+
+// Sender hints from the app (#21): users/{uid}/senders documents. Anything malformed is dropped, not
+// refused, so a bad rule never stops a read.
+function cleanSenderHints(list) {
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  for (const h of list.slice(0, MAX_SENDER_HINTS)) {
+    if (!h || typeof h !== "object") continue;
+    const issuer = String(h.issuer || "").trim().slice(0, 100);
+    const key = slug(h.key || issuer);
+    if (!issuer || key === "unknown") continue;
+    const rule = { key, issuer };
+    if (FOLDER_NAMES.includes(h.folder)) rule.folder = h.folder;
+    if (VERDICTS.includes(h.verdict)) rule.verdict = h.verdict;
+    if (typeof h.docType === "string" && h.docType.trim()) rule.docType = h.docType.trim().slice(0, 80);
+    if (typeof h.filenamePattern === "string" && h.filenamePattern.trim()) rule.filenamePattern = h.filenamePattern.trim().slice(0, 120);
+    out.push(rule);
+  }
+  return out;
+}
+
+// Fills a filename pattern's tokens from the card. {date} is the docDate (0000-00-00 when there is
+// none), {yyyy} and {mm} its parts, {issuer} and {type} the slugs of the sender and document type.
+function renderFilename(pattern, card) {
+  const date = card.docDate || "0000-00-00";
+  const out = String(pattern)
+    .replace(/\{date\}/g, date)
+    .replace(/\{yyyy\}/g, date.slice(0, 4))
+    .replace(/\{mm\}/g, date.slice(5, 7))
+    .replace(/\{issuer\}/g, slug(card.issuer))
+    .replace(/\{type\}/g, slug(card.docType));
+  return cleanName(out).slice(0, 120);
+}
+
+// Applies the rule whose key matches the card's sender, the same way every time (#21): the rule's
+// spelling of the sender, then its folder, verdict, document type and filename pattern, each only if
+// the rule has one. Fields a rule set are certain, so their confidence becomes 1 and their other
+// guesses go. Returns the card unchanged when no rule matches.
+function applySenderRule(card, hints) {
+  const rule = (hints || []).find((h) => h.key === slug(card.issuer));
+  if (!rule) return card;
+  const out = { ...card, issuer: rule.issuer, appliedRule: rule.key };
+  const set = ["issuer"];
+  if (rule.folder) { out.folder = rule.folder; set.push("folder"); }
+  if (rule.verdict) { out.verdict = rule.verdict; set.push("verdict"); }
+  if (rule.docType) out.docType = rule.docType;
+  if (rule.filenamePattern) {
+    const name = renderFilename(rule.filenamePattern, out);
+    if (name) { out.filename = name; set.push("filename"); }
+  }
+  if (out.paperless && slug(out.paperless.issuer) === rule.key) out.paperless = { ...out.paperless, issuer: rule.issuer };
+  if (out.confidence) {
+    const fields = { ...out.confidence.fields };
+    for (const f of set) fields[f] = 1;
+    out.confidence = { ...out.confidence, overall: overallOf(fields), fields };
+  }
+  if (out.alternatives) {
+    out.alternatives = { ...out.alternatives };
+    for (const f of set) if (out.alternatives[f]) out.alternatives[f] = [];
+  }
+  return out;
+}
+
 // ALLOWED_EMAILS is a comma or space separated list. An empty list lets nobody in.
 const parseAllowlist = (s) => String(s || "").split(/[\s,]+/).map((e) => e.trim().toLowerCase()).filter(Boolean);
 function isAllowed(token, list) {
@@ -124,6 +319,13 @@ class ClassifyError extends Error {
 }
 
 const B64 = /^[A-Za-z0-9+/]+={0,2}$/;
+// The optional extras. Lenient on purpose: a bad extra is ignored, never a reason to refuse the read.
+function extras(d) {
+  const ocrText = typeof d.ocrText === "string" ? d.ocrText.trim().slice(0, MAX_OCR_CHARS) : "";
+  const ocrPrimary = d.ocrPrimary === true && d.kind === "images" && ocrText.length > 0;
+  return { ocrText, ocrPrimary, senderHints: cleanSenderHints(d.senderHints), wantConfidence: d.wantConfidence === true };
+}
+
 function validate(data) {
   const d = data && typeof data === "object" ? data : {};
   const bad = (msg) => { throw new ClassifyError("invalid-argument", "bad_request", msg); };
@@ -131,7 +333,7 @@ function validate(data) {
   if (d.kind === "pdf") {
     if (typeof d.pdf !== "string" || !d.pdf || !B64.test(d.pdf.slice(0, 4096))) bad("pdf must be a base64 string");
     if (d.pdf.length > MAX_BASE64_CHARS) throw new ClassifyError("invalid-argument", "too_large", "The PDF is too large to send.");
-    return { kind: "pdf", pdf: d.pdf, totalPages, sentPages: totalPages };
+    return { kind: "pdf", pdf: d.pdf, totalPages, sentPages: totalPages, ...extras(d) };
   }
   if (d.kind === "images") {
     if (!Array.isArray(d.images) || !d.images.length) bad("images must be a non-empty list");
@@ -143,7 +345,7 @@ function validate(data) {
       return { type: im.type, data: im.data };
     });
     if (size > MAX_BASE64_CHARS) throw new ClassifyError("invalid-argument", "too_large", "The pages are too large to send.");
-    return { kind: "images", images, totalPages: Math.max(totalPages, images.length), sentPages: images.length };
+    return { kind: "images", images, totalPages: Math.max(totalPages, images.length), sentPages: images.length, ...extras(d) };
   }
   return bad("kind must be pdf or images");
 }
@@ -152,13 +354,15 @@ function buildRequest(input, { model, effort, today }) {
   const content = input.kind === "pdf"
     ? [{ type: "document", source: { type: "base64", media_type: "application/pdf", data: input.pdf } }]
     : input.images.map((im) => ({ type: "image", source: { type: "base64", media_type: im.type, data: im.data } }));
-  content.push({ type: "text", text: userText(input, today) });
+  const more = extrasText(input);
+  content.push({ type: "text", text: more ? `${userText(input, today)}\n\n${more}` : userText(input, today) });
+  const system = input.wantConfidence ? SYSTEM_PROMPT + CONFIDENCE_PROMPT : SYSTEM_PROMPT;
   const req = {
     model,
     max_tokens: 8000,
-    system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+    system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
     messages: [{ role: "user", content }],
-    output_config: { effort, format: { type: "json_schema", schema: RESULT_SCHEMA } },
+    output_config: { effort, format: { type: "json_schema", schema: schemaFor(input.wantConfidence) } },
   };
   // On a safety decline, the API re-runs the request on Anthropic's recommended fallback model.
   if (FALLBACK_MODELS.has(model)) { req.betas = ["server-side-fallback-2026-07-01"]; req.fallbacks = "default"; }
@@ -182,18 +386,149 @@ function mapApiError(e, Anthropic) {
   return new ClassifyError("internal", "unknown", "Something interrupted the read.");
 }
 
-// The whole callable: auth and allowlist first, then validate, call Claude, parse, normalize.
-// deps: { client(), allowlist(), model(), effort(), today(), Anthropic, log }
-async function classify(request, deps) {
-  if (!request || !request.auth) throw new ClassifyError("unauthenticated", "signed_out", "Sign in first.");
-  if (!isAllowed(request.auth.token, deps.allowlist())) throw new ClassifyError("permission-denied", "not_allowed", "This app is private.");
-  const input = validate(request.data);
+// ---------- Split mode (#19) ----------
+
+const SPLIT_PROMPT = `You are helping someone in the US digitize a box of personal paperwork. They scanned a stack of paper in one go, so one scan holds several documents back to back, in the order they came off the pile. Your job is to find where each document starts.
+
+Each page comes with the text read from it on the phone (OCR, may have errors) and, when there is one, a small picture of the page.
+
+Signs that a new document starts on a page: a new letterhead or sender, a different account, policy or claim number, a new statement or issue date, a page numbering that restarts ("Page 1 of 3"), a different layout or paper, a cover letter, an envelope.
+Signs that a page continues the one before: "Page 2 of 3", the same account number or sender in the header, a sentence or table that carries over, terms and conditions or a back side of the same form.
+A blank or nearly blank page belongs to the document before it. When unsure, keep pages together: it is easier for the person to split a document than to notice two pages that should have been joined.
+
+Reply with only a JSON object: { "documents": [ { "firstPage": number, "label": string } ] }
+- firstPage is the 1-based page number where each document starts, in increasing order. The first document starts on page 1.
+- label is a short name a person would recognize, at most 6 words, e.g. "Duke Energy bill, March 2024" or "Blue Cross EOB". Never write a full SSN or full account number.`;
+
+const SPLIT_SCHEMA = {
+  type: "object",
+  properties: {
+    documents: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { firstPage: { type: "integer" }, label: { type: "string" } },
+        required: ["firstPage", "label"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["documents"],
+  additionalProperties: false,
+};
+
+// Validates a split request. Text is lenient (trimmed and capped); a malformed image is dropped, not
+// refused, so one bad thumbnail never stops the split. The page list itself must be there.
+function validateSplit(data) {
+  const d = data && typeof data === "object" ? data : {};
+  const bad = (msg) => { throw new ClassifyError("invalid-argument", "bad_request", msg); };
+  if (!Array.isArray(d.pages) || !d.pages.length) bad("pages must be a non-empty list");
+  if (d.pages.length > MAX_SPLIT_PAGES) throw new ClassifyError("invalid-argument", "too_large", `At most ${MAX_SPLIT_PAGES} pages can be split at once.`);
+  let images = 0, size = 0, chars = 0;
+  const pages = d.pages.map((p) => {
+    const page = p && typeof p === "object" ? p : {};
+    let text = typeof page.text === "string" ? page.text.trim().slice(0, MAX_SPLIT_PAGE_CHARS) : "";
+    text = text.slice(0, Math.max(0, MAX_SPLIT_TEXT_CHARS - chars));
+    chars += text.length;
+    const im = page.image;
+    const out = { text };
+    if (im && IMAGE_TYPES.includes(im.type) && typeof im.data === "string" && im.data && B64.test(im.data.slice(0, 4096)) && images < MAX_SPLIT_IMAGES) {
+      images += 1; size += im.data.length;
+      out.image = { type: im.type, data: im.data };
+    }
+    return out;
+  });
+  if (size > MAX_BASE64_CHARS) throw new ClassifyError("invalid-argument", "too_large", "The page pictures are too large to send.");
+  return { mode: "split", pages };
+}
+
+// One user turn: every page in order, its picture (if any) then its text, and a closing line.
+function buildSplitRequest(input, { model, effort, today }) {
+  const content = [];
+  input.pages.forEach((p, i) => {
+    content.push({ type: "text", text: `Page ${i + 1}:` });
+    if (p.image) content.push({ type: "image", source: { type: "base64", media_type: p.image.type, data: p.image.data } });
+    content.push({ type: "text", text: p.text ? `<ocr>\n${p.text}\n</ocr>` : "(no text read from this page)" });
+  });
+  const n = input.pages.length;
+  content.push({ type: "text", text: `That is the whole stack: ${n} page${n > 1 ? "s" : ""} in scan order. Today is ${today}.` });
+  const req = {
+    model,
+    max_tokens: 8000,
+    system: [{ type: "text", text: SPLIT_PROMPT, cache_control: { type: "ephemeral" } }],
+    messages: [{ role: "user", content }],
+    output_config: { effort, format: { type: "json_schema", schema: SPLIT_SCHEMA } },
+  };
+  if (FALLBACK_MODELS.has(model)) { req.betas = ["server-side-fallback-2026-07-01"]; req.fallbacks = "default"; }
+  return req;
+}
+
+// Turns Claude's start pages into ranges that cover every page once, in order. Out of range,
+// repeated or non-integer starts are dropped, page 1 always starts a document, and a label that is
+// missing or empty falls back to "Document {n}".
+function normalizeSplit(raw, pageCount) {
+  const list = raw && typeof raw === "object" && Array.isArray(raw.documents) ? raw.documents : [];
+  const starts = new Map();
+  for (const doc of list) {
+    if (!doc || typeof doc !== "object") continue;
+    const first = doc.firstPage;
+    if (!Number.isInteger(first) || first < 1 || first > pageCount || starts.has(first)) continue;
+    starts.set(first, String(doc.label || "").replace(/\s+/g, " ").trim().slice(0, MAX_SPLIT_LABEL));
+  }
+  if (!starts.has(1)) starts.set(1, "");
+  const firsts = [...starts.keys()].sort((a, b) => a - b);
+  const documents = firsts.map((first, i) => ({
+    start: first - 1,
+    end: (i + 1 < firsts.length ? firsts[i + 1] : pageCount + 1) - 2,
+    label: starts.get(first) || `Document ${i + 1}`,
+  }));
+  return { documents };
+}
+
+// The split call, after the same sign-in and allowlist checks as a read.
+async function splitStack(data, deps, started = nowMs(deps)) {
+  const input = validateSplit(data);
   const model = deps.model(), effort = deps.effort();
   let res;
+  const callStarted = nowMs(deps);
+  try {
+    res = await deps.client().beta.messages.create(buildSplitRequest(input, { model, effort, today: deps.today() }));
+  } catch (e) {
+    const mapped = mapApiError(e, deps.Anthropic);
+    if (mapped.code === "unknown" || mapped.code === "bad_request") deps.log && deps.log("split: Claude call failed", { status: e && e.status, message: e && e.message });
+    throw mapped;
+  }
+  if (res.stop_reason === "refusal") throw new ClassifyError("failed-precondition", "refused", "Claude declined to split this stack.");
+  if (res.stop_reason === "max_tokens") throw new ClassifyError("internal", "invalid_json", "Claude's answer was cut off.");
+  const text = (res.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
+  let parsed;
+  try { parsed = JSON.parse(text); } catch { throw new ClassifyError("internal", "invalid_json", "Claude's answer was not valid JSON."); }
+  const split = normalizeSplit(parsed, input.pages.length);
+  const u = res.usage || {};
+  deps.log && deps.log("split: done", { model: res.model, pages: input.pages.length, documents: split.documents.length, input_tokens: u.input_tokens, output_tokens: u.output_tokens, cache_write: u.cache_creation_input_tokens || 0, cache_read: u.cache_read_input_tokens || 0, total_ms: nowMs(deps) - started, claude_ms: nowMs(deps) - callStarted });
+  return { split, model: res.model || model };
+}
+
+// The whole callable: auth and allowlist first, then validate, call Claude, parse, normalize.
+// deps: { client(), allowlist(), model(), effort(), today(), Anthropic, log }
+// Wall-clock milliseconds. deps.now lets the tests drive the clock.
+const nowMs = (deps) => (deps && deps.now ? deps.now() : Date.now());
+
+async function classify(request, deps) {
+  const started = nowMs(deps);
+  if (!request || !request.auth) throw new ClassifyError("unauthenticated", "signed_out", "Sign in first.");
+  if (!isAllowed(request.auth.token, deps.allowlist())) throw new ClassifyError("permission-denied", "not_allowed", "This app is private.");
+  if (request.data && request.data.mode === "split") return splitStack(request.data, deps, started);
+  const input = validate(request.data);
+  const model = deps.model(), effort = deps.effort();
+  let res, callStarted = nowMs(deps);
   try {
     const client = deps.client();
-    res = await client.beta.messages.create(buildRequest(input, { model, effort, today: deps.today() }));
+    const req = buildRequest(input, { model, effort, today: deps.today() });
+    callStarted = nowMs(deps);
+    res = await client.beta.messages.create(req);
   } catch (e) {
+    deps.log && deps.log("classify: timing", { total_ms: nowMs(deps) - started, claude_ms: nowMs(deps) - callStarted, failed: true });
     const mapped = mapApiError(e, deps.Anthropic);
     if (mapped.code === "unknown" || mapped.code === "bad_request") deps.log && deps.log("classify: Claude call failed", { status: e && e.status, message: e && e.message });
     throw mapped;
@@ -203,12 +538,32 @@ async function classify(request, deps) {
   const text = (res.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
   let parsed;
   try { parsed = JSON.parse(text); } catch { throw new ClassifyError("internal", "invalid_json", "Claude's answer was not valid JSON."); }
+  const claudeMs = nowMs(deps) - callStarted;
+  let result = normalize(parsed);
+  if (input.wantConfidence) result = { ...result, ...normalizeConfidence(parsed, result) };
+  result = applySenderRule(result, input.senderHints);
+  deps.log && deps.log("classify: done", usageLog(res, input, model, { total_ms: nowMs(deps) - started, claude_ms: claudeMs }));
+  return { result, model: res.model || model };
+}
+
+// One log line per read with what it cost and how long it took (#75). cache_write and cache_read
+// together say whether the system prompt cache hit: a write with no read is a cold or missed cache.
+function usageLog(res, input, model, timing) {
   const u = res.usage || {};
-  deps.log && deps.log("classify: done", { model: res.model, kind: input.kind, pages: input.sentPages, input_tokens: u.input_tokens, output_tokens: u.output_tokens, cache_read: u.cache_read_input_tokens });
-  return { result: normalize(parsed), model: res.model || model };
+  return {
+    model: res.model || model, kind: input.kind, pages: input.totalPages, sent: input.sentPages,
+    ocr_primary: !!input.ocrPrimary, ocr_chars: (input.ocrText || "").length,
+    input_tokens: u.input_tokens, output_tokens: u.output_tokens,
+    cache_write: u.cache_creation_input_tokens || 0, cache_read: u.cache_read_input_tokens || 0,
+    ...timing,
+  };
 }
 
 module.exports = {
-  FOLDER_NAMES, VERDICTS, SYSTEM_PROMPT, RESULT_SCHEMA, MAX_BASE64_CHARS, MAX_IMAGES,
-  userText, normalize, parseAllowlist, isAllowed, validate, buildRequest, mapApiError, classify, ClassifyError, slug, cleanName,
+  FOLDER_NAMES, VERDICTS, SYSTEM_PROMPT, CONFIDENCE_PROMPT, RESULT_SCHEMA, MAX_BASE64_CHARS, MAX_IMAGES, MAX_OCR_CHARS,
+  CONFIDENCE_FIELDS, ALTERNATIVE_FIELDS, SURE_ABOVE, CONFIDENCE_SCHEMA, UNSURE_SCHEMA, usageLog,
+  userText, extrasText, schemaFor, normalize, normalizeConfidence, cleanSenderHints, renderFilename, applySenderRule,
+  parseAllowlist, isAllowed, validate, buildRequest, mapApiError, classify, ClassifyError, slug, cleanName,
+  SPLIT_PROMPT, SPLIT_SCHEMA, MAX_SPLIT_PAGES, MAX_SPLIT_IMAGES, MAX_SPLIT_PAGE_CHARS,
+  validateSplit, buildSplitRequest, normalizeSplit,
 };

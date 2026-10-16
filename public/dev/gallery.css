@@ -1,0 +1,13 @@
+/* Gallery-only layout: swatches and the type ramp. Colors still come from tokens.css. */
+.gallery .view-body { padding-bottom: calc(var(--dock-h, 130px) + var(--s-6)); }
+.g-pad { padding: 0 var(--list-inset); display: grid; gap: var(--s-3); }
+.g-row { display: flex; flex-wrap: wrap; gap: var(--s-2); align-items: center; }
+.g-swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: var(--s-2); }
+.g-swatch { display: grid; gap: 4px; font: var(--t-caption); color: var(--muted); }
+.g-swatch i { display: block; height: 44px; border-radius: 10px; box-shadow: inset 0 0 0 0.5px var(--separator); }
+.g-type p { margin: 0; color: var(--ink); }
+.g-card { background: var(--surface); border-radius: var(--r-card); box-shadow: var(--shadow-card); overflow: hidden; margin: 0 var(--card-margin); }
+.g-card .well { height: 120px; background: var(--card-well); display: grid; place-items: center; position: relative; }
+.g-card .well .verdict-badge { position: absolute; top: 12px; right: 12px; }
+.g-card .body { padding: 16px 18px; display: grid; gap: 8px; }
+.g-theme { display: flex; gap: var(--s-2); }

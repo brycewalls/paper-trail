@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Component Gallery</title>
+<meta name="robots" content="noindex">
+<!-- Every Direction A component on one page, light and dark, for checking against
+     docs/design-spec.md and design/ios-directions/direction-A.png. Not deployed: firebase.json
+     ignores dev/. Open with node tools/serve.mjs, then /public/dev/gallery.html -->
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../css/tokens.css">
+<link rel="stylesheet" href="../css/components.css">
+<link rel="stylesheet" href="../css/shell.css">
+<link rel="stylesheet" href="gallery.css">
+<script type="module" src="gallery.js"></script>
+</head>
+<body>
+<div class="app-col gallery" id="app">
+  <header class="navbar" data-navbar id="g-nav"></header>
+  <main class="view-body" id="g-body"></main>
+  <div class="dock" id="dock">
+    <button type="button" class="accessory" id="outbox-accessory" aria-label="Outbox"></button>
+    <nav class="tabbar" aria-label="Tabs (sample)">
+      <div class="tabbar-tabs" role="tablist" id="g-tabs"></div>
+      <a class="tabbar-search glass-circle" href="#search" aria-label="Search" id="g-search"></a>
+    </nav>
+  </div>
+  <div class="overlay" id="overlay"></div>
+</div>
+</body>
+</html>

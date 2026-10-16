@@ -1,0 +1,151 @@
+/* The app shell: the phone column, the four tab views, pushed screens, the dock (outbox accessory
+   and the floating glass tab bar with its separate search circle), the overlay layer, the sign-in
+   screen and the Settings panel. Phone first, exactly like the spec at 390 to 430 px; on a wider
+   screen the same column is centered on a quiet background. Owner: shared (web foundation, #83). */
+
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+html, body { margin: 0; min-height: 100%; }
+body { background: var(--desk); color: var(--ink); font: var(--t-body); letter-spacing: var(--tr-body);
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; -webkit-tap-highlight-color: transparent; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+[hidden] { display: none !important; }
+a { color: var(--accent); }
+
+/* ---------- The column ---------- */
+.app-col { position: relative; width: 100%; max-width: var(--column); min-height: 100vh; min-height: 100dvh; margin: 0 auto; background: var(--background); }
+@media (min-width: 560px) {
+  .app-col { box-shadow: 0 0 0 0.5px var(--separator), 0 0 60px rgba(0, 0, 0, 0.06); }
+}
+.view { min-height: 100vh; min-height: 100dvh; padding-bottom: calc(var(--dock-h, 130px) + var(--s-6)); }
+.view-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-4); align-content: start; }
+.view-body > .banner-inset, .banner-inset { margin: 0 var(--list-inset); }
+.screen .view-body { padding-top: var(--s-1); }
+
+/* ---------- The dock: accessory over the tab bar, fixed to the bottom of the column ---------- */
+.dock { position: fixed; z-index: 10; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: var(--column);
+  display: grid; gap: var(--s-2); padding: 0 var(--s-4) max(var(--s-2), env(safe-area-inset-bottom)); pointer-events: none; }
+.dock > * { pointer-events: auto; }
+
+.accessory { display: flex; align-items: center; gap: 10px; width: 100%; min-height: var(--accessory-h); padding: 0 var(--s-4) 0 9px; border: none; border-radius: var(--r-capsule);
+  cursor: pointer; color: var(--muted); text-align: left;
+  background: var(--glass-bg); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-shadow), inset 0 0 0 0.5px var(--glass-edge); }
+.accessory > .sym { width: 14px; height: 14px; color: var(--tertiary); stroke-width: 2.6; }
+.accessory:active { transform: scale(0.99); }
+
+.tabbar { display: flex; align-items: center; gap: var(--s-3); }
+.tabbar-tabs { flex: 1 1 auto; display: flex; align-items: stretch; gap: 0; height: var(--tabbar-h); padding: 4px; border-radius: var(--r-capsule);
+  background: var(--glass-bg); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-shadow), inset 0 0 0 0.5px var(--glass-edge); }
+.tabbar-item { flex: 1 1 0; display: grid; place-items: center; align-content: center; gap: 1px; border-radius: var(--r-capsule); text-decoration: none;
+  color: var(--ink); font: 500 10px/12px var(--font); letter-spacing: 0.1px; transition: background-color 200ms ease, color 200ms ease; }
+.tabbar-item .sym { width: 24px; height: 24px; }
+.tabbar-item[aria-selected="true"] { color: var(--accent); background: var(--accent-soft); }
+.tabbar-search { flex: 0 0 auto; width: var(--tabbar-h); height: var(--tabbar-h); color: var(--ink); text-decoration: none; }
+.tabbar-search[aria-selected="true"] { color: var(--accent); }
+.tabbar-close { flex: 0 0 auto; width: 50px; height: 50px; color: var(--ink); }
+.tabbar-close .sym { width: 22px; height: 22px; }
+.searchfield { flex: 1 1 auto; display: flex; align-items: center; gap: var(--s-2); height: 50px; padding: 0 var(--s-4); margin: 0; border-radius: var(--r-capsule); color: var(--muted);
+  background: var(--glass-bg); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-shadow), inset 0 0 0 0.5px var(--glass-edge); }
+.searchfield input { flex: 1; min-width: 0; height: 100%; border: none; background: none; color: var(--ink); font: var(--t-body); letter-spacing: var(--tr-body); outline: none; }
+.searchfield input::-webkit-search-cancel-button { -webkit-appearance: none; }
+.searchfield:focus-within { box-shadow: var(--glass-shadow), inset 0 0 0 1.5px var(--accent); }
+/* Search mode swaps the bar's contents (A6). */
+.dock.searching .tabbar-tabs, .dock.searching .tabbar-search { display: none; }
+.dock.searching .tabbar-close, .dock.searching .searchfield { display: flex !important; }
+.dock.searching .tabbar-close { display: inline-grid !important; }
+/* The accessory hides while the Outbox itself shows, before sign-in, and on Search (spec 4.4). */
+.dock.no-accessory .accessory { display: none; }
+
+/* ---------- Overlay layer: sheets, menus and toasts, inside the column ---------- */
+.overlay { position: fixed; z-index: 40; top: 0; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: var(--column); pointer-events: none;
+  --sheet-top: max(12px, env(safe-area-inset-top)); }
+.overlay > * { pointer-events: auto; }
+
+/* ---------- 4.1 Sign-in ---------- */
+.gate { min-height: 100vh; min-height: 100dvh; max-width: var(--column); margin: 0 auto; background: var(--background); display: grid; grid-template-rows: 1fr auto;
+  padding: max(var(--s-8), env(safe-area-inset-top)) var(--s-4) max(var(--s-6), env(safe-area-inset-bottom)); box-sizing: border-box; }
+@media (min-width: 560px) { .gate { box-shadow: 0 0 0 0.5px var(--separator); } }
+.gate-top { display: grid; justify-items: center; align-content: center; gap: var(--s-3); text-align: center; padding: var(--s-8) 0; }
+.gate-icon { width: 96px; height: 96px; border-radius: 22px; box-shadow: 0 0 0 0.5px var(--separator), 0 6px 18px rgba(0, 0, 0, 0.08); }
+.gate-title { margin: var(--s-2) 0 0; font: 700 34px/41px var(--font-display); letter-spacing: var(--tr-large-title); color: var(--ink); font-stretch: normal; }
+.gate-lede { margin: 0; max-width: 320px; font: var(--t-body); letter-spacing: var(--tr-body); color: var(--muted); }
+.gate-msg { margin: 0; max-width: 320px; font: var(--t-subheadline); color: var(--muted); display: inline-flex; gap: var(--s-2); align-items: center; justify-content: center; min-height: 20px; }
+.gate-msg:empty { display: none; }
+.gate-msg.err { color: var(--danger); }
+.gate-msg .spin { width: 16px; height: 16px; border: 2px solid var(--fill-strong); border-top-color: var(--muted); border-radius: 50%; animation: pt-spin 0.8s linear infinite; }
+.gate-actions { display: grid; gap: var(--s-3); justify-items: center; }
+.gate-step2 { display: grid; gap: var(--s-3); width: 100%; justify-items: center; }
+.gate-signed { margin: 0; font: var(--t-subheadline); color: var(--ink); }
+.google-btn { width: 100%; min-height: var(--primary-h); display: inline-flex; align-items: center; justify-content: center; gap: 10px; border-radius: var(--r-capsule); cursor: pointer;
+  font: 500 17px/22px var(--font); letter-spacing: -0.2px; color: var(--google-ink); background: var(--google-bg); border: 1px solid var(--google-stroke); }
+.google-btn:disabled { opacity: 0.6; cursor: default; }
+.gate-note { margin: 0; max-width: 340px; text-align: center; font: var(--t-footnote); letter-spacing: var(--tr-footnote); color: var(--muted); }
+
+/* ---------- 4.1 states (auth): cached open, in progress, not allowed, failures ---------- */
+/* #14: js/boot.js marks <html> before the first paint when this device has a cached account. */
+.pt-cached #gate { display: none !important; }
+.pt-cached #app[hidden] { display: block !important; }
+.google-btn .spinner { width: 20px; height: 20px; color: var(--google-ink); }
+.google-btn[aria-busy="true"] { opacity: 1; }
+.google-btn[aria-busy="true"] .g-mark { opacity: 0.5; }
+.gate-alt { width: 100%; min-height: var(--primary-h); display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2); border: none; border-radius: var(--r-capsule);
+  cursor: pointer; background: var(--surface); box-shadow: inset 0 0 0 1px var(--separator); color: var(--accent); font: var(--t-headline); letter-spacing: var(--tr-headline); }
+.gate-alt:disabled { cursor: default; }
+.gate-actions .btn-primary { width: 100%; }
+.gate-err { margin: 0; max-width: 320px; text-align: center; font: var(--t-footnote); letter-spacing: var(--tr-footnote); color: var(--danger); }
+.gate-err:empty { display: none; }
+.google-btn:focus-visible, .gate-alt:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* On success the app cross-fades in (spec 4.1). */
+.app-col.app-enter { animation: pt-app-in 0.3s ease-out; }
+@keyframes pt-app-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .app-col.app-enter { animation-duration: 0.2s; } }
+
+/* ---------- 3.9 / 4.16 the Reconnect Drive banner (auth) ---------- */
+[data-reconnect-banner] { margin-bottom: var(--s-4); }
+[data-reconnect-banner] .banner-actions { align-items: center; }
+[data-reconnect-banner] .banner-actions .spinner { color: var(--danger); }
+.banner-fail { flex-basis: 100%; margin: 0; font: var(--t-footnote); letter-spacing: var(--tr-footnote); color: var(--danger); }
+
+/* ---------- 4.9 Settings content ---------- */
+.settings-panel { padding-top: var(--s-2); }
+.settings-panel .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--danger); margin: 0 7px; }
+.settings-panel .dot.on { background: var(--file); }
+.settings-panel .account-name { font: var(--t-title3); font-weight: 500; letter-spacing: var(--tr-title3); }
+.settings-panel .reconnect-row:disabled { cursor: default; }
+.settings-panel .row-subtitle.danger { color: var(--danger); }
+.settings-panel .list-row.centered { justify-content: center; text-align: center; }
+.settings-panel .list-row.centered .row-text { flex: 0 1 auto; }
+.settings-back { margin: 0 0 var(--s-2) calc(var(--list-inset) - 6px); }
+.settings-version { text-align: center; padding-top: var(--s-4); }
+
+/* ---------- Sort: the legacy intake, restyled to the tokens (hidden; the deck is css/deck.css) ---------- */
+.intake { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s-3); padding: 0 var(--s-4); }
+.intake .scan-btn, .intake .drop { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding: 0 var(--s-4); border-radius: var(--r-capsule);
+  border: none; cursor: pointer; font: var(--t-subheadline); font-weight: 600; letter-spacing: var(--tr-subheadline); text-align: center; }
+.intake .scan-btn { background: var(--accent-fill); color: var(--on-fill); }
+.intake .drop { background: var(--fill); color: var(--accent); }
+.intake .note, .pages-row .note { display: none; }
+.intake strong { font-weight: 600; }
+.intake .drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.drop:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pages-row { display: flex; justify-content: center; }
+.pages-btn { display: inline-flex; align-items: center; min-height: 36px; padding: 0 var(--s-4); border-radius: var(--r-capsule); color: var(--accent); cursor: pointer;
+  font: var(--t-subheadline); font-weight: 500; }
+.trouble:empty, #status:empty { display: none; }
+#status { padding: 0 var(--s-5); }
+
+/* ---------- Piles: the legacy lists, restyled to the tokens until browse rebuilds them ---------- */
+.legacy-piles { display: grid; gap: var(--s-4); padding: 0 var(--list-inset); }
+.legacy-piles .tabs { border-bottom: none; display: flex; padding: 2px; gap: 2px; border-radius: var(--r-capsule); background: var(--fill); overflow-x: auto; }
+.legacy-piles .tab { flex: 1 1 0; justify-content: center; border: none; border-radius: var(--r-capsule); min-height: 32px; padding: 0 8px; color: var(--ink); font: var(--t-footnote); font-weight: 500; }
+.legacy-piles .tab[aria-selected="true"] { background: var(--segment-on); font-weight: 600; box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12); }
+.legacy-piles .count { font: inherit; background: none; border: none; padding: 0; color: var(--muted); }
+.legacy-piles #pile { background: var(--surface); border-radius: var(--r-section); padding: 0 var(--s-4); }
+.legacy-piles #pile:empty { display: none; }
+.legacy-piles .stats { border: none; background: none; gap: var(--s-2); }
+.legacy-piles .stat { border-radius: var(--r-section); }
+
+/* ---------- Standalone (Home Screen): no browser chrome, so the column fills the screen ---------- */
+@media (display-mode: standalone) {
+  body { background: var(--background); }
+  .app-col { box-shadow: none; }
+}

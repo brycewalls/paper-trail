@@ -1,0 +1,49 @@
+feature,area,priority,original,clone,notes
+Phone camera capture,capture,must,yes,no,Both apps. Paper Trail already has scan or pick; keep it the primary path
+Multi-page capture merged into one document,capture,must,yes,no,Shoeboxed mail-in clips pages into one doc; its app was 1-page only for years (App Store complaint). Merge to one PDF before Drive
+Batch capture of many single pages in one flow,capture,should,yes,no,Neat app: scan and upload multiple single-page receipts in one smoother flow
+Upload existing PDFs or photos from the device,capture,must,yes,no,Shoeboxed and Neat drag and drop; Paper Trail pick from files
+Email forward to a dedicated address,capture,could,yes,no,Both apps. Useful later for e-statements; not the box-of-paper job
+Gmail inbox sync with a label on processed mail,capture,could,yes,no,Shoeboxed Gmail Receipt Sync (Pro and up); new mail only; labels "Sent to Shoeboxed"
+Mail-in envelope service,capture,could,yes,no,Shoeboxed Magic Envelope; physical service; out of scope for a personal app
+Batch or envelope tracking with code status and counts,review,should,yes,no,Shoeboxed envelope code and status in app v7.2.1; steal as named batches like "Box 1 drawer A"
+AI field extraction (vendor date total tax payment type),reading,must,yes,no,Both apps for receipts. Paper Trail extracts title type issuer date folder filename verdict retention sensitive tip
+Line-item extraction,reading,could,yes,no,Shoeboxed all plans; Neat as add-on. Rarely needed for household paper
+Non-receipt documents archived by date and title,reading,must,yes,no,Shoeboxed Other Documents folder; no category. Paper Trail handles every document type as first class
+Human verification of extracted data,review,must,yes,no,Both apps sell this; most-praised trait. Paper Trail: Bryce confirms low-confidence fields on the card
+Per-field confidence shown before filing,review,must,no,no,Gap in both. Lets Bryce check only the fields Claude was unsure of
+Turnaround status (processing then ready notification),review,should,yes,no,Shoeboxed digital within 24 hours and mail within 3 business days; Paper Trail should show live per-card status
+Edit any extracted field after filing,review,must,yes,no,Shoeboxed fields are editable; rename Drive file and move folder when edited
+Default categories,filing,must,yes,no,Shoeboxed 15 tax categories for receipts only. Paper Trail has 11 numbered Drive folders
+Custom categories or folders,filing,should,yes,no,Shoeboxed create new category; Neat custom folders
+Vendor or sender rules learned from corrections,filing,must,yes,no,Shoeboxed asks to create a vendor rule on recategorize; Neat remembers QuickBooks mappings. Feed rules to Claude as hints
+Suggested matches during filing,filing,should,yes,no,Neat guided workflows suggest matches
+Consistent filename pattern,filing,must,unknown,no,Shoeboxed archives by date and title; exact naming unknown. Paper Trail already sets a filename
+File to Google Drive,sync,must,no,no,Neither lists Drive (Shoeboxed lists Dropbox and Evernote). Paper Trail core
+Full-text search over OCR text plus fields,search,must,yes,no,Shoeboxed "Search everything" covers OCR text and hand-entered fields; Neat keyword date category
+Filters by issuer date range amount category and batch,search,should,yes,no,Shoeboxed Filters pane: vendor date range price range category envelope
+Duplicate detection,review,should,unknown,no,Not documented by either app. Catch the same statement scanned twice before it hits Drive
+Shred or return setting for originals,retention,must,yes,no,Shoeboxed account checkbox "Shred and recycle my documents"; Paper Trail verdict per document is finer grained
+Shred log with date per batch,retention,should,no,no,Shoeboxed publishes no shred timing or proof; Paper Trail can stamp shredded-on dates
+Per-document retention period and safe-to-shred date,retention,must,no,no,Gap in both. Paper Trail already gets retention from Claude; compute the date and surface expired items
+Keep-original verdict and list,retention,must,no,no,Gap in both; Paper Trail already has it
+Digital archive retention by plan,retention,could,yes,no,Shoeboxed 3 years on Starter and forever while active on Pro and up; Neat access ends when payment stops
+Sensitive document flag,security,must,no,no,Neither flags SSNs or account numbers per doc; Paper Trail has it
+Go paperless sender list,paperless,must,no,no,Gap in both; Paper Trail differentiator
+Stay signed in across opens,security,must,unknown,no,Neat review: "Have to re login EVERY TIME YOU USE THIS APP". Fix Bryce's sign-in check
+Drive connection that does not expire,sync,must,no,no,Refresh token held server side; fixes Paper Trail Drive disconnects
+Encryption and secure storage,security,must,yes,no,Shoeboxed SSL and monitored paper facility; Neat bank-level encryption and audited data centers
+Data not collected or sold,security,should,yes,no,Shoeboxed App Store label Data Not Collected; Neat says files won't be shared or sold
+CSV export of the index,sync,must,yes,no,Shoeboxed CSV and PDF export on all plans; Neat PDF CSV TXF QIF QFX
+Export or keep data after cancel,sync,should,partial,no,Shoeboxed says export any time; Neat 2020 reply: no access after payment stops and no bulk download. Paper Trail data lives in Drive so it is never trapped
+Expense reports with images attached,other,could,yes,no,Shoeboxed and Neat. Possible tax-time packet export later
+Accounting integrations (QuickBooks Xero),sync,could,yes,no,Shoeboxed Pro and up; Neat QuickBooks with mapping memory. Out of scope for personal paper
+Tax software export (TurboTax H&R Block Quicken),sync,could,yes,no,Neat. Out of scope for now
+Tax category tagging for deductible items,filing,could,yes,no,Shoeboxed auto tax categories; could tag medical or charitable receipts for tax time
+Business card to contact,reading,could,yes,no,Both apps. Not part of the job
+Mileage tracking,other,could,yes,no,Shoeboxed all plans. Out of scope
+Multi-user sharing and comments,other,could,yes,no,Shoeboxed up to 10 users; Neat share folders with comments
+Currency conversion,reading,could,yes,no,Shoeboxed account setting. Not needed
+Reimbursement status,review,could,yes,no,Shoeboxed mobile filter. Not needed
+Paid plans with scan quotas and overages,other,could,yes,no,Shoeboxed $9 to $179 per month with overage fees; Neat $200 per year. Personal app has none
+Phone support with real people,other,could,yes,no,Praised in Shoeboxed reviews; n/a for personal app

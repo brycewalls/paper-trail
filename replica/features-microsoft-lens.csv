@@ -1,0 +1,45 @@
+feature,area,priority,original,clone,notes
+Open straight into the camera,capture,must,yes,no,Lens launches into capture. Paper Trail should open to the camera or deck with no sign-in gate. Sources 2 and 3
+Live page outline drawn on the camera feed,capture,must,yes,no,Lens orange frame; Capterra reviewers praise crop shown while framing. Needs getUserMedia plus OpenCV.js or jscanify. Sources 2 and 11
+Auto-shutter when the page is steady,capture,should,yes,no,Apple Auto mode. Lens auto-shutter unknown. Add a stillness ring so it does not jump the gun. Sources 12 and 17
+Manual shutter mode remembered as default,capture,should,no,no,Apple has manual but cannot default it; users ask for exactly this. Source 17
+Batch multi-page capture into one document,capture,must,yes,no,Lens up to 100 images per scan on Android; Apple keeps scanning until Save. Sources 3 and 12
+Import camera-roll photos through the same pipeline,capture,must,yes,no,Lens Picture button; Reddit says OneDrive's replacement cannot. Sources 2 and 6
+Edge detection on imported photos,capture,should,yes,no,Named as missing in OneDrive by a Reddit user. Source 6
+Flash control (auto / on / off),capture,could,yes,no,Lens and Apple both. Forcing flash on fixed shading for one Apple user. Torch in mobile Safari unknown. Sources 2 and 18
+Spoken framing guidance (move right),capture,could,yes,no,Lens VoiceOver and TalkBack guidance. Source 2
+Capture modes (Document / Whiteboard / Business Card / Photo),capture,could,yes,no,Lens only. Paper Trail needs one Document mode plus a Photo fallback. Source 2
+Four-corner crop editor after capture,review,must,yes,no,Apple drag corners then Keep Scan; Lens adjust borders. Show only when detection confidence is low. Sources 2 and 12
+Magnifier loupe while dragging a corner,review,could,unknown,no,Not documented in either source
+Retake a single page,review,should,yes,no,Apple Retake at the corner step. Source 12
+Rotate a page,review,must,yes,no,Both. Sources 2 and 14
+Delete a page,review,must,yes,no,Both. Sources 2 and 14
+Drag to reorder pages,review,should,yes,no,Lens Reorder (Android); Apple page preview drag. Sources 3 and 14
+Document cleanup filter (high contrast),review,should,yes,no,Apple Black & White or Grayscale; Lens Document mode cleanup. Smaller uploads. Sources 2 and 14
+Per-page filter choice (Color / Grayscale / B&W / Photo),review,could,yes,no,Apple lets you change filter after scan per page. Source 14
+Perspective correction (flatten odd angles),capture,must,yes,no,Lens gets rid of shadows and odd angles; Reddit posters ask for perspective correction first. Sources 2 and 9
+Shadow removal,capture,could,yes,no,Lens claim; method unknown. Source 2
+Annotate (pen / text / signature),review,could,yes,no,Lens Pen and Text; Apple Markup signature. Not needed for filing. Sources 2 and 12
+Reopen a saved PDF and add pages,review,could,yes,no,Lens Android My Files. Useful when page 2 of a statement turns up later. Source 3
+Searchable PDF with a text layer,reading,must,yes,no,Lens extracts text so it can be searched. Apple strips OCR on export; Files scans get none. Paper Trail can embed Claude's read. Sources 2 15 16
+Copy recognized text,reading,could,yes,no,Lens Actions Text; Apple select and copy in Notes. Source 3
+Table extraction,reading,could,yes,no,Lens Actions Table (21 languages). Could help itemized bills. Source 3
+Handwriting OCR,reading,could,yes,no,Lens English only. Claude already reads handwriting. Source 3
+Read aloud (Immersive Reader),other,could,yes,no,Lens only. Out of scope. Source 2
+Business card to contact,other,could,yes,no,Lens vCard. Out of scope. Source 2
+QR code reader,other,could,yes,no,Lens Android Actions. A QR on a bill often links to paperless signup. Source 3
+Choose destination folder at save time,filing,must,yes,no,Apple Files asks for a location; Lens Save changes location. Paper Trail suggests the Drive folder instead. Sources 3 and 12
+Start the scan from inside a folder,filing,could,yes,no,Apple Files pattern. Source 12
+In-app folders for scans,filing,should,no,no,Lens has none (Capterra complaint). Paper Trail's 11 Drive folders cover it. Source 11
+Export a chosen subset of pages later,filing,could,no,no,Capterra complaint that Lens only exports right after scanning. Source 11
+Meaningful filename used as share subject and title,filing,must,partial,no,Reddit praise: Lens name became the email subject. Lens naming otherwise manual. Sources 6 and 11
+Content-based folder and type suggestion,filing,must,no,no,Neither app does it. Paper Trail's core
+Full-text search across scans,search,should,partial,no,Apple Notes search finds scanned text inside Notes only. Source 15
+Retention rules and shred tracking,retention,must,no,no,Neither app. Paper Trail only
+Go-paperless guidance per sender,paperless,must,no,no,Neither app. Paper Trail only
+Save locally without any account,sync,should,yes,no,Lens Gallery and local PDF needed no sign-in; OneDrive cannot save locally. Sources 1 and 3
+Offline queue that uploads when the cloud is ready,sync,must,no,no,Not documented for Lens or Apple. Answers Bryce's Drive disconnects
+Cloud export targets (OneDrive / OneNote / Word / PowerPoint / email),sync,could,yes,no,Lens. Paper Trail needs Google Drive only plus share sheet. Source 2
+Sign-in only when a cloud target needs it,security,must,yes,no,Lens "may" prompt only for cloud targets. Users want "no login". Sources 2 and 8
+Old scans viewable without staying signed in,security,should,no,no,Lens post-retirement needs last account signed in. Source 1
+Free with no subscription,other,must,unknown,no,Lens widely described as free; store page gone so unconfirmed. Apple built in

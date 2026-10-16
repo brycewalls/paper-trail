@@ -1,0 +1,141 @@
+#!/usr/bin/env python3
+"""Makes the synthetic eval set for functions/tools/eval-classify.mjs (#75).
+
+Every document here is made up: invented companies, people and numbers, account numbers masked to
+the last four. Never add Bryce's real paperwork to this folder.
+
+For each document it writes, next to this file:
+  <id>.pdf      every page as a 150 dpi image, like a phone scan (what the 0.3 app sent whole)
+  <id>-p1.jpg   the first page at 1000 px on the long side, JPEG 80 (what the 0.4 app sends)
+and docs.json with each document's page texts (standing in for the on-device OCR) and the answer
+a careful person would give (expected folder, verdict, date and sender).
+
+Run once after editing DOCS: python3 functions/tools/eval-fixtures/make-fixtures.py
+Needs Pillow (pip install pillow) and macOS's Helvetica.
+"""
+import json
+import os
+import textwrap
+
+from PIL import Image, ImageDraw, ImageFont
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+FONT = "/System/Library/Fonts/Helvetica.ttc"
+
+DOCS = [
+    {
+        "id": "utility-bill",
+        "expected": {"issuer": "Cascade Power & Light", "docDate": "2026-09-28", "folder": "06 Home", "verdict": "shred"},
+        "pages": [
+            "CASCADE POWER & LIGHT\nPO Box 4410, Riverton, OR 97000\ncascadepower.example\n\nStatement date: September 28, 2026\nAccount ending 0412\nService address: 18 Alder Lane, Riverton OR\n\nPrevious balance $88.10\nPayment received Sep 12 - thank you -$88.10\nElectric service Aug 27 - Sep 25 (812 kWh) $91.22\nBase charge $5.18\nAmount due $96.40\nDue by October 19, 2026\n\nGo paperless: sign in at cascadepower.example, Account settings, Billing, Paper bill off.",
+        ],
+    },
+    {
+        "id": "bank-statement",
+        "expected": {"issuer": "Northwind Credit Union", "docDate": "2026-08-31", "folder": "03 Money & Banking", "verdict": "shred"},
+        "pages": [
+            "NORTHWIND CREDIT UNION\nMember statement\nStatement period: August 1 - August 31, 2026\nMember: A. Rivera\nShare savings ending 7781\nChecking ending 2290\n\nSummary\nBeginning balance $4,218.55\nDeposits $3,904.00\nWithdrawals $3,511.37\nEnding balance $4,611.18\n\nPage 1 of 3",
+            "Checking ending 2290 - transactions\n08/02 Payroll deposit JUNIPER LABS 1,952.00\n08/04 Rent payment 1,450.00\n08/09 Grocery 112.84\n08/12 Cascade Power & Light 88.10\n08/16 Payroll deposit JUNIPER LABS 1,952.00\n08/20 Phone 64.99\n08/27 Restaurant 41.20\nPage 2 of 3",
+            "Important notices\nYour deposits are federally insured to at least $250,000.\nTo receive statements online, choose eStatements in online banking under Settings.\nQuestions: call 1-800-555-0142.\nPage 3 of 3",
+        ],
+    },
+    {
+        "id": "w2",
+        "expected": {"issuer": "Juniper Labs Inc", "docDate": "2026-01-24", "folder": "02 Taxes", "verdict": "scan_shred"},
+        "pages": [
+            "Form W-2 Wage and Tax Statement 2025\nCopy B - To Be Filed With Employee's FEDERAL Tax Return\nEmployer: Juniper Labs Inc, 200 Market St, Portland OR\nEmployer ID: XX-XXX4417\nEmployee: Alex Rivera\nSSN: XXX-XX-6620\n1 Wages, tips, other comp. 50,752.00\n2 Federal income tax withheld 5,880.12\n3 Social security wages 50,752.00\n5 Medicare wages 50,752.00\n16 State wages OR 50,752.00\n17 State income tax 3,960.40\nIssued January 24, 2026",
+        ],
+    },
+    {
+        "id": "eob",
+        "expected": {"issuer": "Bluepeak Health Plan", "docDate": "2026-07-15", "folder": "05 Medical", "verdict": "scan_shred"},
+        "pages": [
+            "BLUEPEAK HEALTH PLAN\nExplanation of Benefits - THIS IS NOT A BILL\nDate: July 15, 2026\nMember: Alex Rivera  Member ID ending 3302\nClaim ending 8810\nProvider: Riverton Family Clinic\nService date: June 30, 2026\nOffice visit, established patient\nBilled $210.00  Plan discount $84.00  Plan paid $96.00  You owe $30.00\nPage 1 of 2",
+            "Your deductible: $1,500.00, met so far $640.00\nOut-of-pocket max: $4,000.00, met so far $890.00\nTo get EOBs by email, sign in at bluepeak.example and choose Paperless under Profile.\nPage 2 of 2",
+        ],
+    },
+    {
+        "id": "auto-insurance",
+        "expected": {"issuer": "Harborline Mutual", "docDate": "2026-06-01", "folder": "04 Insurance", "verdict": "scan_shred"},
+        "pages": [
+            "HARBORLINE MUTUAL INSURANCE\nAuto policy declarations\nPolicy ending 5521\nPolicy period: June 1, 2026 to December 1, 2026\nNamed insured: Alex Rivera\nVehicle: 2019 Subaru Outback, VIN ending 3391\nPage 1 of 4",
+            "Coverages\nBodily injury liability $100,000 / $300,000  $212.40\nProperty damage $100,000  $98.10\nUninsured motorist $100,000 / $300,000  $40.22\nCollision, $500 deductible  $188.00\nComprehensive, $250 deductible  $61.30\nSix month premium $600.02\nPage 2 of 4",
+            "Discounts applied: multi-policy, safe driver, paperless eligible.\nLienholder: none.\nPage 3 of 4",
+            "Important information about your policy. Keep these declarations with your policy booklet. Manage documents online at harborline.example, Policy documents, Delivery preferences.\nPage 4 of 4",
+        ],
+    },
+    {
+        "id": "junk-offer",
+        "expected": {"issuer": "Summit Card Offers", "docDate": "", "folder": "11 Other", "verdict": "shred"},
+        "pages": [
+            "You're pre-approved*\nSUMMIT CARD OFFERS\nAlex, enjoy 0% intro APR for 18 months and 50,000 bonus points.\nRespond by the date on the reply form.\nOffer code ending 9031\n*Terms apply. To opt out of prescreened offers call 1-888-555-0199.",
+        ],
+    },
+    {
+        "id": "vehicle-title",
+        "expected": {"issuer": "Oregon Driver & Motor Vehicle Services", "docDate": "2019-05-14", "folder": "07 Auto", "verdict": "keep_original"},
+        "pages": [
+            "STATE OF OREGON\nCERTIFICATE OF TITLE\nDriver & Motor Vehicle Services\nTitle number ending 4478\nYear 2019  Make SUBARU  Model OUTBACK\nVIN ending 3391\nOwner: Alex Rivera, 18 Alder Lane, Riverton OR\nIssue date: 05/14/2019\nNo lienholder\n[raised state seal]\nAny alteration voids this title.",
+        ],
+    },
+    {
+        "id": "warranty",
+        "expected": {"issuer": "Kestrel Appliances", "docDate": "2026-03-02", "folder": "09 Warranties & Manuals", "verdict": "scan_shred"},
+        "pages": [
+            "KESTREL APPLIANCES\nLimited warranty registration confirmation\nDate: March 2, 2026\nProduct: Kestrel QuietWash dishwasher, model KQ-450\nSerial ending 0098\nPurchased: February 20, 2026 from Riverton Home Supply, $849.00\nCoverage: 2 years parts and labor, 10 years motor\nPage 1 of 2",
+            "What is not covered: damage from misuse, improper installation or power surges.\nTo make a claim, call 1-877-555-0111 with your serial number and proof of purchase.\nKeep this confirmation and your receipt for the warranty period.\nPage 2 of 2",
+        ],
+    },
+    {
+        "id": "pay-stub",
+        "expected": {"issuer": "Juniper Labs Inc", "docDate": "2026-09-15", "folder": "08 Work & Income", "verdict": "shred"},
+        "pages": [
+            "JUNIPER LABS INC\nEarnings statement\nPay date: 09/15/2026  Period: 09/01/2026 - 09/14/2026\nEmployee: Alex Rivera  Employee ID ending 0277\nGross pay $2,115.38\nFederal tax -$245.10  State tax -$165.04  Social security -$131.15  Medicare -$30.67\n401(k) -$105.77\nNet pay $1,437.65\nDirect deposit to account ending 2290\nYear to date gross $38,076.84",
+        ],
+    },
+    {
+        "id": "lease",
+        "expected": {"issuer": "Alder Lane Properties LLC", "docDate": "2026-04-20", "folder": "06 Home", "verdict": "scan_shred"},
+        "pages": [
+            "RESIDENTIAL LEASE AGREEMENT\nThis lease is made on April 20, 2026 between Alder Lane Properties LLC (Landlord) and Alex Rivera (Tenant).\nPremises: 18 Alder Lane, Unit 2, Riverton OR\nTerm: May 1, 2026 to April 30, 2027\nPage 1 of 5",
+            "Rent: $1,450.00 per month, due on the 1st. Late fee $50.00 after the 5th.\nSecurity deposit: $1,450.00, held as required by Oregon law.\nPage 2 of 5",
+            "Utilities: Tenant pays electricity. Landlord pays water, sewer and garbage.\nPets: one cat permitted with a $300 deposit.\nPage 3 of 5",
+            "Maintenance and repairs, entry by landlord with 24 hours notice, renewal and termination terms.\nPage 4 of 5",
+            "Signatures\nLandlord: Alder Lane Properties LLC, by J. Okafor, Manager  Date: 04/20/2026\nTenant: Alex Rivera  Date: 04/20/2026\nPage 5 of 5",
+        ],
+    },
+]
+
+PAGE_W, PAGE_H = 1275, 1650  # US letter at 150 dpi
+
+
+def render(text):
+    page = Image.new("L", (PAGE_W, PAGE_H), 250)
+    draw = ImageDraw.Draw(page)
+    title = ImageFont.truetype(FONT, 38)
+    body = ImageFont.truetype(FONT, 26)
+    y = 110
+    for i, line in enumerate(text.split("\n")):
+        font = title if i == 0 else body
+        for chunk in textwrap.wrap(line, 70) or [""]:
+            draw.text((110, y), chunk, fill=25, font=font)
+            y += 58 if i == 0 else 40
+    return page
+
+
+def main():
+    out = []
+    for doc in DOCS:
+        pages = [render(t) for t in doc["pages"]]
+        pages[0].save(os.path.join(HERE, f"{doc['id']}.pdf"), save_all=True, append_images=pages[1:], resolution=150, quality=60)
+        first = pages[0].copy()
+        first.thumbnail((1000, 1000))
+        first.convert("RGB").save(os.path.join(HERE, f"{doc['id']}-p1.jpg"), quality=80)
+        out.append({"id": doc["id"], "expected": doc["expected"], "pageTexts": doc["pages"]})
+    with open(os.path.join(HERE, "docs.json"), "w") as f:
+        json.dump(out, f, indent=1)
+        f.write("\n")
+
+
+if __name__ == "__main__":
+    main()

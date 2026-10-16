@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OCR bench</title>
+<!-- The page tools/lab/ocr-bench.mjs drives (#101). It draws synthetic document pages, then reads them
+     with the lab's PaddleOCR worker (public/js/lab/ocr-worker.js) and with Tesseract.js, the same
+     versions and settings media.js uses. Nothing here ships: tools/ isn't in Hosting. -->
+<script src="ocr-bench-page.js" type="module"></script>
+</head>
+<body>
+<canvas id="c" width="10" height="10"></canvas>
+</body>
+</html>

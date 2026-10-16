@@ -10,6 +10,11 @@
 //                  the sender, and the matching rule then sets its fields exactly like Claude's
 //                  reads do (applySenderRule in functions/lib.js)
 //     today        Date, for "older than a year" (defaults to now)
+//     hints        { docType?, docTypeConf?, issuer?, issuerConf?, issuerFrom? } from the on-device
+//                  matcher (lab/match/combine.js, #102): a docType that names a row of tables.js
+//                  replaces the detectors' pick, an issuer replaces the sender the rules read, and
+//                  everything that depends on them (date, folder, verdict, paperless, title,
+//                  filename) is worked out again from there. Sender rules still apply last
 //   returns the classify card (title, docType, issuer, docDate, summary, folder, filename, verdict,
 //   verdictReason, retention, sensitive, paperless {possible, issuer, how}) plus:
 //     confidence   { overall, fields: {every field: 0 to 1}, sparse: false }: honest scores, so the
@@ -38,7 +43,7 @@ export const CONFIDENCE_FIELDS = ["issuer", "docDate", "folder", "title", "filen
 const MIN_CHARS = 25;
 const r2 = (n) => Math.round(Math.max(0, Math.min(1, n)) * 100) / 100;
 
-export function readByRules({ pages = [], pageCount, filename = "", senderRules = [], today = new Date() } = {}) {
+export function readByRules({ pages = [], pageCount, filename = "", senderRules = [], today = new Date(), hints = {} } = {}) {
   const ctx = makeContext(pages, { filename });
   const rules = cleanRules(senderRules);
   if (ctx.chars < MIN_CHARS) return unreadable(ctx, rules);
@@ -48,12 +53,17 @@ export function readByRules({ pages = [], pageCount, filename = "", senderRules 
   const ranked = scoreTypes(ctx, env);
   const best = ranked[0], second = ranked[1];
   const known = best.score >= MIN_SCORE;
-  const type = known ? best.type : "Unknown";
+  const hinted = hints && typeof hints.docType === "string" && TYPES[hints.docType] ? hints.docType : "";
+  const type = hinted || (known ? best.type : "Unknown");
   const row = TYPES[type];
-  const typeConf = known ? r2((1 - Math.exp(-best.score / 6)) * Math.min(1, 0.55 + (best.score - second.score) / 10)) : 0.2;
+  const typeConf = hinted ? r2(hints.docTypeConf ?? 0.8) : known ? r2((1 - Math.exp(-best.score / 6)) * Math.min(1, 0.55 + (best.score - second.score) / 10)) : 0.2;
 
   const date = pickDate(type, row, ctx, today);
-  const who = pickIssuer(type, row, ctx, senders, rules);
+  let who = pickIssuer(type, row, ctx, senders, rules);
+  if (hints && typeof hints.issuer === "string" && hints.issuer.trim() && who.from !== "your sender rule") {
+    const name = hints.issuer.trim().slice(0, 100);
+    who = { name, conf: r2(hints.issuerConf ?? 0.85), from: hints.issuerFrom || "matcher", others: [who.name, ...(who.others || [])].filter((n) => n && n !== name).slice(0, 2) };
+  }
   const facts = readFacts(type, row, ctx, who, date);
   const folder = pickFolder(type, row, ctx, who, facts);
   const verdict = pickVerdict(type, row, ctx, who, date, folder, facts, today);
@@ -97,6 +107,7 @@ export function readByRules({ pages = [], pageCount, filename = "", senderRules 
     version: RULES_VERSION, detector: type, score: best.score, runnerUp: second ? `${second.type} (${second.score})` : "",
     evidence: best.evidence.slice(0, 8), issuerFrom: who.from, dateFrom: date.from, pages: ctx.pages.length, pageCount: pageCount || ctx.pages.length,
   };
+  if (hinted) card.rules.typeFrom = "matcher";
   card = applySenderRule(card, rules);
   return card;
 }

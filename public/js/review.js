@@ -28,6 +28,7 @@ import { currentUser } from "./auth.js";
 import { findByHash } from "./store.js";
 import { readItem, proposeSplit, SPLIT } from "./classify.js";
 import { READER, progressCopy } from "./lab/reader.js";
+import { ocrPdfPages, ocrImage } from "./lab/ocr.js";
 import { openPdfDoc, pageImage, pdfPageText, ocr, assemblePdf, sha256Hex } from "./media.js";
 import { primaryButton, statusPill, choiceChip } from "./ui/components.js";
 import { icon } from "./ui/icons.js";
@@ -126,7 +127,9 @@ class Review {
     if (st.status === "failed") return { text: "Couldn't read this one", failed: true };
     if (st.status === "held") return { text: g.label || HELD, held: true };
     // The lab (#92): OCR progress while a page is read, then the rules' own progress line.
-    if (st.item && st.item.progress) return { text: g.label || st.item.progress };
+    // The draft carries the line while its pages are read (including the first model download).
+    const line = (st.item && st.item.progress) || (READER === "rules" && st.draft && st.draft.progress);
+    if (line) return { text: g.label || line };
     const pct = st.ocrPct;
     return { text: g.label || `Reading page ${st.page || 1}${typeof pct === "number" && pct < 1 ? ` with OCR, ${Math.round(pct * 100)}%` : ""}` };
   }
@@ -392,8 +395,10 @@ class Review {
     };
   }
   // The draft's progress line while its pages are read, for the deck's Reading card (#99).
-  draftProgress(gid, st, page, pages, pct) {
-    const line = progressCopy({ stage: typeof pct === "number" ? "ocr" : "text", page, pages, pct });
+  // q is the OCR worker's own progress event: { pct } while it reads, { loading } while its models
+  // download the first time; none while the text layer is read.
+  draftProgress(gid, st, page, pages, q = null) {
+    const line = progressCopy(q ? { stage: "ocr", page, pages, pct: q.pct, loading: q.loading } : { stage: "text", page, pages });
     if (st.draft.progress === line) return;
     st.draft.progress = line;
     if (EARLY && this.inserted.has(gid)) emit("lab:progress", { id: st.draft.id, progress: line });
@@ -408,7 +413,12 @@ class Review {
       live.page = i + 1; live.ocrPct = null;
       this.draftProgress(gid, live, i + 1, pages.length);
       this.render();
-      found.push(await this.textFor(pages[i], (pct) => { if (this.states.get(gid) === live && live.page === i + 1) { live.ocrPct = pct; this.draftProgress(gid, live, i + 1, pages.length, pct); this.render(); } }));
+      found.push(await this.textFor(pages[i], (q) => {
+        if (this.states.get(gid) !== live || live.page !== i + 1) return;
+        live.ocrPct = typeof q.pct === "number" ? q.pct : null;
+        this.draftProgress(gid, live, i + 1, pages.length, q);
+        this.render();
+      }));
     }
     if (!this.isCurrent(gid)) return;
     const pdf = await this.buildPdf(pages, found);
@@ -469,9 +479,15 @@ class Review {
           const doc = await this.pdfDocFor(p);
           const own = await pdfPageText(doc, p.index + 1).catch(() => "");
           if (own.replace(/\s+/g, "")) return { text: own, words: [], width: 0, via: "text" };
-          return { ...(await ocr(await pageImage(p, 2000, 0.9, doc), 0, { onProgress })), words: [], width: 0, via: "ocr" };
+          if (READER === "rules") {   // the lab (#101): the OCR worker draws and reads the page, off the main thread
+            const got = await ocrPdfPages(p.pdf, [p.index + 1], { doc, turns: p.turns, onProgress: (q) => { if (onProgress) onProgress(q); } });
+            return { text: (got.get(p.index + 1) || {}).text || "", words: [], width: 0, via: "ocr" };
+          }
+          return { ...(await ocr(await pageImage(p, 2000, 0.9, doc), 0, { onProgress: (pct) => { if (onProgress) onProgress({ pct }); } })), words: [], width: 0, via: "ocr" };
         }
-        const r = await ocr(p.image, p.turns, { onProgress });
+        const r = READER === "rules"   // the lab (#101): PaddleOCR in its worker
+          ? await ocrImage(p.image, p.turns, { onProgress: (q) => { if (onProgress) onProgress(q); } })
+          : await ocr(p.image, p.turns, { onProgress: (pct) => { if (onProgress) onProgress({ pct }); } });
         return { text: r.text, words: r.words, width: r.width, via: "ocr" };
       })());
     }

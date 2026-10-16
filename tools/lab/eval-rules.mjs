@@ -4,6 +4,22 @@
 //   node tools/lab/eval-rules.mjs --json          the report as JSON
 //   node tools/lab/eval-rules.mjs --assert        exit 1 when a score drops below the floors (CI)
 //   node tools/lab/eval-rules.mjs --only <id>     one document, with the full card
+//   node tools/lab/eval-rules.mjs --matcher [--verbose]
+//       the on-device matcher (#102) beside the rules alone: accuracy with and without it, clean and
+//       with OCR noise, and the time per document. Held out so it never scores an example it holds:
+//         dev -> holdout   the dev documents are the examples (as if Bryce had filed them), the
+//                          held-out ones are read
+//         leave one out    every document read with all the others as examples
+//         first day        leave one out with no filed senders yet: the corpus votes on the type,
+//                          and senders autocorrect against the known-sender list only
+//         recurring        every document filed once before (with other OCR slips) comes again,
+//                          like next month's statement: the learning loop
+//       Needs npm ci --prefix tools/lab/matcher-deps and bash tools/lab/fetch-models.sh once.
+//   node tools/lab/eval-rules.mjs --matcher --ocr <bench.json> [--engine paddle]
+//       end to end: the same scenarios on real OCR output instead of the seeded noise. bench.json is
+//       written by tools/lab/ocr-bench.mjs --json (pages drawn from the corpus, then read by the
+//       lab's OCR), so the matcher scores the text PaddleOCR (or Tesseract) actually produced, per
+//       drawn variant (clean, skew, blur, low-contrast, photo).
 //   node tools/lab/eval-rules.mjs --compare-claude [--limit N] [--split dev|holdout]
 //       also sends each corpus text to Claude (the classify prompt and schema from functions/lib.js,
 //       through the Anthropic SDK in functions/node_modules: run `npm ci --prefix functions` once)
@@ -20,6 +36,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
 import { readByRules } from "../../public/js/lab/rules/engine.js";
 import { agreement, docKind } from "../../public/js/lab/rules/compare.js";
+import { runRules } from "../../public/js/lab/engine.js";
+import { combine } from "../../public/js/lab/match/combine.js";
+import { nearest, vote, unpackVector } from "../../public/js/lab/match/knn.js";
+import { KNOWN_SENDERS } from "../../public/js/lab/rules/senders.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..", "..");
@@ -169,6 +189,120 @@ async function compareClaude(docs, limit) {
   return rows;
 }
 
+// ---------- the matcher (#102) ----------
+// Reads docs with the rules alone and with the matcher on top. examplesFor(doc) gives the examples
+// that doc may use (never itself). filed: whether the examples' senders count as filed by Bryce
+// (candidates for autocorrect, and votes on the sender), or only the type votes (first day).
+async function evaluateMatcher(docs, { noise, examplesFor, filed, embed, pagesOf }) {
+  const rows = [], times = { embed: [], match: [], rules: [] };
+  const today = "2026-10-16";
+  for (const doc of docs) {
+    const pages = pagesOf ? pagesOf(doc) : noise ? doc.pages.map((p, i) => addNoise(p, hash(doc.id) + i)) : doc.pages;
+    let t = performance.now();
+    const card = await runRules(pages, { name: doc.filename || "", today });
+    times.rules.push(performance.now() - t);
+    t = performance.now();
+    const vec = await embed(pages);
+    times.embed.push(performance.now() - t);
+    t = performance.now();
+    const examples = examplesFor(doc).map((e) => ({ ...e, synthetic: !filed }));
+    const neighbors = nearest(vec, examples, 7);
+    const typeVote = vote(neighbors, "docType");
+    const issuerVote = filed ? vote(neighbors, "issuer") : null;
+    const candidates = [...KNOWN_SENDERS.map((k) => ({ name: k.name, aliases: k.aliases, source: "known sender" })),
+      ...(filed ? [...new Set(examples.map((e) => e.issuer).filter(Boolean))].map((name) => ({ name, source: "filed" })) : [])];
+    const out = await combine({ card, textPages: pages, meta: { name: doc.filename || "", today }, typeVote, issuerVote, candidates, neighbors });
+    times.match.push(performance.now() - t);
+    rows.push({ id: doc.id, split: doc.split, expect: doc.expect,
+      rules: { card, agree: agreement(card, doc.expect) },
+      matched: { card: out.card, agree: agreement(out.card, doc.expect) }, decidedBy: out.decidedBy, notes: out.notes });
+  }
+  return { rows, times };
+}
+const median = (a) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.floor(s.length / 2)] : 0; };
+const p95 = (a) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.min(s.length - 1, Math.floor(s.length * 0.95))] : 0; };
+
+async function runMatcher({ verbose, json, ocr, engine = "paddle" }) {
+  const { loadEmbedder } = await import("./embedder.mjs");
+  const { embedPages, loadMs } = await loadEmbedder();
+  const bundle = (await import("../../public/js/lab/match/corpus-examples.json", { with: { type: "json" } })).default;
+  const corpus = await loadCorpus();
+  const byId = new Map(bundle.examples.map((e) => [e.id, { id: e.id, split: e.split, docType: e.docType, issuer: e.issuer, vec: unpackVector(e), source: "corpus" }]));
+  const dev = corpus.filter((d) => d.split === "dev"), hold = corpus.filter((d) => d.split === "holdout");
+  const devEx = dev.map((d) => byId.get(d.id));
+  const allBut = (doc) => corpus.filter((d) => d.id !== doc.id).map((d) => byId.get(d.id));
+  const cache = new Map(), embedMs = [];
+  const embed = async (pages) => {
+    const k = pages.join("\f");
+    if (!cache.has(k)) { const t = performance.now(); cache.set(k, await embedPages(pages)); embedMs.push(performance.now() - t); }
+    return cache.get(k);
+  };
+  // Recurring: every document was filed once before (read then with other OCR slips) and comes
+  // again. Words-only embedding drops dates and amounts, so this stands in for next month's
+  // statement from the same sender. It measures the learning loop, not reading a new sender.
+  const before = [];
+  for (const d of corpus) before.push({ id: d.id, split: d.split, docType: d.expect.docType, issuer: d.expect.issuer, source: "filed",
+    vec: await embed(d.pages.map((p, i) => addNoise(p, hash(d.id) + i + 7919))) });
+  let runs;
+  if (ocr) {
+    // End to end: the text the lab's OCR read from drawn pages, per variant.
+    const { readFileSync } = await import("node:fs");
+    const bench = JSON.parse(readFileSync(ocr, "utf8"));
+    const byVariant = bench.pages && bench.pages[engine];
+    if (!byVariant) throw new Error(`${ocr} has no ${engine} pages (run ocr-bench.mjs --json with --engines ${engine})`);
+    runs = {};
+    for (const [variant, docsRead] of Object.entries(byVariant)) {
+      const text = new Map(docsRead.map((d) => [d.id, d.pages.map((p) => p.text || "")]));
+      const pagesOf = (doc) => text.get(doc.id) || doc.pages.map(() => "");
+      const read = corpus.filter((d) => text.has(d.id)), heldRead = hold.filter((d) => text.has(d.id));
+      runs[`${engine} ${variant}: dev -> holdout`] = await evaluateMatcher(heldRead, { examplesFor: () => devEx, filed: true, embed, pagesOf });
+      runs[`${engine} ${variant}: leave one out, all`] = await evaluateMatcher(read, { examplesFor: allBut, filed: true, embed, pagesOf });
+      runs[`${engine} ${variant}: first day, all`] = await evaluateMatcher(read, { examplesFor: allBut, filed: false, embed, pagesOf });
+      runs[`${engine} ${variant}: recurring, all`] = await evaluateMatcher(read, { examplesFor: () => before, filed: true, embed, pagesOf });
+    }
+  } else runs = {
+    "dev -> holdout, clean": await evaluateMatcher(hold, { noise: false, examplesFor: () => devEx, filed: true, embed }),
+    "dev -> holdout, OCR noise": await evaluateMatcher(hold, { noise: true, examplesFor: () => devEx, filed: true, embed }),
+    "leave one out, dev, OCR noise": await evaluateMatcher(dev, { noise: true, examplesFor: allBut, filed: true, embed }),
+    "leave one out, all, OCR noise": await evaluateMatcher(corpus, { noise: true, examplesFor: allBut, filed: true, embed }),
+    "first day, all, OCR noise": await evaluateMatcher(corpus, { noise: true, examplesFor: allBut, filed: false, embed }),
+    "recurring, all, OCR noise": await evaluateMatcher(corpus, { noise: true, examplesFor: () => before, filed: true, embed }),
+  };
+  const report = {};
+  for (const [name, { rows, times }] of Object.entries(runs)) {
+    const before = summarize(rows.map((r) => ({ ...r, card: r.rules.card, agree: r.rules.agree })));
+    const after = summarize(rows.map((r) => ({ ...r, card: r.matched.card, agree: r.matched.agree })));
+    const decided = { docType: {}, issuer: {} };
+    for (const r of rows) for (const f of ["docType", "issuer"]) decided[f][r.decidedBy[f]] = (decided[f][r.decidedBy[f]] || 0) + 1;
+    const fixed = rows.filter((r) => EVAL_FIELDS.some((f) => r.rules.agree[f] === false && r.matched.agree[f] === true)).length;
+    const broke = rows.filter((r) => EVAL_FIELDS.some((f) => r.rules.agree[f] === true && r.matched.agree[f] === false)).length;
+    report[name] = { n: rows.length, before: before.per, after: after.per, meanBefore: before.mean, meanAfter: after.mean, allRightBefore: before.allRight, allRightAfter: after.allRight,
+      calAfter: after.cal, decided, fixed, broke,
+      ms: { rules: round1(median(times.rules)), match: round1(median(times.match)), matchP95: round1(p95(times.match)) } };
+    if (!json) {
+      console.log(`\n${name}: ${rows.length} documents`);
+      console.log(`  ${"field".padEnd(10)} rules   + matcher`);
+      for (const f of EVAL_FIELDS) console.log(`  ${f.padEnd(10)} ${pct(before.per[f])}  ${pct(after.per[f])}`);
+      console.log(`  ${"mean".padEnd(10)} ${pct(before.mean)}  ${pct(after.mean)}   every field right ${pct(before.allRight)} -> ${pct(after.allRight)}`);
+      const [sr, st] = after.cal.sure, [ur, ut] = after.cal.unsure;
+      console.log(`  confidence with the matcher: sure fields right ${pct(st ? sr / st : null)} (${st}), unsure right ${pct(ut ? ur / ut : null)} (${ut})`);
+      console.log(`  decided by: type ${JSON.stringify(decided.docType)}, sender ${JSON.stringify(decided.issuer)}; documents fixed ${fixed}, made worse ${broke}`);
+      console.log(`  time per document (median, this machine): rules ${report[name].ms.rules} ms, vote + autocorrect + combine ${report[name].ms.match} ms (p95 ${report[name].ms.matchP95})`);
+      if (verbose) for (const r of rows) {
+        const changed = EVAL_FIELDS.filter((f) => r.rules.agree[f] !== r.matched.agree[f] || r.matched.agree[f] === false);
+        if (!changed.length) continue;
+        const show = (c, f) => JSON.stringify(f === "paperless" ? c.paperless && c.paperless.possible : c[f]);
+        console.log(`    ${r.id}: ${changed.map((f) => `${f} want ${show(r.expect.paperless !== undefined && f === "paperless" ? { paperless: { possible: r.expect.paperless } } : r.expect, f)} rules ${show(r.rules.card, f)} matched ${show(r.matched.card, f)}`).join(", ")} [${r.decidedBy.docType}/${r.decidedBy.issuer}]${r.notes.length ? " " + r.notes.join("; ") : ""}`);
+      }
+    }
+  }
+  const embedTime = { n: embedMs.length, median: round1(median(embedMs)), p95: round1(p95(embedMs)) };
+  if (json) console.log(JSON.stringify({ model: bundle.model, loadMs, embedTime, report }, null, 2));
+  else console.log(`\nModel ${bundle.model} (${bundle.dtype}), loaded in ${loadMs} ms in Node; embedding one document took ${embedTime.median} ms (p95 ${embedTime.p95}) over ${embedTime.n} texts.`);
+  return report;
+}
+const round1 = (x) => Math.round(x * 10) / 10;
+
 // ---------- main ----------
 async function main() {
   const args = process.argv.slice(2);
@@ -182,6 +316,7 @@ async function main() {
     console.log(JSON.stringify({ expect: doc.expect, card, agree: agreement(card, doc.expect) }, null, 2));
     return;
   }
+  if (flag("--matcher")) { await runMatcher({ verbose: flag("--verbose"), json: flag("--json"), ocr: opt("--ocr"), engine: opt("--engine") || "paddle" }); return; }
   const split = opt("--split");
   if (flag("--compare-claude")) {
     await compareClaude(corpus.filter((d) => !split || d.split === split), Number(opt("--limit")) || 0);

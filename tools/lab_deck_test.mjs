@@ -187,44 +187,49 @@ try {
     await page.waitForSelector("#review", { state: "hidden" });
     await page.waitForFunction(() => window.__PT__.items().filter((i) => i.stage === "ready").length === 2, null, { timeout: 10000 });
     let order = await deckOrder(page);
-    check(JSON.stringify(order.map((c) => c.name)) === JSON.stringify(["bill", "lease", "w2-photo", "receipt-photo"]) && !order[0].unread && !order[1].unread && order[2].unread && order[3].unread,
+    // The two text PDFs read at the same time, so either can finish first; the one that did is on top.
+    const [first, second] = order.slice(0, 2).map((c) => c.name);
+    check(JSON.stringify([first, second].sort()) === JSON.stringify(["bill", "lease"]) && JSON.stringify(order.slice(2).map((c) => c.name)) === JSON.stringify(["w2-photo", "receipt-photo"])
+      && !order[0].unread && !order[1].unread && order[2].unread && order[3].unread,
       `read cards on top, unread underneath, not in scan order (${order.map((c) => `${c.name}${c.unread ? " (reading)" : ""}`).join(", ")})`);
-    await waitTop(page, "bill");
-    check(true, "the first document read (bill) is the top card, though a photo was scanned before it");
+    const readAt = await js(page, (names) => names.map((n) => window.__PT__.items().find((i) => i.name === n)?.readAt || ""), [first, second]);
+    check(readAt[0] && readAt[1] && readAt[0] <= readAt[1], `the read cards are in the order they finished (${first} then ${second})`);
+    await waitTop(page, first);
+    check(true, `the first document read (${first}) is the top card, though a photo was scanned before it`);
     // Finish the first photo now: it joins after the two already read.
     await releaseOcr(page, "w2-photo.jpg");
     await page.waitForFunction(() => window.__PT__.items().find((i) => i.name === "w2-photo")?.stage === "ready", null, { timeout: 10000 });
     order = await deckOrder(page);
-    check(JSON.stringify(order.map((c) => c.name)) === JSON.stringify(["bill", "lease", "w2-photo", "receipt-photo"]) && !order[2].unread,
+    check(JSON.stringify(order.map((c) => c.name)) === JSON.stringify([first, second, "w2-photo", "receipt-photo"]) && !order[2].unread,
       `a card read later joins under the ones read before it (${order.map((c) => c.name).join(", ")})`);
-    // Skip the bill: the Skipped chip, the lease on top.
+    // Skip the top card: the Skipped chip, the other read PDF on top.
     await page.focus(TOP);
     await page.keyboard.press("ArrowUp");
-    await waitTop(page, "lease");
+    await waitTop(page, second);
     await page.waitForSelector('#dk-prompts [data-act="skipped"]');
     check(/1 skipped/.test(await page.textContent('#dk-prompts [data-act="skipped"]')), "the Skipped chip counts the skipped card while others are reading");
-    // File the lease and the W-2: then only the receipt is left, still reading.
+    // File the second PDF and the W-2: then only the receipt is left, still reading.
     await fileTop(page);
     await waitTop(page, "w2-photo");
     check(true, "after a swipe, the next READ card shows");
     await fileTop(page);
     await page.waitForSelector(`${TOP}.dk-reading`);
     check(await topName(page) === "receipt-photo", "with no read card left, the Reading card shows on top");
-    // Sort now from the Skipped sheet puts the bill back on top, above the Reading card.
+    // Sort now from the Skipped sheet puts the skipped card back on top, above the Reading card.
     await page.click('#dk-prompts [data-act="skipped"]');
     await page.waitForSelector(".sheet [data-sort-now]");
     await page.click(".sheet [data-sort-now]");
-    await waitTop(page, "bill");
+    await waitTop(page, first);
     await page.waitForSelector(".sheet", { state: "detached" }).catch(() => {});
     order = await deckOrder(page);
-    check(order[0].name === "bill" && order[1].name === "receipt-photo" && order[1].unread, `Sort now puts the skipped card on top of the Reading card (${order.map((c) => c.name).join(", ")})`);
+    check(order[0].name === first && order[1].name === "receipt-photo" && order[1].unread, `Sort now puts the skipped card on top of the Reading card (${order.map((c) => c.name).join(", ")})`);
     // The receipt reads last and sits under the top card.
     await releaseOcr(page, "receipt-photo.jpg");
     await page.waitForFunction(() => window.__PT__.items().find((i) => i.name === "receipt-photo")?.stage === "ready", null, { timeout: 10000 });
     order = await deckOrder(page);
-    check(order.length === 2 && order[0].name === "bill" && order[1].name === "receipt-photo" && !order[1].unread, "the last card reads and sits under the top card");
+    check(order.length === 2 && order[0].name === first && order[1].name === "receipt-photo" && !order[1].unread, "the last card reads and sits under the top card");
     const decided = await js(page, () => window.__PT__.items().filter((i) => i.decision).map((i) => i.name).sort());
-    check(JSON.stringify(decided) === JSON.stringify(["lease", "w2-photo"]), `only the swiped cards were decided (${decided.join(", ")})`);
+    check(JSON.stringify(decided) === JSON.stringify([second, "w2-photo"].sort()), `only the swiped cards were decided (${decided.join(", ")})`);
     check(!problems.length, `no console errors${problems.length ? ": " + problems.join(" | ") : ""}`);
     await ctx.close();
   }

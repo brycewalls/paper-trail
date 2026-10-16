@@ -48,6 +48,10 @@ button.lab-chip:focus-visible { outline: 2px solid var(--accent); outline-offset
 .lab-who { font: var(--t-caption); font-weight: 600; color: var(--muted-solid); }
 .lab-val { font: var(--t-subheadline); letter-spacing: var(--tr-subheadline); color: var(--ink); overflow-wrap: anywhere; }
 .lab-val.mono { font: var(--t-mono-caption); }
+/* Which on-device reader decided the field (#102): the rules, the matcher or a sender rule. */
+.lab-src { justify-self: start; margin-top: 2px; padding: 1px 6px; border-radius: var(--r-capsule); font: var(--t-caption); color: var(--muted-solid); background: var(--fill-strong); }
+.lab-src[data-src="matcher"] { color: var(--lab); background: var(--lab-soft); font-weight: 600; }
+.lab-src[data-src="sender rule"] { color: var(--accent); background: var(--accent-soft); font-weight: 600; }
 .lab-field.prose .lab-val { font: var(--t-footnote); color: var(--muted-solid); }
 .lab-pick .segmented { width: 100%; }
 

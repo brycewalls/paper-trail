@@ -1,70 +1,33 @@
-// drive.js: Google Drive. Owns the Drive token, the connection state in the account bar
-// (#drive-dot, #drive-state, Connect Drive) and the Reconnect Drive banner, every Drive REST call,
-// the Paperwork Archive folders, and the resumable upload. It knows nothing about the deck: the
-// upload queue that calls uploadFile() is outbox.js.
+// drive.js: Google Drive. Owns every Drive REST call, the Paperwork Archive folders, and the
+// resumable upload. It knows nothing about the deck: the upload queue that calls uploadFile() is
+// outbox.js. Tokens come only from auth.driveAccessToken() (#15); the Reconnect Drive banner and
+// the Settings rows are auth's, drawn from auth.driveStatus().
 import { DRIVE_API, DRIVE_UPLOAD, ROOT_FOLDER, FOLDER_NAMES } from "./config.js";
-import { $, setStatus, on, emit } from "./ui.js";
+import { setStatus, on, emit } from "./ui.js";
 import { B } from "./backend.js";
-import { currentUser, reauthenticate, authMsg } from "./auth.js";
+import { driveAccessToken, invalidateDriveToken, driveStatus, renderReconnect } from "./auth.js";
 import { getDriveConfig, setDriveConfig } from "./store.js";
-import { items } from "./items.js";
 
-// ---------- the Drive token ----------
-// signInWithPopup hands back a Google access token good for about an hour. It lives in memory and
-// in this tab's sessionStorage (so a reload keeps it), never in Firestore. When Drive answers 401,
-// uploads pause and the Reconnect Drive banner asks for a fresh one; the deck carries on meanwhile.
-const TOKEN_KEY = "pt-drive-token";
-let driveTok = null;
-export function saveToken(token, uid) {
-  driveTok = token ? { token, uid: uid || currentUser()?.uid, exp: Date.now() + 55 * 60 * 1000 } : null;
-  try { driveTok ? sessionStorage.setItem(TOKEN_KEY, JSON.stringify(driveTok)) : sessionStorage.removeItem(TOKEN_KEY); } catch { /* private mode: memory only */ }
-  renderDrive();
+// ---------- pausing uploads (legacy outbox) ----------
+// The legacy outbox pauses its queue when a Drive call comes back "auth" and waits for
+// "drive:connected". Drive shows as needing reconnecting only on the server's word (auth's
+// drive:status, spec 4.16); a pause for any other reason (a 401 that a fresh token didn't fix,
+// Google not answering) resumes by itself after a minute.
+let paused = false;
+let resumeTimer = 0;
+export const needsDrive = () => paused || driveStatus() === "needsReconnect";
+export function setNeedsDrive(v) {
+  paused = !!v;
+  clearTimeout(resumeTimer);
+  if (paused) resumeTimer = setTimeout(() => { if (paused && driveStatus() !== "needsReconnect") { paused = false; emit("drive:connected"); } }, 60000);
 }
-export function loadToken() {
-  const user = currentUser();
-  try { const t = JSON.parse(sessionStorage.getItem(TOKEN_KEY) || "null"); driveTok = t && t.uid === user?.uid && t.exp > Date.now() ? t : null; } catch { driveTok = null; }
-}
-export function currentToken() {
-  return driveTok && driveTok.exp > Date.now() && driveTok.uid === currentUser()?.uid ? driveTok.token : null;
-}
-// Sign-in and Sign out announce the token; this module is the only one that keeps it.
-on("auth:token", (r) => saveToken(r ? r.token : null, r?.uid));
-
-// True while uploads are paused waiting for Reconnect Drive.
-let needs = false;
-export const needsDrive = () => needs;
-export function setNeedsDrive(v) { needs = !!v; }
-
-export function renderDrive() {
-  if (!$("drive-state")) return;
-  const connected = !!currentToken();
-  $("drive-dot").classList.toggle("on", connected);
-  $("drive-state").textContent = connected ? "Drive connected" : "Drive not connected";
-  $("btn-drive").hidden = connected;
-  const waiting = items.filter((i) => i.status === "filing").length;
-  $("drive-banner").hidden = !needs;
-  $("drive-banner-text").textContent = waiting
-    ? `${waiting} upload${waiting > 1 ? "s are" : " is"} waiting. Nothing is lost, keep sorting.`
-    : "Uploads pick up where they stopped.";
-}
-async function connectDrive() {
-  for (const b of [$("btn-drive"), $("btn-reconnect")]) b.disabled = true;
-  try {
-    const r = await reauthenticate();
-    if (!r.token) throw Object.assign(new Error("no token"), { code: "auth/no-token" });
-    saveToken(r.token, r.uid);
-    needs = false;
-    setStatus("");
-    emit("drive:connected");   // outbox.js restarts the paused uploads
-  } catch (e) {
-    setStatus(authMsg(e), true);
-  } finally {
-    for (const b of [$("btn-drive"), $("btn-reconnect")]) b.disabled = false;
-    renderDrive();
-  }
-}
-$("btn-drive").addEventListener("click", connectDrive);
-$("btn-reconnect").addEventListener("click", connectDrive);
+// Legacy name: true while Drive can be tried (signed in, and the server hasn't said it's gone).
+export const currentToken = () => driveStatus() !== "needsReconnect";
+on("drive:status", ({ status }) => {
+  if (status === "connected") { setNeedsDrive(false); emit("drive:connected"); }   // the outbox resumes
+});
+// Kept for the legacy screens that call it; the banner and Settings rows redraw from auth.
+export const renderDrive = () => renderReconnect();
 
 // ---------- Google Drive REST ----------
 export class DriveError extends Error { constructor(code, detail) { super(detail || code); this.code = code; } }
@@ -80,21 +43,28 @@ export const DRIVE_COPY = {
 };
 
 // Every Drive call goes through here: it adds the token and turns failures into DriveError codes.
-export async function drive(url, opts = {}) {
-  const tok = currentToken();
-  if (!tok) throw new DriveError("auth");
+// A 401 gets one fresh token and one more try before it counts (contract: DriveError "auth" here,
+// "unauthorized" once the outbox is rebuilt).
+export async function drive(url, opts = {}, retried = false) {
+  let tok;
+  try { tok = await driveAccessToken(); }
+  catch (e) { throw new DriveError(e.code === "drive_unavailable" ? "network" : "auth", e.message); }
   let r;
   try { r = await B.fetch(url, { ...opts, headers: { ...(opts.headers || {}), Authorization: "Bearer " + tok } }); }
   catch (e) { throw new DriveError("network", e?.message); }
   if (r.ok) return r;
   let reason = "";
   try { const j = await r.clone().json(); reason = [j?.error?.errors?.[0]?.reason, j?.error?.status, j?.error?.message].filter(Boolean).join(" "); } catch { /* not JSON */ }
-  if (r.status === 401) { saveToken(null); throw new DriveError("auth", reason); }
+  if (r.status === 401) {
+    invalidateDriveToken();
+    if (!retried) return drive(url, opts, true);
+    throw new DriveError("auth", reason);
+  }
   if (r.status === 403) {
     if (/storageQuotaExceeded|quotaExceeded/i.test(reason)) throw new DriveError("quota", reason);
     if (/rateLimitExceeded|userRateLimitExceeded/i.test(reason)) throw new DriveError("rate", reason);
     if (/accessNotConfigured|SERVICE_DISABLED|has not been used/i.test(reason)) throw new DriveError("api_off", reason);
-    if (/insufficientPermissions|ACCESS_TOKEN_SCOPE_INSUFFICIENT|insufficient authentication scopes/i.test(reason)) { saveToken(null); throw new DriveError("auth", reason); }
+    if (/insufficientPermissions|ACCESS_TOKEN_SCOPE_INSUFFICIENT|insufficient authentication scopes/i.test(reason)) { invalidateDriveToken(); throw new DriveError("auth", reason); }
     throw new DriveError("forbidden", reason);
   }
   if (r.status === 404) throw new DriveError("not_found", reason);

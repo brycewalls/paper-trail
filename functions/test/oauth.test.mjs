@@ -259,6 +259,75 @@ test("driveToken: a token without the Drive scope counts as revoked", async () =
   assert.ok(tokens.get("g-123").revokedAt);
 });
 
+// ---------- the web app's return (#3): same flow, a different target for web nonces ----------
+const WEB_NONCE = `web_${b64url(crypto.randomBytes(24))}`;
+const WEB_STATE = `${WEB_NONCE}.${CHALLENGE}`;
+const webParams = (location) => {
+  assert.ok(location.startsWith("https://paper-trail-bw.web.app/#/auth/done?"), location);
+  return Object.fromEntries(new URLSearchParams(location.split("#/auth/done?")[1]));
+};
+
+test("web nonces are web_ plus 32 base64url characters; the iPhone app's 22 never match", () => {
+  assert.equal(WEB_NONCE.length, 36);
+  assert.ok(oauth.isWebNonce(WEB_NONCE));
+  assert.ok(!oauth.isWebNonce(STATE.split(".")[0]), "an iPhone nonce (22 characters)");
+  for (const bad of ["web_short", `web_${"a".repeat(31)}`, `web_${"a".repeat(33)}`, `WEB_${"a".repeat(32)}`, `web_${"a".repeat(31)}=`, "", undefined]) assert.ok(!oauth.isWebNonce(bad), String(bad));
+});
+
+test("callback, web: a web nonce goes back to the web app with the handoff in the fragment", async () => {
+  const out = await oauth.oauthCallback({ code: "4/code", state: WEB_STATE }, deps);
+  assert.equal(out.status, 302);
+  assert.ok(!out.location.startsWith("papertrail://"));
+  const [beforeHash] = out.location.split("#");
+  assert.equal(beforeHash, "https://paper-trail-bw.web.app/", "nothing before the fragment, so no server log or Referer sees the handoff");
+  const p = webParams(out.location);
+  assert.equal(p.state, WEB_STATE);
+  assert.match(p.handoff, /^[A-Za-z0-9_-]{43}$/);
+  const h = handoffs.get(p.handoff);
+  assert.equal(h.nonce, WEB_NONCE);
+  assert.equal(h.driveConnected, true);
+  assert.equal(tokens.get("g-123").refreshToken, "1//refresh", "the refresh token is kept the same way as for the iPhone app");
+  // the iPhone redeem works unchanged for the web handoff
+  const r = await oauth.oauthRedeem({ handoff: p.handoff, state: WEB_STATE, verifier: VERIFIER }, deps);
+  assert.equal(r.status, 200);
+  assert.equal(r.json.idToken, google.json.id_token);
+});
+
+test("callback, web: errors go back to the web app too", async () => {
+  const canceled = await oauth.oauthCallback({ error: "access_denied", state: WEB_STATE }, deps);
+  assert.deepEqual(webParams(canceled.location), { error: "canceled", state: WEB_STATE });
+  const failed = await oauth.oauthCallback({ state: WEB_STATE }, deps);
+  assert.deepEqual(webParams(failed.location), { error: "failed", state: WEB_STATE });
+  google.json.id_token = idToken({ ...OWNER_CLAIMS, email: "someone@else.test", sub: "g-999" });
+  const denied = await oauth.oauthCallback({ code: "c", state: WEB_STATE }, deps);
+  assert.deepEqual(webParams(denied.location), { error: "not_allowed", email: "someone@else.test", state: WEB_STATE });
+  assert.equal(tokens.size, 0);
+});
+
+test("callback, web: an iPhone nonce still goes to papertrail://, and web_short is treated as the iPhone's", async () => {
+  const ios = await oauth.oauthCallback({ code: "c", state: STATE }, deps);
+  assert.ok(ios.location.startsWith("papertrail://auth?"), ios.location);
+  const shortState = `web_short_nonce_x.${CHALLENGE}`;   // passes the state regex, isn't a web nonce
+  const short = await oauth.oauthCallback({ error: "access_denied", state: shortState }, deps);
+  assert.ok(short.location.startsWith("papertrail://auth?"), short.location);
+});
+
+test("callback, web: the target comes from config, and a bad config value falls back to the live site", async () => {
+  const cfg = deps.config;
+  deps.config = () => ({ ...cfg(), webRedirect: "https://preview--paper-trail-bw.web.app/#/auth/done" });
+  const out = await oauth.oauthCallback({ error: "access_denied", state: WEB_STATE }, deps);
+  assert.ok(out.location.startsWith("https://preview--paper-trail-bw.web.app/#/auth/done?error=canceled"), out.location);
+  for (const bad of ["javascript:alert(1)//#/auth/done", "http://paper-trail-bw.web.app/#/auth/done", "https://evil.test/#/auth/done?x=", "https://evil.test/oauth", "", undefined]) {
+    deps.config = () => ({ ...cfg(), webRedirect: bad });
+    const o = await oauth.oauthCallback({ error: "access_denied", state: WEB_STATE }, deps);
+    assert.ok(o.location.startsWith(`${oauth.WEB_REDIRECT}?`), `${bad} -> ${o.location}`);
+  }
+  deps.config = cfg;
+  // a value in the request never changes the target
+  const tricked = await oauth.oauthCallback({ error: "access_denied", state: WEB_STATE, redirect: "https://evil.test/", webRedirect: "https://evil.test/#/auth/done" }, deps);
+  assert.ok(tricked.location.startsWith(`${oauth.WEB_REDIRECT}?`), tricked.location);
+});
+
 // ---------- wiring ----------
 test("index.js exports the three functions with the client secret bound", () => {
   for (const name of ["oauthCallback", "oauthRedeem", "driveToken", "classify"]) assert.ok(fns[name], name);

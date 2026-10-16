@@ -58,7 +58,7 @@ const OWNERS = [
   [/\bB\.fetch\(/, ["drive.js"], "Drive's fetch (B.fetch)"],
   [/\bB\.classify\(/, ["classify.js"], "the classify callable (B.classify)"],
   [/\bB\.call\(/, ["auth.js", "classify.js"], "other callables (B.call)"],
-  [/\bB\.(onUser|signIn|reconnect|signOut)\(/, ["auth.js"], "Auth (B.onUser/signIn/reconnect/signOut)"],
+  [/\bB\.(onUser|authorize|redeem|signInWithTokens|signOut)\(/, ["auth.js"], "Auth (B.onUser/authorize/redeem/signInWithTokens/signOut)"],
   [/\bindexedDB\b/, ["db.js"], "IndexedDB"],
 ];
 for (const [re, owners, what] of OWNERS) {

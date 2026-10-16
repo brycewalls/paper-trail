@@ -7,6 +7,13 @@ import { photosToPdf } from "./media.js";
 import { saveRecord } from "./store.js";
 import { setStatus, mb, on, emit } from "./ui.js";
 import { pendingUploads } from "./items.js";
+import { driveStatus } from "./auth.js";
+
+// The accessory's reconnect state (3.7, 4.16), until the outbox rebuild (#17) emits the full
+// accessory state with counts. Reconnect outranks everything; otherwise the idle state.
+const accessory = () => emit("outbox:status", driveStatus() === "needsReconnect" ? { kind: "reconnect" } : { kind: "idle", filedToday: 0 });
+on("drive:status", accessory);
+on("session:started", accessory);
 
 const uploads = [];
 let uploading = false;

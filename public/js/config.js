@@ -15,6 +15,15 @@ export const FIREBASE = {
   site: "paper-trail-bw.web.app",
 };
 export const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+// Google sign-in (#15, #3): the same web OAuth client the iPhone app uses (not a secret; Firebase
+// Auth's Google provider uses it too, so the ID token signs in to the same uid). Google sends the
+// code to oauthCallback through the Hosting rewrite; web nonces come back to #/auth/done.
+export const OAUTH = {
+  clientId: "814219266285-pe2scelka1o9m98bt0v0f5fohumfs8f6.apps.googleusercontent.com",
+  redirectUri: "https://paper-trail-bw.web.app/oauth/callback",
+  authorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
+  redeemPath: "/oauth/redeem",
+};
 export const DRIVE_API = "https://www.googleapis.com/drive/v3/files";
 export const DRIVE_UPLOAD = "https://www.googleapis.com/upload/drive/v3/files";
 export const ROOT_FOLDER = "Paperwork Archive";
@@ -37,7 +46,7 @@ export const READ_PAGES = 10, READ_EDGE = 1568;
 export const MAX_SEND_CHARS = 24 * 1024 * 1024;   // base64 characters; the function refuses more
 export const READERS = 2;                         // documents Claude reads at once
 
-// Shown on the gate and as a read error when the account isn't on the allowlist.
+// A read error when the account isn't on the allowlist (the sign-in screen says "This account isn't on the list.").
 export const DENIED = "This account isn't on the list. Sign in with a different Google account.";
 
 // Shown in the Settings footer ("Paper Trail {version}"). The web app's own version, not the iPhone app's.

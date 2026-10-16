@@ -259,7 +259,8 @@ try {
     check(true, "offline: Waiting for a connection · 1 saved on your phone");
     check(!(await item(page, id)).attempts, "offline uses no retry");
     await ctx.close();
-    const r = await open("&drive401");
+    // The server says the Drive grant is gone (auth: a single 401 just gets a fresh token).
+    const r = await open("&driverevoked");
     const id2 = await addItem(r.page, { card: CARD.bill, release: true });
     await r.page.waitForFunction(() => /Reconnect Drive to keep filing/.test(document.querySelector("#outbox-accessory").textContent), null, { timeout: 8000 });
     check(true, "Drive refused: Reconnect Drive to keep filing");
@@ -267,7 +268,9 @@ try {
     await r.page.click("#outbox-accessory");
     await r.page.waitForSelector("#screen [data-reconnect]");
     check(/Drive needs reconnecting\./.test(await r.page.textContent("#screen")), "the Outbox shows the Reconnect Drive banner");
-    await r.page.click("#screen [data-reconnect]");
+    // Reconnect is a full-page redirect through Google; the queue comes back from IndexedDB.
+    await Promise.all([r.page.waitForEvent("load"), r.page.click("#screen [data-reconnect]")]);
+    await r.page.waitForFunction(() => window.__PT__?.db);
     check(await waitStage(r.page, id2, "verified", 15000), "Reconnect Drive resumes the upload");
     check(r.problems.length === 0, `no console errors (${r.problems.join(" | ") || "none"})`);
     await r.ctx.close();

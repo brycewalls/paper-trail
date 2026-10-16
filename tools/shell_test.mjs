@@ -94,11 +94,11 @@ try {
     // Settings sheet
     await page.click("#view-sort [data-avatar]");
     await page.waitForSelector(".sheet[data-detent=large]");
-    check(await page.isVisible("#btn-signout") && (await page.textContent(".sheet-title")).trim() === "Settings", "the avatar opens Settings as a large sheet");
+    check(await page.isVisible("#settings-account") && (await page.textContent(".sheet-title")).trim() === "Settings", "the avatar opens Settings as a large sheet");
     check(await page.evaluate(() => document.getElementById("view-sort").inert), "the app behind the sheet is inert");
     await page.click("[data-settings-done]");
     await page.waitForSelector(".sheet", { state: "detached" });
-    check(await page.evaluate(() => document.getElementById("settings-panel").parentElement === document.body && !document.getElementById("view-sort").inert), "Done closes it and puts the panel back");
+    check(await page.evaluate(() => !document.getElementById("settings-panel") && !document.getElementById("view-sort").inert), "Done closes it and the app is live again");
 
     // The deck's arrow keys stay on Sort only
     await page.click("[data-tab-link=piles]");

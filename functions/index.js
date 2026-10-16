@@ -4,9 +4,9 @@
 //              signed-in, verified Google account on ALLOWED_EMAILS may call it; everyone else gets
 //              permission-denied before anything reaches Claude.
 //   oauthCallback, oauthRedeem, driveToken
-//              Google sign-in and Drive tokens for the iPhone app (#14, #15): see oauth.js.
+//              Google sign-in and Drive tokens for the iPhone app and the web app (#14, #15, #3): see oauth.js.
 // Config (functions/.env, deployed with the functions): ALLOWED_EMAILS, CLAUDE_MODEL, CLAUDE_EFFORT,
-// GOOGLE_OAUTH_CLIENT_ID, OAUTH_REDIRECT_URI.
+// GOOGLE_OAUTH_CLIENT_ID, OAUTH_REDIRECT_URI, WEB_APP_REDIRECT (optional, defaults to the live site).
 // Secrets: ANTHROPIC_API_KEY and GOOGLE_OAUTH_CLIENT_SECRET, each set once with
 // `firebase functions:secrets:set NAME`.
 const { defineString, defineSecret } = require("firebase-functions/params");
@@ -57,13 +57,15 @@ exports.classify = onCall({
 const GOOGLE_OAUTH_CLIENT_SECRET = defineSecret("GOOGLE_OAUTH_CLIENT_SECRET");
 const GOOGLE_OAUTH_CLIENT_ID = defineString("GOOGLE_OAUTH_CLIENT_ID", { description: "The web OAuth client ID (the one Firebase Auth's Google provider uses)." });
 const OAUTH_REDIRECT_URI = defineString("OAUTH_REDIRECT_URI", { default: "https://paper-trail-bw.web.app/oauth/callback", description: "Google's redirect URI, served by oauthCallback through a Hosting rewrite." });
+// Where oauthCallback sends the web app's sign-in back to (web nonces only, #3). Not secret.
+const WEB_APP_REDIRECT = defineString("WEB_APP_REDIRECT", { default: oauth.WEB_REDIRECT, description: "The web app's sign-in return: https://<host>/#/auth/done." });
 
 if (!getApps().length) initializeApp();
 let db = null;
 const oauthDeps = {
   fetch: (...args) => fetch(...args),
   store: oauth.firestoreStore(() => db || (db = getFirestore())),
-  config: () => ({ clientId: GOOGLE_OAUTH_CLIENT_ID.value(), clientSecret: GOOGLE_OAUTH_CLIENT_SECRET.value(), redirectUri: OAUTH_REDIRECT_URI.value() }),
+  config: () => ({ clientId: GOOGLE_OAUTH_CLIENT_ID.value(), clientSecret: GOOGLE_OAUTH_CLIENT_SECRET.value(), redirectUri: OAUTH_REDIRECT_URI.value(), webRedirect: WEB_APP_REDIRECT.value() }),
   allowlist: () => lib.parseAllowlist(ALLOWED_EMAILS.value()),
   now: () => new Date(),
   log: (msg, data) => logger.warn(msg, data),

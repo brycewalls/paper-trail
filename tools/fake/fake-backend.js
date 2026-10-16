@@ -5,8 +5,9 @@
 // serves public/ only). Options, all in the query string:
 //   as=stranger      sign in as an account that isn't on the allowlist (the private screen)
 //   signedout        start signed out (the sign-in screen)
-//   nodrive          start without a Drive token (the Connect Drive link)
-//   drive401         the first upload gets a 401, to exercise Reconnect Drive
+//   nodrive          the server holds no Drive grant yet (driveToken answers drive_revoked) and the
+//                    next consent comes back without the Drive scope (4.1 step 2)
+//   drive401         the first upload gets a 401 (a fresh token fixes it, nothing shows)
 //   readfail         the first read fails with rate_limited, to exercise Try again
 // Added for the web v2 build (#83, docs/web-contract.md, "Fake backend"):
 //   seed             start with a filed library: docs in every pile and state, paperless senders in
@@ -16,6 +17,14 @@
 //   driverevoked     the driveToken callable answers drive_revoked (Reconnect Drive, spec 4.16)
 //   offline          every Drive request fails as a network error (the outbox's offline state)
 //   slowupload       uploads take about 4 seconds, so progress and the undo hold can be watched
+// Added for auth (#14, #15, #3):
+//   oauth=canceled|not_allowed|failed   the next Google consent comes back with that error
+//   slowauth         Firebase takes 1.5 s to confirm the session, so "no check on open" can be seen
+//   lostsession      Firebase confirms nobody is signed in, even with a cached user (session revoked)
+// The session and the server's Drive grant survive a reload (sessionStorage pt-fake-auth), like
+// Firebase's own persistence, because the sign-in flow is a full-page redirect. B.authorize(url)
+// stands in for Google and oauthCallback: it records the URL and reloads the page on
+// #/auth/done?handoff=fake&state=... (or ?error=...). B.redeem checks the verifier against the state.
 // Added by the outbox (#17, #1, #18):
 //   md5mismatch      the first file uploaded reports a wrong md5Checksum (one re-upload, #18)
 //   md5pending       the first files.get answers without md5Checksum (Drive still working it out)
@@ -80,11 +89,30 @@ function seedLibrary(db) {
   db.set("config/settings", { shredHoldDays: 3 });
 }
 
+const AUTH_KEY = "pt-fake-auth";
+const loadAuth = () => { try { return JSON.parse(sessionStorage.getItem(AUTH_KEY) || "null"); } catch { return null; } };
+const saveAuth = (a) => { try { sessionStorage.setItem(AUTH_KEY, JSON.stringify(a)); } catch { /* private mode */ } };
+const b64url = (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
 export function createFakeBackend(params) {
-  const OWNER = { uid: "fake-owner", email: "bryce.evan.walls@gmail.com" };
-  const STRANGER = { uid: "fake-stranger", email: "someone@example.com" };
+  const OWNER = { uid: "fake-owner", email: "bryce.evan.walls@gmail.com", name: "Bryce Walls" };
+  const STRANGER = { uid: "fake-stranger", email: "someone@example.com", name: "Someone Else" };
+  const ACCOUNTS = { owner: OWNER, stranger: STRANGER };
+  // What survives a reload: who Firebase has signed in, and whether the server holds a Drive grant.
+  const auth = loadAuth() || {
+    user: params.has("signedout") ? null : params.get("as") === "stranger" ? "stranger" : "owner",
+    drive: params.has("driverevoked") || params.has("nodrive") ? "revoked" : "ok",
+    noDriveConsent: params.has("nodrive"),
+    oauthError: params.get("oauth") || "",
+    pending: null,           // the consent in flight: { state, account, driveConnected }
+    authorizeUrls: [],
+    redeems: 0,
+  };
+  saveAuth(auth);
+  const persist = () => saveAuth(auth);
   const state = {
-    user: params.has("signedout") ? null : params.get("as") === "stranger" ? STRANGER : OWNER,
+    auth,
+    user: ACCOUNTS[auth.user] || null,
     db: new Map(),             // "docs/abc" -> data
     listeners: [],             // { name, order, cb }
     files: [],                 // { id, name, parents, size, bytes, mimeType }
@@ -94,7 +122,8 @@ export function createFakeBackend(params) {
     drive401: params.has("drive401"),
     readfail: params.has("readfail"),
     unsure: params.has("unsure"),
-    driveRevoked: params.has("driverevoked"),
+    get driveRevoked() { return auth.drive === "revoked"; },
+    set driveRevoked(v) { auth.drive = v ? "revoked" : "ok"; persist(); },
     offline: params.has("offline"),
     slowUpload: params.has("slowupload"),
     md5mismatch: params.has("md5mismatch"),
@@ -118,9 +147,6 @@ export function createFakeBackend(params) {
       if (l.order) list.sort((a, b) => String(b[l.order]).localeCompare(String(a[l.order])));
       l.cb(list);
     }
-  }
-  if (state.user && allowed() && !params.has("nodrive")) {
-    try { sessionStorage.setItem("pt-drive-token", JSON.stringify({ token: "fake-token", uid: OWNER.uid, exp: Date.now() + 3300000 })); } catch { /* ignore */ }
   }
 
   const json = (obj, status = 200, headers = {}) => new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json", ...headers } });
@@ -205,15 +231,63 @@ export function createFakeBackend(params) {
   }
 
   return {
-    onUser(cb) { state.authCb = cb; setTimeout(() => cb(state.user), 50); },
-    async signIn() {
-      await wait(200);
-      state.user = OWNER;
-      setTimeout(() => state.authCb(state.user), 0);
-      return { uid: OWNER.uid, token: "fake-token" };
+    onUser(cb) {
+      state.authCb = cb;
+      if (params.has("lostsession") && !auth.lostApplied) { auth.lostApplied = true; auth.user = null; persist(); state.user = null; }
+      setTimeout(() => cb(state.user && { ...state.user }), params.has("slowauth") ? 1500 : 50);
     },
-    async reconnect() { await wait(200); return { uid: state.user.uid, token: "fake-token" }; },
-    async signOut() { state.user = null; state.listeners = []; state.authCb(null); },
+    // Google and oauthCallback in one step: the consent picks the stranger first with ?as=stranger,
+    // the owner otherwise; ?oauth= and ?nodrive shape the answer once each.
+    authorize(url) {
+      const u = new URL(url);
+      const st = u.searchParams.get("state") || "";
+      auth.authorizeUrls.push(url);
+      const back = new URLSearchParams();
+      if (auth.oauthError) {
+        back.set("error", auth.oauthError);
+        if (auth.oauthError === "not_allowed") back.set("email", STRANGER.email);
+        auth.oauthError = "";
+      } else {
+        const hint = u.searchParams.get("login_hint");
+        const account = hint ? Object.keys(ACCOUNTS).find((k) => ACCOUNTS[k].email === hint) || "owner" : params.get("as") === "stranger" && !auth.pickedOnce ? "stranger" : "owner";
+        auth.pickedOnce = true;
+        if (account === "stranger") { back.set("error", "not_allowed"); back.set("email", STRANGER.email); }
+        else {
+          const wantsDrive = (u.searchParams.get("scope") || "").includes("drive.file");
+          const driveConnected = wantsDrive && !auth.noDriveConsent;
+          auth.noDriveConsent = false;
+          if (driveConnected) auth.drive = "ok";
+          auth.pending = { state: st, account, driveConnected };
+          back.set("handoff", "fake");
+        }
+      }
+      back.set("state", st);
+      persist();
+      location.replace(`${location.pathname}${location.search}#/auth/done?${back}`);
+      location.reload();
+    },
+    async redeem({ handoff, state: st, verifier }) {
+      await wait(120);
+      auth.redeems++;
+      const p = auth.pending;
+      auth.pending = null;
+      persist();
+      if (handoff !== "fake" || !p) throw Object.assign(new Error("expired"), { code: "oauth/expired" });
+      const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
+      if (p.state !== st || st.split(".")[1] !== b64url(digest)) throw Object.assign(new Error("mismatch"), { code: "oauth/mismatch" });
+      const a = ACCOUNTS[p.account];
+      return { idToken: `fake-id-${p.account}`, accessToken: p.driveConnected ? "fake-token" : "fake-token-no-drive", expiresIn: 3599, email: a.email, name: a.name, driveConnected: p.driveConnected };
+    },
+    async signInWithTokens({ idToken }) {
+      await wait(80);
+      const key = String(idToken || "").replace(/^fake-id-/, "");
+      if (!ACCOUNTS[key]) throw Object.assign(new Error("bad credential"), { code: "auth/invalid-credential" });
+      auth.user = key; persist();
+      state.user = ACCOUNTS[key];
+      setTimeout(() => state.authCb && state.authCb({ ...state.user }), 0);
+      return { ...state.user };
+    },
+    async signOut() { auth.user = null; persist(); state.user = null; state.listeners = []; state.authCb && state.authCb(null); },
     async classify(payload) {
       state.classifyCalls.push(payload);
       await wait(400 + Math.random() * 500);

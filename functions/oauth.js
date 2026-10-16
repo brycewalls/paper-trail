@@ -7,6 +7,10 @@
 //                  checks the allowlist, keeps the refresh token server side in oauthTokens/{sub},
 //                  parks the ID and access tokens in a one-time oauthHandoffs/{random} doc and
 //                  sends the browser back to the app: papertrail://auth?handoff=...&state=...
+//                  The web app's sign-in (#3, #15) uses the same function: its nonces are "web_" plus
+//                  32 base64url characters (the iPhone app's are always 22), and those go back to
+//                  https://paper-trail-bw.web.app/#/auth/done?handoff=...&state=... instead. The
+//                  handoff rides in the fragment, so it never reaches a server log or a Referer.
 //   oauthRedeem    HTTPS POST from the app: { handoff, state, verifier }. Single use, 2 minutes.
 //                  Returns the ID and access tokens the app signs in to Firebase with.
 //   driveToken     Callable, signed in and allowlisted. Mints a Drive access token from the stored
@@ -22,6 +26,10 @@ const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 const APP_REDIRECT = "papertrail://auth";
+// The web app's return target. Comes from config (WEB_APP_REDIRECT), never from the request, so the
+// callback can't be turned into an open redirect.
+const WEB_REDIRECT = "https://paper-trail-bw.web.app/#/auth/done";
+const WEB_NONCE_RE = /^web_[A-Za-z0-9_-]{32}$/;
 const HANDOFF_TTL_MS = 2 * 60 * 1000;
 const GOOGLE_ISSUERS = new Set(["accounts.google.com", "https://accounts.google.com"]);
 
@@ -43,11 +51,20 @@ function parseState(state) {
   return { nonce, challenge };
 }
 
-// Where the app (and only the app) gets sent back to. Every value is URL encoded.
-function appRedirect(params) {
+const isWebNonce = (nonce) => WEB_NONCE_RE.test(String(nonce || ""));
+
+// Only an https URL on a fixed host can be the web target; anything else falls back to the default.
+function webTarget(configured) {
+  const v = String(configured || "");
+  return /^https:\/\/[a-z0-9.-]+(:\d+)?\/#\/auth\/done$/.test(v) ? v : WEB_REDIRECT;
+}
+
+// Where the app (and only the app) gets sent back to. Every value is URL encoded. base is
+// APP_REDIRECT for the iPhone app, or the web target for a web nonce.
+function appRedirect(params, base = APP_REDIRECT) {
   const q = Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== "")
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`).join("&");
-  return `${APP_REDIRECT}?${q}`;
+  return `${base}?${q}`;
 }
 
 // The ID token comes straight from Google's token endpoint over TLS, so its payload is read
@@ -74,17 +91,19 @@ async function postForm(fetchFn, url, form) {
 
 // ---------- oauthCallback ----------
 // query: the redirect's query string as an object. Returns { status, location } or { status, body }.
-// deps: { fetch, store, config(): { clientId, clientSecret, redirectUri }, allowlist(), now(), log }
+// deps: { fetch, store, config(): { clientId, clientSecret, redirectUri, webRedirect }, allowlist(), now(), log }
 async function oauthCallback(query, deps) {
   const q = query || {};
   const parsed = parseState(q.state);
   if (!parsed) return { status: 400, body: "This sign-in link isn't valid. Go back to Paper Trail and try again." };
-  const back = (params) => ({ status: 302, location: appRedirect({ ...params, state: q.state }) });
+  const cfg = deps.config();
+  const base = isWebNonce(parsed.nonce) ? webTarget(cfg.webRedirect) : APP_REDIRECT;
+  const back = (params) => ({ status: 302, location: appRedirect({ ...params, state: q.state }, base) });
 
   if (q.error) return back({ error: q.error === "access_denied" ? "canceled" : "failed" });
   if (typeof q.code !== "string" || !q.code) return back({ error: "failed" });
 
-  const { clientId, clientSecret, redirectUri } = deps.config();
+  const { clientId, clientSecret, redirectUri } = cfg;
   const exchange = await postForm(deps.fetch, GOOGLE_TOKEN_URL, {
     code: q.code, client_id: clientId, client_secret: clientSecret, redirect_uri: redirectUri, grant_type: "authorization_code",
   });
@@ -207,6 +226,6 @@ function firestoreStore(db) {
 }
 
 module.exports = {
-  GOOGLE_AUTH_URL, GOOGLE_TOKEN_URL, DRIVE_SCOPE, APP_REDIRECT, HANDOFF_TTL_MS,
+  GOOGLE_AUTH_URL, GOOGLE_TOKEN_URL, DRIVE_SCOPE, APP_REDIRECT, WEB_REDIRECT, HANDOFF_TTL_MS, isWebNonce, webTarget,
   OAuthError, oauthCallback, oauthRedeem, driveToken, firestoreStore, parseState, challengeFor, decodeIdToken, appRedirect,
 };

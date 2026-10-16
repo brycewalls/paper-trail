@@ -19,6 +19,9 @@
 #              found, the page flattened, Done adds one item that files as one PDF, Cancel adds none
 #   capture    the Scan menu's sources, the scan review (split, join, stack mode, duplicates), the page
 #              viewer, the reading queue and sender rules, against the fake backend (#83)
+#   lab        the no-AI lab build's infrastructure (#92) on ?lab: the badge and tint, the lab_ sign-in
+#              nonce, users/{uid}/lab/data and "Paperwork Archive (Lab)", the Lab settings section,
+#              and the live app unchanged without ?lab
 #   functions  the classify function's unit tests, Claude stood in
 #   ios        the iPhone app (ios/): xcodegen, a simulator build and the unit tests. macOS minutes
 #              cost 10x, and the Swift app is paused, so it runs only when started by hand (Run workflow).
@@ -70,6 +73,9 @@ jobs:
       - name: Piles, Search and Paperless against a seeded library
         if: always()
         run: node tools/browse_test.mjs
+      - name: The lab build (#92)
+        if: always()
+        run: node tools/lab_test.mjs
       - name: Keep the screenshots
         if: always()
         uses: actions/upload-artifact@v4

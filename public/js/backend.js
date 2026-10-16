@@ -2,7 +2,7 @@
 // `B` is Firebase in production, or tools/fake/fake-backend.js on localhost with ?fake=1. Both
 // implement the same interface (docs/web-contract.md, "Backend interface"); a feature that adds a
 // method adds it to both, in the same change.
-import { FIREBASE, OAUTH, FAKE, params } from "./config.js";
+import { FIREBASE, OAUTH, FAKE, params, DATA_ROOT } from "./config.js";
 
 export let B = null;
 
@@ -25,8 +25,10 @@ async function firebaseBackend() {
   const db = fsM.getFirestore(app);
   const classifyFn = fnM.httpsCallable(fnM.getFunctions(app, "us-central1"), "classify", { timeout: 300000 });
   let uid = null;
-  const col = (name) => fsM.collection(db, "users", uid, name);
-  const ref = (path) => fsM.doc(db, "users", uid, ...path.split("/"));
+  // DATA_ROOT is [] for the live app and ["lab", "data"] on the lab site (#92), so the lab's whole
+  // tree sits under users/{uid}/lab/data/ and never touches the real archive's records.
+  const col = (name) => fsM.collection(db, "users", uid, ...DATA_ROOT, name);
+  const ref = (path) => fsM.doc(db, "users", uid, ...DATA_ROOT, ...path.split("/"));
   const who = (u) => ({ uid: u.uid, email: u.email || "", name: u.displayName || "" });
   return {
     // Firebase keeps the session in IndexedDB (browserLocalPersistence), so a reload stays signed in.

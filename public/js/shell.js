@@ -15,6 +15,7 @@ import { $, on, emit } from "./ui.js";
 import { TABS, TAB_TITLES, route, go, push, back, lastTab, replaceQuery, screens, startRouter } from "./router.js";
 import { icon } from "./ui/icons.js";
 import { navBar, emptyState, outboxAccessory, accessoryTitle, initialsOf } from "./ui/components.js";
+import { APP_NAME } from "./config.js";
 import { bindMenu, closeMenu } from "./ui/menu.js";
 import { sheetOpen } from "./ui/sheet.js";
 import { openSettings } from "./settings.js";
@@ -100,7 +101,7 @@ function render() {
   renderDock();
   if (key !== shownKey) { scrollTo(0, scrolls.get(key) || 0); shownKey = key; }
   onScroll();
-  document.title = def ? `${titleOf(def, top.param)} · Paper Trail` : `${TAB_TITLES[tab]} · Paper Trail`;
+  document.title = def ? `${titleOf(def, top.param)} · ${APP_NAME}` : `${TAB_TITLES[tab]} · ${APP_NAME}`;
 }
 const titleOf = (def, param) => (typeof def.title === "function" ? def.title(param) : def.title || "");
 function setScreenTitle(el, title, subtitle) {

@@ -13,19 +13,38 @@
       "ignore": ["node_modules", "test", "tools", ".git", "firebase-debug.log", "firebase-debug.*.log", "*.local"]
     }
   ],
-  "hosting": {
-    "public": "public",
-    "cleanUrls": true,
-    "rewrites": [
-      { "source": "/oauth/callback", "function": { "functionId": "oauthCallback", "region": "us-central1" } },
-      { "source": "/oauth/redeem", "function": { "functionId": "oauthRedeem", "region": "us-central1" } }
-    ],
-    "ignore": ["firebase.json", "**/.*", "dev/**"],
-    "headers": [
-      { "source": "/", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
-      { "source": "/index.html", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
-      { "source": "**/*.@(js|css)", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
-      { "source": "**", "headers": [{ "key": "X-Content-Type-Options", "value": "nosniff" }, { "key": "Referrer-Policy", "value": "same-origin" }] }
-    ]
-  }
+  "hosting": [
+    {
+      "target": "live",
+      "public": "public",
+      "cleanUrls": true,
+      "rewrites": [
+        { "source": "/oauth/callback", "function": { "functionId": "oauthCallback", "region": "us-central1" } },
+        { "source": "/oauth/redeem", "function": { "functionId": "oauthRedeem", "region": "us-central1" } }
+      ],
+      "ignore": ["firebase.json", "**/.*", "dev/**"],
+      "headers": [
+        { "source": "/", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
+        { "source": "/index.html", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
+        { "source": "**/*.@(js|css)", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
+        { "source": "**", "headers": [{ "key": "X-Content-Type-Options", "value": "nosniff" }, { "key": "Referrer-Policy", "value": "same-origin" }] }
+      ]
+    },
+    {
+      "target": "lab",
+      "public": "public",
+      "cleanUrls": true,
+      "rewrites": [
+        { "source": "/oauth/callback", "function": { "functionId": "oauthCallback", "region": "us-central1" } },
+        { "source": "/oauth/redeem", "function": { "functionId": "oauthRedeem", "region": "us-central1" } }
+      ],
+      "ignore": ["firebase.json", "**/.*", "dev/**"],
+      "headers": [
+        { "source": "/", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
+        { "source": "/index.html", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
+        { "source": "**/*.@(js|css)", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
+        { "source": "**", "headers": [{ "key": "X-Content-Type-Options", "value": "nosniff" }, { "key": "Referrer-Policy", "value": "same-origin" }] }
+      ]
+    }
+  ]
 }

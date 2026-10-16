@@ -8,6 +8,19 @@
 // deck can be exercised without a Google account. Serve the repo root for that: node tools/serve.mjs
 //
 // config.js: constants only. No DOM, no imports. The module map is in docs/web-contract.md.
+
+// ---------- the no-AI lab build (#92) ----------
+// The same files serve two Hosting sites. On the lab site (paper-trail-lab.web.app), or on localhost
+// with ?lab, LAB is true: Firestore moves to users/{uid}/lab/data/ (DATA_ROOT, applied in backend.js),
+// Drive files into "Paperwork Archive (Lab)", and the app wears the Lab badge and tint (lab.js).
+// IndexedDB and localStorage are per origin, so the lab site's local pipeline is its own too.
+// docs/web-contract.md, "Lab".
+export const LAB_HOSTS = ["paper-trail-lab.web.app", "paper-trail-lab.firebaseapp.com"];
+export const LAB = LAB_HOSTS.includes(location.hostname)
+  || (/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) && new URLSearchParams(location.search).has("lab"));
+export const LAB_SITE = "https://paper-trail-lab.web.app";
+// Path segments between users/{uid} and every collection: [] for the live app, ["lab", "data"] here.
+export const DATA_ROOT = LAB ? ["lab", "data"] : [];
 export const FIREBASE = {
   version: "12.19.0",
   config: { apiKey: "AIzaSyBeYnYKS4RnbptfZFZU5xSE9UYO-Brn5_E", authDomain: "paper-trail-bw.firebaseapp.com", projectId: "paper-trail-bw",
@@ -26,7 +39,8 @@ export const OAUTH = {
 };
 export const DRIVE_API = "https://www.googleapis.com/drive/v3/files";
 export const DRIVE_UPLOAD = "https://www.googleapis.com/upload/drive/v3/files";
-export const ROOT_FOLDER = "Paperwork Archive";
+// The lab files into its own folder, with the same 11 subfolders, never into the real archive.
+export const ROOT_FOLDER = LAB ? "Paperwork Archive (Lab)" : "Paperwork Archive";
 export const FOLDER_NAMES = [
   "01 Identity & Legal", "02 Taxes", "03 Money & Banking", "04 Insurance", "05 Medical", "06 Home",
   "07 Auto", "08 Work & Income", "09 Warranties & Manuals", "10 Personal & Sentimental", "11 Other",
@@ -50,7 +64,9 @@ export const READERS = 2;                         // documents Claude reads at o
 export const DENIED = "This account isn't on the list. Sign in with a different Google account.";
 
 // Shown in the Settings footer ("Paper Trail {version}"). The web app's own version, not the iPhone app's.
-export const VERSION = "2.0 (web)";
+export const VERSION = LAB ? "2.0 (web) Lab" : "2.0 (web)";
+// The name in the browser tab ("Sort · Paper Trail"); the lab's says Lab.
+export const APP_NAME = LAB ? "Paper Trail Lab" : "Paper Trail";
 
 // ---------- backend: Firebase, or the local stand-in ----------
 export const params = new URLSearchParams(location.search);

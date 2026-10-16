@@ -1,0 +1,22 @@
+/* The no-AI lab build (#92). Owner: lab (js/lab.js). Everything here waits for html.pt-lab, which
+   js/boot.js sets before the first paint on paper-trail-lab.web.app (or localhost with ?lab), so the
+   live app never draws any of it. Colors come from the --lab tokens in tokens.css. */
+
+/* The badge: the sign-in screen, each tab's nav bar, and the Settings Lab section. */
+.lab-badge { display: none; }
+.pt-lab .lab-badge { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: var(--r-capsule);
+  background: var(--lab); color: var(--lab-on); font: 700 12px/1 var(--font); letter-spacing: 0.4px; text-transform: uppercase;
+  vertical-align: middle; white-space: nowrap; }
+.pt-lab .gate-title .lab-badge { margin-left: var(--s-2); position: relative; top: -3px; }
+.pt-lab .nav-leading .lab-badge { margin-left: var(--s-1); }
+
+/* The tab bar wears the lab's color: a violet edge, and the selected tab in violet, not the blue. */
+.pt-lab .tabbar-tabs { box-shadow: var(--glass-shadow), inset 0 0 0 1.5px var(--lab); }
+.pt-lab .tabbar-item[aria-selected="true"] { color: var(--lab); background: var(--lab-soft); }
+.pt-lab .tabbar-search { box-shadow: var(--glass-shadow), inset 0 0 0 1.5px var(--lab); }
+.pt-lab .tabbar-search[aria-selected="true"] { color: var(--lab); }
+
+/* Settings, Lab section */
+.lab-stats-fields { display: grid; grid-template-columns: 1fr auto; gap: 2px var(--s-3); margin: 0; padding: var(--s-2) var(--s-4) var(--s-3); }
+.lab-stats-fields dt { color: var(--ink); }
+.lab-stats-fields dd { margin: 0; color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }

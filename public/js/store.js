@@ -70,3 +70,25 @@ export const findByHash = (hash) => (hash && knownDocs.find((d) => d.contentHash
 export const watchSenders = (cb, err) => B.watch(PATHS.senders, null, cb, err);
 export const setSenderRule = (rule) => B.set(`${PATHS.senders}/${rule.key}`, rule);
 export const deleteSenderRule = (key) => B.del(`${PATHS.senders}/${key}`);
+
+// ---------- the lab reader (#92): users/{uid}/lab/... ----------
+// lab/reader/reads/{readId}: one per lab read: the rules' card, where the text came from, Needs a
+// look, and with compare mode Claude's card, the per-field agreement and Bryce's picks (ground truth).
+// lab/settings: { compareWithClaude } (missing means on). Owners: lab/compare.js, lab/stats.js.
+// Deep-cleaned of undefined, which Firestore refuses.
+export const LAB_PATHS = { reads: "lab/reader/reads", settings: "lab/settings" };
+const plain = (o) => JSON.parse(JSON.stringify(o));
+export const watchLabReads = (cb, err) => B.watch(LAB_PATHS.reads, "createdAt", cb, err);
+export const putLabRead = (id, rec) => B.set(`${LAB_PATHS.reads}/${id}`, plain(rec));
+export const updateLabRead = (id, patch) => B.update(`${LAB_PATHS.reads}/${id}`, plain(patch));
+export const watchLabSettings = (cb, err) => B.watch("lab", null, (list) => {
+  const { id, ...rest } = list.find((d) => d.id === "settings") || {};
+  cb(rest);
+}, err);
+export async function saveLabSettings(patch) {
+  const cur = (await B.get(LAB_PATHS.settings).catch(() => null)) || {};
+  const next = { ...cur, ...patch };
+  delete next.id;
+  await B.set(LAB_PATHS.settings, plain(next));
+  return next;
+}

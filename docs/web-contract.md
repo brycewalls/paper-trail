@@ -79,6 +79,12 @@ All under `public/js/`. Entry `main.js` (a module script in `index.html`). jsPDF
 | 7 | `viewer.js` (new) | capture | The full-screen page viewer (4.11.1). |
 | 8 | `shell.js` | shared | The app shell: tab views, pushed screens, nav bars, the dock (accessory and tab bar, search mode), avatar, the Scan menu, keyboard. Exports `scanMenuItems`, `bindScanMenu`, `setAccessoryHidden`, `shellSignedIn`, `startShell`, `pushScreen`, `goTab`, `currentTabEl`. |
 | 9 | `main.js` | shared | Boot, the fake test hooks (`window.__PT__`), what a sign-in or sign-out does across modules. No feature code. |
+| 0 | `lab/rules-stub.js` | lab reader | Lab build only (#92): a temporary stand-in with the rules engine's interface, until `lab/rules/` (feat/lab-rules) lands. Deleted by the integrator. |
+| 0 | `lab/engine.js` | lab reader | The one door to the rules engine: `runRules(textPages, meta)`. The integrator points it at `lab/rules/`. |
+| 1 | `lab/rules-worker.js` | lab reader | A module Web Worker that runs `runRules` off the main thread. |
+| 4 | `lab/reader.js` | lab reader | The lab's reader, no AI: `READER`, `readText` (pdf.js text layer, Tesseract OCR for pages without text, with progress), `labRead`, `localSplit` (stack mode by page markers), `progressCopy`. Imported by `classify.js`. |
+| 6 | `lab/compare.js` | lab reader | Compare mode: records each lab read, asks `classify.claudeRead` in the background when it's on, scores the fields (`fieldAgrees`, `compareCards`, `SCORED`, `ROUTING`), the card chip (`labChip`), the compare sheet (`openCompare`) and `savePicks` (ground truth, sender rules). Imported by `deck.js`. |
+| 7 | `lab/stats.js` | lab reader | Settings, Lab (`registerSettingsSection` id `lab`, order 45): Compare with Claude and Lab Stats (`openLabStats`, `computeStats`). |
 
 CSS: `css/tokens.css` (tokens only), `css/components.css` (shared components), `css/shell.css` (the shell and sign-in), `css/app.css` (legacy screens, aliasing the old variable names to tokens; each owner deletes its section as it rebuilds). A new surface may add `css/<module>.css`, linked after `components.css`.
 
@@ -119,6 +125,8 @@ Exactly `ios/ARCHITECTURE.md`, "Firestore data model". Summary for the web, with
 **`users/{uid}/paperless/{slug(issuer)}`**: `issuer`, `how`, `status`, `firstSeen`, `doneAt`, plus optional `requestedAt`, `checkBackAt` (ISO), `steps [string]`, `stillMailingAt`, `lastSeen`, `mailHandledAt`. Status values are the iPhone app's: `todo` (To do), `requested`, `waiting_cycle`, `done` (Confirmed), `skip` (Can't stop). Pill copy comes from one `PAPERLESS_LABEL` map in `paperless.js`. The outbox creates a sender the first time a paperless-capable doc files (as today) and sets `stillMailingAt` and `lastSeen` when a new doc arrives from a sender already `requested`, `waiting_cycle` or `done`. Paperless screens only update status fields.
 
 **`users/{uid}/senders/{slug(issuer)}`**: `key`, `issuer`, optional `folder`, `filenamePattern` (`{date}`, `{yyyy}`, `{mm}`, `{issuer}`, `{type}`), `verdict`, `docType`, `updatedAt`. Written by "Remember for this sender" and Settings, Sender rules.
+
+**Lab build only (#92, `exp/no-ai`), `users/{uid}/lab/...`**: `lab/settings` `{ compareWithClaude }` (missing means on), and `lab/reader/reads/{readId}` (readId is the pipeline item's id), one per lab read: `createdAt`, `name`, `pages`, `textSource` (`text`, `ocr`, `mixed`, `none`), `textChars`, `ocrPages`, `ms`, `rules` (the card's fields), `rulesConfidence`, `appliedRule`, `unsure`, `needsLook`, `compare` (`off`, `pending`, `done`, `failed`), `contentHash`; with compare mode `claude`, `model`, `agree {field: bool}`, `agrees`, `comparedAt` or `compareError`; once Bryce picks, `picks {field: "rules"|"claude"}`, `truth {field: value}`, `pickedAt`. Written only by `store.js` (`putLabRead`, `updateLabRead`, `watchLabReads`, `watchLabSettings`, `saveLabSettings`). The live app never reads them.
 
 **`users/{uid}/config/drive`**: `root`, `folders {name: id}`, `updatedAt`. Year folders are cached under keys like `"02 Taxes/2025"`.
 
@@ -227,6 +235,9 @@ The exports other owners may call. Each owner adds its fake support in the same 
 | `item:ready` | item | `deck.js` | features | Legacy. |
 | `item:decided` | `{ item, dir }` | `deck.js` | features | Legacy, replaced by `deck:decided`. |
 | `record:saved` | `{ item, record, id }` | `store.js` | features | Legacy. |
+| `lab:read` | `{ item, source }` | `classify.js` | `lab/compare.js` | Lab build (#92): the rules read one document (`item.lab` is set). |
+| `lab:progress` | `{ id, progress }` | `classify.js` | `deck.js`, `review.js` | Lab build: the reader's progress line for an item changed (`item.progress`). |
+| `lab:compared` | `{ id }` | `lab/compare.js` | `deck.js` | Lab build: compare mode started, finished or failed for an item, or Bryce picked. |
 
 ## Backend interface
 
@@ -269,6 +280,7 @@ The popup methods (`signIn()`, `reconnect()`) are gone (#15): no popups. The cac
 | `readfail=N` | The first N reads fail with `rate_limited` (`readfail` alone: one; the queue retries twice by itself) | deck, capture |
 | `seed` | A filed library: docs in every pile and state (verified and not, shredded, keep, stored, a left swipe), five paperless senders in every status with a "still mailing" flag, two sender rules, `config/settings` | browse |
 | `hold=<seconds>` | The deck's undo hold is this long instead of 10 s (read by `deck.js` on the fake path only) | deck, tests |
+| `reader=claude` | Lab build (#92): read with the classify callable as the live app does, instead of the lab's rules (read by `lab/reader.js` on the fake path only). The deck, sort, capture, outbox, browse and scanner tests use it; `lab_test.mjs` doesn't | tests |
 
 Already answered: `call("driveToken")`, split mode (`mode: "split"`, a new document at every page whose text says "page 1"), `wantConfidence` (sparse), `senderHints` (applied like `functions/lib.js applySenderRule()`: spelling, folder, verdict, type, filename pattern, those fields certain, `appliedRule`), Drive `files.get` with a real `md5Checksum`, `files.update` with `trashed: true`, `alt=media`, `fullText contains` search, and uploads returning `md5Checksum` and `size`.
 
@@ -277,6 +289,8 @@ The session and the server's Drive grant survive a reload (sessionStorage `pt-fa
 Each owner adds, in its own PR: outbox (done): resumable chunks and `Content-Range: bytes */N` status (308 with `Range`), `?md5mismatch` (the first upload's checksum is wrong), `?md5pending` (the first `files.get` has no checksum), `?uploadfail=N` (the first N sessions are refused), and, read by `outbox.js` on the fake path, `?chunk=N` and `?fastretry` (retries after 1 to 4 s); the fake honors `AbortSignal`; capture, `?dupe=<sha256>` and `?splitfail` (done); browse, nothing beyond `seed` unless it needs it.
 
 OCR on the fake path: nothing loads unless the page asks with `?ocr`; tests put a stand-in on `window.__PT_OCR__` (blob, turns) → text.
+
+Lab compare mode (#92): a test sets `window.__PT_FAKE__.answer = (payload) => result` to choose what "Claude" answers (return null for the samples).
 
 Test hooks: `window.__PT__ = { addFiles, addPhotos, items(), scanner, outbox, db, importFiles, importPhotos, scanned, review(), reads }` (`outbox` and `db` are the modules). Add to it, don't rename; once the pipeline moves to `db.js`, `items()` returns the db's items.
 

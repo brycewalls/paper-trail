@@ -24,7 +24,7 @@ const server = createServer((req, res) => {
 });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 // hold=1: the deck's undo hold is one second instead of ten, so uploads start quickly (deck, #83).
-const base = `http://127.0.0.1:${server.address().port}/public/index.html?fake=1&hold=1`;
+const base = `http://127.0.0.1:${server.address().port}/public/index.html?fake=1&hold=1&reader=claude`;
 
 // ---------- test files, made here so the repo carries no binaries ----------
 function makePdf(pages, label) {

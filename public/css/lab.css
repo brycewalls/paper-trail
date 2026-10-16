@@ -1,0 +1,37 @@
+/* The lab reader (#92): the compare chip on the card, the compare sheet and Lab Stats, drawn by
+   js/lab/compare.js and js/lab/stats.js. Tokens only, both themes. Owner: lab reader. */
+
+/* ---------- the card's chip: quiet, under the filename ---------- */
+.dk-lab { display: flex; margin-top: var(--s-2); }
+.lab-chip { border: none; cursor: default; font-weight: 500; }
+button.lab-chip { position: relative; cursor: pointer; }
+button.lab-chip::before { content: ""; position: absolute; inset: -12px -6px; }   /* 44 pt tap target */
+button.lab-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lab-chip[data-lab-state="agrees"] .sym { color: var(--file); }
+.lab-chip-picked { margin-left: 2px; color: var(--muted); font-weight: 400; }
+
+/* ---------- the compare sheet ---------- */
+.lab-compare .group-body { padding: 0; }
+.lab-field { display: grid; gap: var(--s-2); padding: var(--s-3) var(--list-inset); border-top: 0.5px solid var(--separator); }
+.lab-field:first-child { border-top: none; }
+.lab-field-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-2); }
+.lab-field-name { font: var(--t-headline); letter-spacing: var(--tr-headline); color: var(--ink); }
+.lab-field-mark { display: inline-flex; align-items: center; gap: 3px; font: var(--t-footnote); color: var(--muted); }
+.lab-field-mark .sym { width: 13px; height: 13px; color: var(--file); }
+.lab-field.differs .lab-field-mark { color: var(--unsure); font-weight: 600; }
+.lab-pair { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-2); }
+.lab-side { display: grid; gap: 2px; min-width: 0; padding: var(--s-2) 10px; border-radius: 10px; background: var(--card-well); }
+.lab-side.picked { background: var(--file-soft); box-shadow: inset 0 0 0 1.5px var(--file); }
+.lab-who { font: var(--t-caption); font-weight: 600; color: var(--muted-solid); }
+.lab-val { font: var(--t-subheadline); letter-spacing: var(--tr-subheadline); color: var(--ink); overflow-wrap: anywhere; }
+.lab-val.mono { font: var(--t-mono-caption); }
+.lab-field.prose .lab-val { font: var(--t-footnote); color: var(--muted-solid); }
+.lab-pick .segmented { width: 100%; }
+
+/* ---------- Lab Stats ---------- */
+.lab-stats-sheet .sheet-toolbar { justify-content: flex-start; margin-top: -4px; }
+.lab-stats .empty-state { padding-top: var(--s-8); }
+.lab-stats .row-trailing { display: inline-flex; align-items: center; gap: var(--s-2); }
+.lab-bar { position: relative; display: inline-block; width: 64px; height: 6px; overflow: hidden; border-radius: var(--r-capsule); background: var(--fill-strong); }
+.lab-bar > span { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--accent); }
+@media (max-width: 360px) { .lab-bar { width: 40px; } }

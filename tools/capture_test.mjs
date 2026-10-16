@@ -32,7 +32,7 @@ const server = createServer((req, res) => {
   res.end(readFileSync(file));
 });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
-const base = `http://127.0.0.1:${server.address().port}/public/index.html?fake=1`;
+const base = `http://127.0.0.1:${server.address().port}/public/index.html?fake=1&reader=claude`;
 
 // ---------- test files, made here so the repo carries no binaries ----------
 function makePdf(pages, label, body = "") {

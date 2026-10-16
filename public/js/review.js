@@ -25,6 +25,7 @@ import { $, esc, on, emit } from "./ui.js";
 import { currentUser } from "./auth.js";
 import { findByHash } from "./store.js";
 import { readItem, proposeSplit, SPLIT } from "./classify.js";
+import { READER } from "./lab/reader.js";
 import { openPdfDoc, pageImage, pdfPageText, ocr, assemblePdf, sha256Hex } from "./media.js";
 import { primaryButton, statusPill, choiceChip } from "./ui/components.js";
 import { icon } from "./ui/icons.js";
@@ -38,6 +39,8 @@ const ITEM_THUMB_EDGE = 600;     // the deck card's thumbnail
 const FULL_EDGE = 2800;          // a PDF or turned page in the viewer
 const MAX_FULL_TEXT = 100_000;   // fullText on the doc
 const HELD = "Reads when you split or send";
+// Who splits a stack: the lab's page markers (#92), or Claude.
+const SPLITTER = READER === "rules" ? "The rules" : "Claude";
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const uuid = () => crypto.randomUUID();
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
@@ -47,6 +50,9 @@ let current = null;          // the review on screen
 const all = new Set();       // every review still working (a sent one keeps reading its groups)
 const sentHashes = new Map();// hash -> { title, date }: sent this visit, for "Already scanned"
 let store = null;
+
+// The lab reader (#92) reports its progress on the item; redraw the group's line.
+on("lab:progress", () => { if (current) current.render(); });
 
 // The pipeline store (db.js). main.js attaches it once db.js exists; see the header.
 export function attachStore(s) { store = s; }
@@ -114,16 +120,19 @@ class Review {
     if (st.status === "read") return { text: st.header, read: true };
     if (st.status === "failed") return { text: "Couldn't read this one", failed: true };
     if (st.status === "held") return { text: g.label || HELD, held: true };
-    return { text: g.label || `Reading page ${st.page || 1}` };
+    // The lab (#92): OCR progress while a page is read, then the rules' own progress line.
+    if (st.item && st.item.progress) return { text: g.label || st.item.progress };
+    const pct = st.ocrPct;
+    return { text: g.label || `Reading page ${st.page || 1}${typeof pct === "number" && pct < 1 ? ` with OCR, ${Math.round(pct * 100)}%` : ""}` };
   }
   hasStack() { return this.groups.some((g) => g.pageIds.length > 1); }
   offersSplit() { return !this.sent && this.hasStack() && (this.split.state === "idle" || this.split.state === "failed"); }
   splitDetail() {
     switch (this.split.state) {
       case "splitting": return "Finding where each document starts";
-      case "done": return this.split.documents === 1 ? "Claude thinks this is one document. Split it with the scissors if not." : `Claude found ${this.split.documents} documents. Fix any split with the scissors or Join.`;
-      case "failed": return "Claude couldn't split this stack. Split it with the scissors, or try again.";
-      default: return "Claude finds where each document starts. You can change any split after.";
+      case "done": return this.split.documents === 1 ? `${SPLITTER} think${SPLITTER === "Claude" ? "s" : ""} this is one document. Split it with the scissors if not.` : `${SPLITTER} found ${this.split.documents} documents. Fix any split with the scissors or Join.`;
+      case "failed": return `${SPLITTER} couldn't split this stack. Split it with the scissors, or try again.`;
+      default: return `${SPLITTER} find${SPLITTER === "Claude" ? "s" : ""} where each document starts. You can change any split after.`;
     }
   }
   snapshot() {
@@ -359,9 +368,10 @@ class Review {
     const found = [];
     for (let i = 0; i < pages.length; i++) {
       if (!this.isCurrent(gid)) return;
-      this.states.get(gid).page = i + 1;
+      const live = this.states.get(gid);
+      live.page = i + 1; live.ocrPct = null;
       this.render();
-      found.push(await this.textFor(pages[i]));
+      found.push(await this.textFor(pages[i], (pct) => { if (this.states.get(gid) === live && live.page === i + 1) { live.ocrPct = pct; this.render(); } }));
     }
     if (!this.isCurrent(gid)) return;
     const pdf = await this.buildPdf(pages, found);
@@ -375,6 +385,9 @@ class Review {
       name: g.label || (pages[0].sourceName || "").replace(/\.[^.]+$/, "") || `${this.kind === "scan" ? "Scan" : "Photos"}, ${plural(pages.length, "page", "pages")}`,
       pages: pages.length, sizeBytes: pdf.size, contentHash: hash,
       ocrText: found.map((t) => t.text).filter(Boolean).join("\n\n").slice(0, MAX_FULL_TEXT),
+      // The lab reader (#92) reads page by page, and says where the text came from.
+      textPages: found.map((t) => String(t.text || "").slice(0, MAX_FULL_TEXT)),
+      textSource: textSourceOf(found),
       card: null, unsureFields: [], readErrorCode: null,
     };
     item.whenRead = new Promise((r) => { st.settle = r; });
@@ -407,18 +420,18 @@ class Review {
 
   // One page's text: the PDF's own text layer, or OCR of the picture (also of a scanned PDF page
   // with no text of its own). Cached per page and turn.
-  textFor(p) {
+  textFor(p, onProgress) {
     const key = `${p.id}-${p.turns}`;
     if (!this.texts.has(key)) {
       this.texts.set(key, (async () => {
         if (p.pdf) {
           const doc = await this.pdfDocFor(p);
           const own = await pdfPageText(doc, p.index + 1).catch(() => "");
-          if (own.replace(/\s+/g, "")) return { text: own, words: [], width: 0 };
-          return { ...(await ocr(await pageImage(p, 2000, 0.9, doc))), words: [], width: 0 };
+          if (own.replace(/\s+/g, "")) return { text: own, words: [], width: 0, via: "text" };
+          return { ...(await ocr(await pageImage(p, 2000, 0.9, doc), 0, { onProgress })), words: [], width: 0, via: "ocr" };
         }
-        const r = await ocr(p.image, p.turns);
-        return { text: r.text, words: r.words, width: r.width };
+        const r = await ocr(p.image, p.turns, { onProgress });
+        return { text: r.text, words: r.words, width: r.width, via: "ocr" };
       })());
     }
     return this.texts.get(key);
@@ -620,6 +633,13 @@ function duplicateFor(hash) {
   return here ? { kind: "onPhone", title: here.title, date: here.date } : null;
 }
 // The item as db.js stores it: no promises.
+// "text" (every page had its own text), "ocr", "mixed" or "none" (#92).
+function textSourceOf(found) {
+  const withText = found.filter((t) => String(t.text || "").trim());
+  if (!withText.length) return "none";
+  const ocrd = withText.filter((t) => t.via === "ocr").length;
+  return ocrd === 0 ? "text" : ocrd === withText.length ? "ocr" : "mixed";
+}
 const plainItem = (it) => Object.fromEntries(Object.entries(it).filter(([k, v]) => k !== "whenRead" && typeof v !== "function"));
 
 // Reopens a review left open when the page closed (spec 4.11). Once per launch, after sign-in.

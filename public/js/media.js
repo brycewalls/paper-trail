@@ -4,7 +4,8 @@
 // Owner: capture. Since the capture build (#83) it also has what the scan review needs, the web
 // twins of the iPhone app's PageAssembler, TextRecognizer and DocumentBuilder:
 //   pdfText(file)            the PDF's own text, one string per page (pdf.js text content)
-//   ocr(blob, turns)         on-device OCR of a page picture (Tesseract.js, loaded the first time)
+//   ocr(blob, turns, { onProgress })  on-device OCR of a page picture (Tesseract.js, loaded the first
+//                            time, one page at a time); onProgress(0..1) while it recognizes (lab, #92)
 //   assemblePdf(pages)       one PDF from review pages: pictures with a hidden text layer (#22),
 //                            imported PDF pages copied as they are (pdf-lib), turned pages turned
 //   uprightJpeg, pageImage   upright page pictures at a given size, for thumbnails and the viewer
@@ -169,6 +170,8 @@ export async function pdfPageText(doc, n) {
 const TESSERACT = { version: "5.1.1", core: "5.1.1" };
 const OCR_EDGE = 2000;
 let ocrWorker = null;
+let ocrProgress = null;            // the page being read now gets Tesseract's progress
+let ocrTurn = Promise.resolve();   // one page at a time, so progress belongs to one caller
 function loadTesseract() {
   if (ocrWorker) return ocrWorker;
   ocrWorker = (async () => {
@@ -185,6 +188,7 @@ function loadTesseract() {
       workerPath: `https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/${TESSERACT.version}/worker.min.js`,
       corePath: `https://cdn.jsdelivr.net/npm/tesseract.js-core@${TESSERACT.core}`,
       langPath: "https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng@1.0.0/4.0.0_best_int",
+      logger: (m) => { if (ocrProgress && m && m.status === "recognizing text") ocrProgress(Math.max(0, Math.min(1, Number(m.progress) || 0))); },
     });
   })();
   ocrWorker.catch(() => { ocrWorker = null; });
@@ -192,16 +196,24 @@ function loadTesseract() {
 }
 // Reads a page picture. Resolves { text, words: [{ text, x, y, w, h }] (in the upright picture's
 // pixels), width, height }; never throws.
-export async function ocr(blob, turns = 0) {
+export function ocr(blob, turns = 0, { onProgress } = {}) {
+  const run = ocrTurn.then(() => ocrOne(blob, turns, onProgress));
+  ocrTurn = run.catch(() => {});
+  return run;
+}
+async function ocrOne(blob, turns, onProgress) {
   const empty = { text: "", words: [], width: 0, height: 0 };
   try {
     if (FAKE && typeof window.__PT_OCR__ === "function") {
+      if (onProgress) onProgress(0.5);
       const text = String(await window.__PT_OCR__(blob, turns) || "");
+      if (onProgress) onProgress(1);
       return { ...empty, text };
     }
     if (FAKE && !params.has("ocr")) return empty;
     const cv = await drawUpright(blob, OCR_EDGE, turns);
     const worker = await loadTesseract();
+    ocrProgress = onProgress || null;
     const { data } = await worker.recognize(cv);
     const words = (data.words || []).filter((w) => w.text && w.confidence > 30)
       .map((w) => ({ text: w.text, x: w.bbox.x0, y: w.bbox.y0, w: w.bbox.x1 - w.bbox.x0, h: w.bbox.y1 - w.bbox.y0 }));
@@ -209,6 +221,8 @@ export async function ocr(blob, turns = 0) {
   } catch (e) {
     console.warn("OCR didn't run", e);
     return empty;
+  } finally {
+    ocrProgress = null;
   }
 }
 

@@ -80,11 +80,41 @@ a { color: var(--accent); }
 .google-btn:disabled { opacity: 0.6; cursor: default; }
 .gate-note { margin: 0; max-width: 340px; text-align: center; font: var(--t-footnote); letter-spacing: var(--tr-footnote); color: var(--muted); }
 
+/* ---------- 4.1 states (auth): cached open, in progress, not allowed, failures ---------- */
+/* #14: js/boot.js marks <html> before the first paint when this device has a cached account. */
+.pt-cached #gate { display: none !important; }
+.pt-cached #app[hidden] { display: block !important; }
+.google-btn .spinner { width: 20px; height: 20px; color: var(--google-ink); }
+.google-btn[aria-busy="true"] { opacity: 1; }
+.google-btn[aria-busy="true"] .g-mark { opacity: 0.5; }
+.gate-alt { width: 100%; min-height: var(--primary-h); display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2); border: none; border-radius: var(--r-capsule);
+  cursor: pointer; background: var(--surface); box-shadow: inset 0 0 0 1px var(--separator); color: var(--accent); font: var(--t-headline); letter-spacing: var(--tr-headline); }
+.gate-alt:disabled { cursor: default; }
+.gate-actions .btn-primary { width: 100%; }
+.gate-err { margin: 0; max-width: 320px; text-align: center; font: var(--t-footnote); letter-spacing: var(--tr-footnote); color: var(--danger); }
+.gate-err:empty { display: none; }
+.google-btn:focus-visible, .gate-alt:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* On success the app cross-fades in (spec 4.1). */
+.app-col.app-enter { animation: pt-app-in 0.3s ease-out; }
+@keyframes pt-app-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .app-col.app-enter { animation-duration: 0.2s; } }
+
+/* ---------- 3.9 / 4.16 the Reconnect Drive banner (auth) ---------- */
+[data-reconnect-banner] { margin-bottom: var(--s-4); }
+[data-reconnect-banner] .banner-actions { align-items: center; }
+[data-reconnect-banner] .banner-actions .spinner { color: var(--danger); }
+.banner-fail { flex-basis: 100%; margin: 0; font: var(--t-footnote); letter-spacing: var(--tr-footnote); color: var(--danger); }
+
 /* ---------- 4.9 Settings content ---------- */
 .settings-panel { padding-top: var(--s-2); }
 .settings-panel .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--danger); margin: 0 7px; }
 .settings-panel .dot.on { background: var(--file); }
-.settings-panel .account-row .row-title { font: var(--t-title3); font-weight: 500; }
+.settings-panel .account-name { font: var(--t-title3); font-weight: 500; letter-spacing: var(--tr-title3); }
+.settings-panel .reconnect-row:disabled { cursor: default; }
+.settings-panel .row-subtitle.danger { color: var(--danger); }
+.settings-panel .list-row.centered { justify-content: center; text-align: center; }
+.settings-panel .list-row.centered .row-text { flex: 0 1 auto; }
+.settings-back { margin: 0 0 var(--s-2) calc(var(--list-inset) - 6px); }
 .settings-version { text-align: center; padding-top: var(--s-4); }
 
 /* ---------- Sort: the legacy intake, restyled to the tokens (hidden; the deck is css/deck.css) ---------- */

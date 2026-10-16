@@ -18,9 +18,10 @@ import { items, newItem, findItem, isPdf } from "./items.js";
 import { classifyItem, readError, readErrorCode, normalize, unsureFields, isConfident, applySenderRule, markConfident } from "./classify.js";
 import { openPdfDoc, renderPage, photoJpeg } from "./media.js";
 import * as outbox from "./outbox.js";
+import { deleteItem } from "./db.js";
 import { renderDrive } from "./drive.js";
 import { watchSettings, saveSettings } from "./store.js";
-import { ruleList, saveRule } from "./senders.js";
+import { ruleList, rememberSender } from "./senders.js";
 import { registerSettingsSection } from "./settings.js";
 import { route, push } from "./router.js";
 import { bindScanMenu } from "./shell.js";
@@ -165,9 +166,10 @@ export function releaseHeld() {
   }
 }
 function toOutbox(it) {
-  if (typeof outbox.release === "function") { outbox.release(it.id); return; }
-  // Legacy outbox (in memory): a right swipe uploads, a left swipe is logged. The record is the
-  // card as the iPhone app writes it: the check sheet's alternatives and appliedRule stay local.
+  // The deck's cards still live in items.js (in memory), so they reach the local-first outbox
+  // through its bridge: enqueue / logShred copy the card and its PDF into db.js and release it at
+  // once (the hold has already run here). The record is the card as the iPhone app writes it: the
+  // check sheet's alternatives and appliedRule stay local.
   if (!it.card) setCard(it, normalize({ title: it.name, verdict: "shred" }));
   const { alternatives, appliedRule, ...card } = it.card;
   void alternatives; void appliedRule;
@@ -191,7 +193,11 @@ export async function undo() {
   let back = d.ids.map(findItem).filter(Boolean);
   if (d.released) {
     const ok = [];
-    for (const it of back) if (await outbox.sendBack(it.id)) ok.push(it);
+    for (const it of back) {
+      // The bridge filed it under its own pipeline id; once sent back, that pipeline copy goes.
+      const pid = it.pipelineId || it.id;
+      if (await outbox.sendBack(pid)) { ok.push(it); if (it.pipelineId) { it.pipelineId = null; await deleteItem(pid).catch(() => {}); } }
+    }
     back = ok;
   }
   for (const it of back) {
@@ -226,7 +232,7 @@ export async function saveEdits(it, edited, { remember = false } = {}) {
   setCard(it, card);
   it.edited = true;
   if (isReadFailed(it)) { it.stage = "ready"; it.failedStage = ""; it.errorMessage = ""; it.readErrorCode = ""; }
-  if (remember) await saveRule(card);
+  if (remember) await rememberSender(card);
   render();
 }
 // When the date changes and the filename still starts with the old one, the prefix follows.
@@ -712,7 +718,7 @@ export async function openCheck(it, focus) {
   if (!result) { focusCard(); return; }
   setCard(it, result.card);
   it.edited = true;
-  if (result.remember) saveRule(result.card);   // never blocks filing
+  if (result.remember) rememberSender(result.card);   // never blocks filing
   if (deckCards()[0] === it) act("file", it); else { file(it); render(); }
 }
 

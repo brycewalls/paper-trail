@@ -306,7 +306,10 @@ try {
 
   // 7. Card detail and edit (4.13), Fill it in yourself, and the read-only document view.
   {
-    const { ctx, page, problems } = await open("&hold=1&readfail&seed");
+    // The reading queue retries a rate limit twice by itself, so three failures reach the card; the
+    // waits are shortened for the test.
+    const { ctx, page, problems } = await open("&hold=1&readfail=3&seed");
+    await page.evaluate(async () => (await import("/public/js/classify.js")).setBackoff([50, 50]));
     // one at a time, so the fake's first (failing) read is this one
     await page.setInputFiles("#file", [pdf("a.pdf", "Duke A")]);
     await page.waitForSelector(`${TOP} [data-act=fill]`, { timeout: 15000 });

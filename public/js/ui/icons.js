@@ -45,6 +45,9 @@ const P = {
   "circle": '<circle cx="12" cy="12" r="9"/>',
   "calendar": '<rect x="4" y="5.5" width="16" height="14.5" rx="2"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/>',
   "trash": '<path d="M4.5 7h15M10 4h4M6.5 7l1 12.5A1.5 1.5 0 0 0 9 21h6a1.5 1.5 0 0 0 1.5-1.5l1-12.5"/>',
+  // capture (#83): the scan review's "Split into documents" and a page's Rotate
+  "rectangle.split.3x1": '<rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="M9 5.5v13M15 5.5v13"/>',
+  "rotate.right": '<path d="M13 4.5a7.5 7.5 0 1 1-7.4 8.8"/><path d="M13 1.8v5.4l3-2.7z" fill="currentColor"/><rect x="5" y="9" width="7" height="9" rx="1.2"/>',
 };
 
 export const ICONS = Object.keys(P);

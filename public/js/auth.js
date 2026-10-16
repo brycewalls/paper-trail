@@ -17,7 +17,7 @@
 //
 // It also draws the sign-in screen (4.1, #gate) and the Reconnect Drive banners (3.9, 4.16).
 // main.js decides what a sign-in or sign-out does across modules (watchUser).
-import { DRIVE_SCOPE, OAUTH } from "./config.js";
+import { DRIVE_SCOPE, OAUTH, LAB } from "./config.js";
 import { $, esc, emit, on, errCode } from "./ui.js";
 import { B } from "./backend.js";
 import { items } from "./items.js";
@@ -215,8 +215,9 @@ async function challengeFor(verifier) {
   return b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
 }
 // The web nonce: "web_" plus 24 random bytes (32 characters). The iPhone app's are always 22
-// characters, which is how oauthCallback knows to send this one back to the web.
-export const webNonce = () => `web_${randomToken(24)}`;
+// characters, which is how oauthCallback knows to send this one back to the web. The lab site's
+// start "lab_" instead, which picks the lab host from oauthCallback's allowlist (#92).
+export const webNonce = () => `${LAB ? "lab" : "web"}_${randomToken(24)}`;
 
 // purpose: "signIn" (pick the account, consent to everything), "connect" (4.1 step 2) or
 // "reconnect" (4.16): Drive only, for the signed-in account.

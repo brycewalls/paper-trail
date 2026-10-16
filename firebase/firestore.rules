@@ -13,6 +13,13 @@ service cloud.firestore {
     match /users/{uid}/{document=**} {
       allow read, write: if allowed() && request.auth.uid == uid;
     }
+    // The no-AI lab build (#92, paper-trail-lab.web.app) keeps its data apart from the real archive,
+    // under users/{uid}/lab/data/ (docs, paperless, senders, config, compare). The match above
+    // already covers it; this one says so on purpose, with the same owner-only rule, so the lab can
+    // never be opened wider than the rest of the account.
+    match /users/{uid}/lab/{document=**} {
+      allow read, write: if allowed() && request.auth.uid == uid;
+    }
     // Server-only Google sign-in state for the iPhone app (#14, #15): the Drive refresh tokens and
     // the two-minute sign-in handoffs. Only Cloud Functions (Admin SDK, which skips these rules)
     // touch them; no client, the owner included, may read or write either one.

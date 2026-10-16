@@ -27,6 +27,7 @@ import { reviewState } from "./review.js";
 import { queueStats } from "./classify.js";
 import "./senders.js";
 import { startShell, shellSignedIn } from "./shell.js";
+import "./lab.js";      // the lab build (#92): badge, Lab settings, Rules vs Claude; inert on the live site
 
 let unwatch = [];
 let shown = null;        // uid the app is showing

@@ -7,7 +7,7 @@
 //   - document rows: the labeled thumbnail, trailing swipe actions with their keyboard and menu twins
 //   - the read-only document view pushed from Piles and Search (spec 4.13 read-only, "doc:<id>")
 //   - the Reconnect Drive banner on Piles (spec 4.16)
-import { YEAR_FOLDERS } from "./config.js";
+import { YEAR_FOLDERS, APP_NAME } from "./config.js";
 import { $, esc, on, emit } from "./ui.js";
 import { registerScreen, screens, push } from "./router.js";
 import { watchDocs, watchPaperless, watchSettings } from "./store.js";
@@ -298,7 +298,7 @@ const DOC_SCREEN = {
   mount(el, { param, body, setTitle }) {
     const draw = () => {
       const doc = lib.docs.find((d) => d.id === param);
-      if (doc) { setTitle(doc.title, null); document.title = `${doc.title} · Paper Trail`; }
+      if (doc) { setTitle(doc.title, null); document.title = `${doc.title} · ${APP_NAME}`; }
       const trailing = el.querySelector(".nav-trailing");
       trailing.innerHTML = doc?.driveUrl
         ? `<button type="button" class="glass-circle small" data-share aria-label="Share">${icon("square.and.arrow.up")}</button><a class="nav-text-btn b-nav-link" href="${esc(doc.driveUrl)}" target="_blank" rel="noopener">Open in Drive</a>` : "";

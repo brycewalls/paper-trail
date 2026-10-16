@@ -70,3 +70,25 @@ export const findByHash = (hash) => (hash && knownDocs.find((d) => d.contentHash
 export const watchSenders = (cb, err) => B.watch(PATHS.senders, null, cb, err);
 export const setSenderRule = (rule) => B.set(`${PATHS.senders}/${rule.key}`, rule);
 export const deleteSenderRule = (key) => B.del(`${PATHS.senders}/${key}`);
+
+// ---------- the lab build (#92) ----------
+// On the lab site every path above already sits under users/{uid}/lab/data/ (backend.js adds
+// DATA_ROOT), so the lab's docs, paperless, senders and config never touch the real archive. Two
+// more, lab only (docs/web-contract.md, "Lab"):
+// users/{uid}/lab/data/config/lab: { reader: "rules", compareWithClaude } (compare defaults on).
+export const LAB_SETTINGS_PATH = "config/lab";
+export const watchLabSettings = (cb, err) => B.watch("config", null, (list) => {
+  const { id, ...rest } = list.find((d) => d.id === "lab") || {};
+  cb(rest);
+}, err);
+export async function saveLabSettings(patch) {
+  const cur = (await B.get(LAB_SETTINGS_PATH).catch(() => null)) || {};
+  const next = { ...cur, ...patch };
+  delete next.id;
+  await B.set(LAB_SETTINGS_PATH, defined(next));
+  return next;
+}
+// users/{uid}/lab/data/compare/{itemId}: one per document read with compare on: { at, agree
+// { field: true|false }, rules, claude }. Written by the reader, read for the stats row.
+export const putComparison = (id, rec) => B.set(`compare/${id}`, defined(rec));
+export const watchComparisons = (cb, err) => B.watch("compare", "at", cb, err);

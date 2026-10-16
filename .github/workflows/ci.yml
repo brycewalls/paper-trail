@@ -1,4 +1,5 @@
-# Paper Trail CI. Every push to main and every pull request:
+# Paper Trail CI. Every push to main and every pull request (any base branch, v2 included):
+#   contract   tools/contract_check.mjs: the machine-checkable parts of docs/v2-contract.md
 #   smoke      opens every HTML page in headless Chromium at desktop and phone widths and fails on
 #              console errors, page errors, failed requests, or horizontal overflow (the template's
 #              test, from Web Development Resources/github-template)
@@ -59,6 +60,8 @@ jobs:
           cache-dependency-path: functions/package-lock.json
       - run: npm ci --prefix functions
       - run: node --test functions/test/*.test.mjs
+      - name: Check the v2 module contract
+        run: node tools/contract_check.mjs
 
   changes:
     name: What changed

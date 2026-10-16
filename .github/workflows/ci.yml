@@ -25,6 +25,10 @@
 #   lab reader the lab reader on ?lab (tools/lab_reader_test.mjs): reading with the text layer, OCR and
 #              the rules (no classify call with compare off), the rules worker, local split, compare
 #              mode's chip and sheet, picks as ground truth and sender rules, Lab Stats
+#   lab match  the lab's on-device matcher (tools/lab_match_test.mjs, #102): sender autocorrect, the
+#              learning loop (examples), sender rules first, who decided each field in the compare
+#              sheet, the switch, and no long task from the matcher at 4x CPU throttling. CI uses a
+#              hashed-words stand-in for the model (its files aren't in git); --model runs the real one
 #   functions  the classify function's unit tests, Claude stood in; the lab's no-AI rules engine (#92):
 #              its unit tests and the eval against the synthetic corpus, which fails under its floors
 #   ios        the iPhone app (ios/): xcodegen, a simulator build and the unit tests. macOS minutes
@@ -83,6 +87,9 @@ jobs:
       - name: The lab reader, compare mode and Lab Stats (#92)
         if: always()
         run: node tools/lab_reader_test.mjs
+      - name: The lab's on-device matcher (#102)
+        if: always()
+        run: node tools/lab_match_test.mjs
       - name: Keep the screenshots
         if: always()
         uses: actions/upload-artifact@v4
@@ -103,7 +110,7 @@ jobs:
           cache-dependency-path: functions/package-lock.json
       - run: npm ci --prefix functions
       - run: node --test functions/test/*.test.mjs
-      - name: The lab rules engine (#92), unit tests and eval floors
+      - name: The lab rules engine (#92) and matcher (#102), unit tests and eval floors
         if: always()
         run: |
           node --test tools/lab/*.test.mjs

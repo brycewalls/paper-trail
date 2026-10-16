@@ -3,9 +3,10 @@
 // with ?lab) makes it.
 //   - The Lab badge on the sign-in screen and each tab's nav bar, and the lab's sign-in copy. The
 //     tab bar's tint and <html class="pt-lab"> come from boot.js and css/lab.css.
-//   - Lab settings (users/{uid}/lab/data/config/lab): the reader (Rules) and "Compare with Claude"
-//     (on by default; Bryce approved compare mode). compareEnabled() is what the reader asks before
-//     it calls classify for a comparison.
+//   - Lab settings (users/{uid}/lab/data/config/lab): the reader (Rules), "Compare with Claude"
+//     (on by default; Bryce approved compare mode) and "On-device matcher" (on by default, #102).
+//     compareEnabled() is what the reader asks before it calls classify for a comparison;
+//     lab/match/matcher.js reads matcherSetting().
 //   - The "Rules vs Claude" stats from users/{uid}/lab/data/compare: agreementStats() per field.
 //   - The Lab section in Settings (order 25, after Google Drive), with a row that opens Lab Stats
 //     (lab/stats.js).
@@ -28,13 +29,16 @@ export const LAB_COPY = {
   reader: "Rules, no AI",
   compare: "Compare with Claude",
   compareSub: "Claude reads each document too, only to score the rules. Nothing it says is filed.",
+  matcher: "On-device matcher",
+  matcherSub: "Checks each card against what you've filed and fixes garbled senders. No cloud AI.",
   stats: "Rules vs Claude",
   none: "No comparisons yet",
   footer: `Lab data stays apart from your real archive: its own records, and Drive files in "${ROOT_FOLDER}".`,
 };
 
 // ---------- settings ----------
-let settings = { reader: "rules", compareWithClaude: true };
+const DEFAULTS = { reader: "rules", compareWithClaude: true, matcher: true };
+let settings = { ...DEFAULTS };
 let records = [];
 let unwatch = [];
 let host = null;   // the open Settings sheet's section element
@@ -46,6 +50,12 @@ export async function setCompare(onOff) {
   settings = { ...settings, compareWithClaude: !!onOff };
   draw();
   await saveLabSettings({ reader: "rules", compareWithClaude: !!onOff });
+}
+export const matcherSetting = () => settings.matcher !== false;
+export async function setMatcher(onOff) {
+  settings = { ...settings, matcher: !!onOff };
+  draw();
+  await saveLabSettings({ reader: "rules", matcher: !!onOff });
 }
 
 // ---------- stats ----------
@@ -83,6 +93,7 @@ function sectionHtml() {
   return section(
     row({ title: "Reader", trailing: `<span class="row-value" id="lab-reader">${esc(LAB_COPY.reader)}</span>` })
     + toggleRow(LAB_COPY.compare, { id: "lab-compare", checked: compareEnabled(), subtitle: LAB_COPY.compareSub })
+    + toggleRow(LAB_COPY.matcher, { id: "lab-matcher", checked: matcherSetting(), subtitle: LAB_COPY.matcherSub })
     + `<div id="lab-stats-host">${statsHtml()}</div>`
     + valueRow("Lab Stats", "", { "data-open-lab-stats": "", "aria-label": "Lab Stats" }),
     { header: "Lab", footer: LAB_COPY.footer, id: "settings-lab" });
@@ -92,6 +103,8 @@ function draw() {
   if (!host || !host.isConnected) { host = null; return; }
   const t = host.querySelector("#lab-compare");
   if (t) t.checked = compareEnabled();
+  const m = host.querySelector("#lab-matcher");
+  if (m) m.checked = matcherSetting();
   const s = host.querySelector("#lab-stats-host");
   if (s) s.innerHTML = statsHtml();
 }
@@ -117,6 +130,9 @@ if (LAB) {
       el.querySelector("#lab-compare")?.addEventListener("change", (e) => {
         setCompare(e.target.checked).catch((err) => console.warn("Lab settings didn't save", err));
       });
+      el.querySelector("#lab-matcher")?.addEventListener("change", (e) => {
+        setMatcher(e.target.checked).catch((err) => console.warn("Lab settings didn't save", err));
+      });
       // Lab Stats (lab/stats.js, the reader's): agreement per field, your picks, Needs a look.
       el.querySelector("[data-open-lab-stats]")?.addEventListener("click", () => {
         import("./lab/stats.js").then((m) => m.openLabStats()).catch((err) => console.warn("Lab Stats didn't open", err));
@@ -125,14 +141,14 @@ if (LAB) {
   on("session:started", () => {
     unwatch.forEach((f) => f());
     unwatch = [
-      watchLabSettings((s) => { settings = { reader: "rules", compareWithClaude: true, ...s }; draw(); }, (e) => console.warn("Lab settings", e)),
+      watchLabSettings((s) => { settings = { ...DEFAULTS, ...s }; draw(); }, (e) => console.warn("Lab settings", e)),
       watchComparisons((list) => { records = list; draw(); }, (e) => console.warn("Lab comparisons", e)),
     ];
   });
   on("session:ended", () => {
     unwatch.forEach((f) => f());
     unwatch = [];
-    settings = { reader: "rules", compareWithClaude: true };
+    settings = { ...DEFAULTS };
     records = [];
   });
 }

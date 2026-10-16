@@ -14,6 +14,7 @@
 #   --rules  replaces the project's Firestore rules. users/{uid}/lab/** is already covered by the
 #            rules on main, so this is only needed if this branch changed them on purpose.
 # Before anything deploys: the function unit tests, the contract check and the rules check pass.
+# The matcher's model files (public/lab-models/match/, git-ignored) are fetched and checked first.
 # Needs the Firebase CLI, logged in (firebase login), and Node 20 or later.
 set -euo pipefail
 cd "${DEPLOY_ROOT:-$(dirname "$0")/..}"
@@ -57,6 +58,9 @@ if [ "$OAUTH" = yes ]; then
   export FUNCTIONS_DISCOVERY_TIMEOUT="${FUNCTIONS_DISCOVERY_TIMEOUT:-120}"
   firebase deploy --only functions:oauthCallback --project "$PROJECT" --non-interactive
 fi
+
+# The on-device matcher's model and runtime (#102): pinned, hash-checked, served from the lab site.
+bash tools/lab/fetch-models.sh
 
 firebase deploy --only hosting:lab --project "$PROJECT" --non-interactive
 echo "Lab is up at $LAB_URL"

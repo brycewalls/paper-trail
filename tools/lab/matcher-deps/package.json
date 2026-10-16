@@ -1,0 +1,9 @@
+{
+  "name": "paper-trail-lab-matcher-tools",
+  "private": true,
+  "description": "Node-side tools for the lab's on-device matcher (#102): the eval's --matcher run and the example-vector builder. Not deployed.",
+  "type": "module",
+  "dependencies": {
+    "@huggingface/transformers": "4.3.0"
+  }
+}

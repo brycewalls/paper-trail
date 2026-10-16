@@ -13,3 +13,8 @@ functions/*.local
 # iPhone app build outputs (tools/build_ipa.sh)
 dist/
 ios/.spm/
+
+# The lab matcher's model and runtime files (#102), fetched by tools/lab/fetch-models.sh
+public/lab-models/match/models/
+public/lab-models/match/vendor/
+public/lab-models/match/NOTICE.txt

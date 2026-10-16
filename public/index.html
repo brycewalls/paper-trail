@@ -32,6 +32,7 @@
 <link rel="stylesheet" href="css/deck.css">
 <link rel="stylesheet" href="css/capture.css">
 <link rel="stylesheet" href="css/senders.css">
+<link rel="stylesheet" href="css/browse.css">
 <script type="module" src="js/main.js"></script>
 </head>
 <body>
@@ -117,28 +118,10 @@
   <section class="view" id="view-piles" data-tab="piles" aria-label="Piles" hidden>
     <header class="navbar" data-navbar>
       <div class="nav-bar"><div class="nav-leading"></div><p class="nav-compact" aria-hidden="true">Piles</p>
-        <div class="nav-trailing"><button type="button" class="avatar" data-avatar aria-label="Settings"></button></div></div>
+        <div class="nav-trailing"><button type="button" class="glass-circle small" id="piles-filter" aria-label="Filter" hidden></button><button type="button" class="avatar" data-avatar aria-label="Settings"></button></div></div>
       <div class="nav-large"><h1 class="nav-title">Piles</h1></div>
     </header>
-    <div class="view-body" id="piles-body">
-      <!-- Legacy piles (tabs, lists, stats). Browse rebuilds this as spec 4.5. -->
-      <div class="legacy-piles">
-        <div class="tabs" role="tablist">
-          <button class="tab" role="tab" id="tab-shred" aria-selected="true" data-tab="shred">Shred <span class="count" id="c-shred">0</span></button>
-          <button class="tab" role="tab" id="tab-keep" aria-selected="false" data-tab="keep">Keep <span class="count" id="c-keep">0</span></button>
-          <button class="tab" role="tab" id="tab-paper" aria-selected="false" data-tab="paper">Paperless <span class="count" id="c-paper">0</span></button>
-          <button class="tab" role="tab" id="tab-all" aria-selected="false" data-tab="all">All filed <span class="count" id="c-all">0</span></button>
-        </div>
-        <div id="pile" class="list"></div>
-        <p class="note" id="save-note"></p>
-        <section class="stats" aria-label="Progress">
-          <div class="stat"><span class="label">Filed</span><b id="st-filed">0</b><small>documents in Drive</small></div>
-          <div class="stat"><span class="label">Shredded</span><b id="st-shred">0</b><small><span id="st-shred-wait">0</span> waiting in the pile</small></div>
-          <div class="stat"><span class="label">Originals</span><b id="st-keep">0</b><small>papers to keep</small></div>
-          <div class="stat"><span class="label">Paperless</span><b id="st-pl">0</b><small>of <span id="st-pl-all">0</span> senders switched</small></div>
-        </section>
-      </div>
-    </div>
+    <div class="view-body" id="piles-body"></div>
   </section>
 
   <!-- ---------- Paperless (owner: browse) ---------- -->

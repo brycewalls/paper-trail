@@ -69,9 +69,10 @@ All under `public/js/`. Entry `main.js` (a module script in `index.html`). jsPDF
 | 6 | `deck.js` | deck | Sort: the deck, card, gestures, overlays, action row, undo hold, Skip and the Skipped sheet, bulk file, Keep original confirm, empty states, keyboard, the "Sorting" Settings section. Still adds documents and reads them (`addEach`, `addAsOne`, `pump`) until capture.js and db.js take over. Imports `shell.js` for `bindScanMenu` (the empty states' Scan menu, #79). |
 | 6 | `checkfields.js` | deck | The check-fields sheet (3.8): `openCheckFields({ card, fields, focus })` resolves `{ card, remember }` or null; `openFolderPicker(current)`. |
 | 6 | `detail.js` | deck | Card detail and edit (4.13), and its read-only mode for filed docs (`registerScreen("card")`, `registerScreen("doc")`). Imports `deck.js`; `main.js` imports it once so the screens register. |
-| 6 | `piles.js` | browse | Piles (4.5). Today: the legacy piles lists. |
-| 6 | `search.js` (new) | browse | Search (4.6): chips, recents, results, highlight, snippets, Also in Drive. |
-| 6 | `paperless.js` (new) | browse | Paperless (4.7) and the sender detail (`registerScreen("sender")`). |
+| 5 | `browse.js` | browse | What Piles, Search and Paperless share: the live library (docs, paperless and `config/settings` listeners from `session:started`, `onBrowse(fn)`), the safe-to-shred rule (`shredState`), the shred hold (`holdDays`), PileFormat strings, document rows (labeled thumbnail, trailing swipe actions with keyboard and menu twins), the Reconnect banner on Piles, and the read-only document view (`openDoc(id, words)`, which registers `"doc"` on first use unless `detail.js` already did). |
+| 6 | `piles.js` | browse | Piles (4.5): Shred, Keep and All filed, the safe banner, Mark n as shredded, Put away and Take out, the Sensitive filter, and the Settings "Shred hold" row (order 31; joins deck's Sorting section when it's there). |
+| 6 | `search.js` | browse | Search (4.6): chips, recents (per device, localStorage `pt-recent-searches` until `db.js` `kv` lands), results, highlight, snippets, Also in Drive (`drive.search()` when outbox adds it, the Drive REST call through `drive()` until then). |
+| 6 | `paperless.js` | browse | Paperless (4.7), the sender detail (`registerScreen("sender")`) and the Done list (`registerScreen("done-senders")`). |
 | 7 | `scanner.js` | capture | The camera scanner (edges, flattening, auto-capture). Exports `sc`. |
 | 7 | `capture.js` (new) | capture | Listens for `capture:request`; Files and Photos pickers; unsupported-file alert; hands pages to the review. |
 | 7 | `review.js` (new) | capture | The scan review (4.11): groups, split and join, Split into documents, duplicates, Send to the deck. |
@@ -96,6 +97,7 @@ Phone first, exactly like the spec at 390 to 430 px. Wider than that, the same c
 | `#/sort/card:<itemId>` | Card detail and edit (4.13) | deck | Hides the accessory (`setAccessoryHidden`) for its Shred and File bar. |
 | `#/<tab>/doc:<docId>` | Document view (4.13 read-only) | deck builds, browse pushes | From Piles and Search. |
 | `#/paperless/sender:<senderKey>` | Sender detail | browse | |
+| `#/paperless/done-senders` | Every Confirmed and Can't stop sender, from the grouped Done row | browse | |
 | `#/auth/done?...` | Sign-in return (not a tab) | auth | See "Auth". |
 | sheet | Settings (4.9) | auth | `openSettings()`; never a route. |
 | sheet | Check fields (3.8), bulk file, Skipped (3.13), folder picker, Shred hold picker | deck, outbox | `openSheet()`. |

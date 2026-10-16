@@ -8,7 +8,6 @@ import { FOLDER_NAMES, VERDICT } from "./config.js";
 import { esc, slug, cleanName } from "./ui.js";
 import { registerScreen, back } from "./router.js";
 import { setAccessoryHidden } from "./shell.js";
-import { getDoc } from "./store.js";
 import { openPdfDoc, renderPage, photoJpeg } from "./media.js";
 import { unsureFields } from "./classify.js";
 import { getItem, isReadFailed, saveEdits, blankCard, detailDecide, folderPath, fmtDate, followDate, dateLabel } from "./deck.js";
@@ -222,28 +221,5 @@ registerScreen("card", {
   unmount() { setAccessoryHidden("card", false); },
 });
 
-// ---------- read-only document view (#/<tab>/doc:<docId>), pushed by Piles and Search ----------
-registerScreen("doc", {
-  title: "Document",
-  mount(el, { param, body, setTitle }) {
-    el.querySelector(".navbar").classList.add("inline", "cd-nav");
-    const large = el.querySelector(".nav-large"); if (large) large.hidden = true;
-    body.classList.add("cd-body");
-    body.innerHTML = emptyState({ spinner: true, title: "Opening", role: "status" });
-    getDoc(param).then((d) => {
-      if (!body.isConnected) return;
-      if (!d) { body.innerHTML = emptyState({ symbol: "doc", title: "Nothing to show", description: "This document isn't in your log anymore." }); return; }
-      setTitle(d.title || "Document");
-      const drive = d.driveUrl ? `<a class="nav-text-btn" href="${esc(d.driveUrl)}" target="_blank" rel="noopener">Open in Drive</a>` : "";
-      el.querySelector(".nav-trailing").innerHTML = drive + (d.driveUrl && navigator.share ? `<button type="button" class="glass-circle small" data-share aria-label="Share">${icon("square.and.arrow.up")}</button>` : "");
-      el.querySelector("[data-share]")?.addEventListener("click", () => navigator.share({ title: d.title, url: d.driveUrl }).catch(() => {}));
-      body.innerHTML = `<div class="cd-pages empty" aria-hidden="true">${icon("doc")}</div>
-        <div class="cd-head">${verdictBadge(d.verdict, { size: "large" })}${d.verdictReason ? `<p class="cd-why">Why: ${esc(d.verdictReason)}</p>` : ""}</div>
-        ${section(valueRow("Title", d.title || "") + valueRow("Sender", d.issuer || "") + valueRow(dateLabel(d.docType), fmtDate(d.docDate) || "No date") + valueRow("Type", d.docType || ""), { header: "Details" })}
-        ${section(valueRow("Folder", folderPath(d)) + row({ title: "Filename", subtitleHtml: `<span class="t-mono">${esc(d.filename || "")}.pdf</span>` }), { header: "Filing" })}
-        ${section((d.summary ? row({ title: "Summary", subtitle: d.summary }) : "") + valueRow("Retention", d.retention || "") + (d.sensitive ? row({ title: "Sensitive", trailing: sensitiveChip() }) : ""), { header: "About" })}
-        ${d.driveUrl ? `<div class="cd-open">${button("Open in Drive", { prominent: true, "data-open": "" })}</div>` : ""}`;
-      body.querySelector("[data-open]")?.addEventListener("click", () => window.open(d.driveUrl, "_blank", "noopener"));
-    }, () => { body.innerHTML = emptyState({ symbol: "doc", title: "Nothing to show", description: "Your log couldn't be reached. Check your connection and try again." }); });
-  },
-});
+// The read-only document view (#/<tab>/doc:<docId>) is browse.js's: it reads the live library, so
+// it shows Search's matching text and the paper's state, and updates as the doc changes.

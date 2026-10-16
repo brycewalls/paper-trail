@@ -10,14 +10,17 @@ import { $, errCode, setSaveNote, emit, on } from "./ui.js";
 import { initBackend } from "./backend.js";
 import { watchUser, startAuth, finishReturn, cachedSession, markNotAllowed, showGate, currentUser } from "./auth.js";
 import { renderDrive, resetFolders, setNeedsDrive } from "./drive.js";
-import { checkAccess, watchDocs, watchPaperless } from "./store.js";
+import { checkAccess } from "./store.js";
 import { items, clearItems, newItem } from "./items.js";
 import { addEach, addAsOne, pump } from "./deck.js";
 import "./detail.js";   // registers the card detail and document screens (deck)
 import * as outbox from "./outbox.js";
 import * as db from "./db.js";
 import "./outbox-view.js";            // registers the Outbox and Earlier screens and the Shred hold row
-import { setDocs, setPaperless, resetPiles, renderPiles } from "./piles.js";
+// Browse (Piles, Search, Paperless) starts its own listeners on "session:started" (browse.js).
+import "./piles.js";
+import "./search.js";
+import "./paperless.js";
 import { sc } from "./scanner.js";
 import { scanned, importFiles, importPhotos } from "./capture.js";
 import { reviewState } from "./review.js";
@@ -37,7 +40,7 @@ function stopWatching() {
 function endSession() {
   stopWatching();
   resetFolders();
-  clearItems(); outbox.clearOutbox(); resetPiles(); setNeedsDrive(false); shellSignedIn(null);
+  clearItems(); outbox.clearOutbox(); setNeedsDrive(false); shellSignedIn(null);
   $("app").hidden = true;
   if (shown) { shown = null; emit("session:ended"); }
 }
@@ -60,8 +63,6 @@ function onUser(u, { confirmed }) {
   }
   if (!confirmed || watching === u.uid) return;
   watching = u.uid;
-  unwatch.push(watchDocs(setDocs, () => setSaveNote("Your log couldn't load. Reload the page to try again.")));
-  unwatch.push(watchPaperless(setPaperless, () => {}));
   // Firestore rules decide who's allowed: a refused read means this account isn't on the list.
   // In the background, so opening the app never waits on it (#14).
   checkAccess().catch((e) => { if (/permission-denied/.test(errCode(e)) && shown === u.uid) markNotAllowed(u.email); });
@@ -108,7 +109,6 @@ on("capture:sent", ({ items: sent, blobs }) => {
     $("btn-signin").hidden = true; $("gate-note").hidden = true;
     return;
   }
-  renderPiles();
   startShell();
   watchUser(onUser);
   startAuth();

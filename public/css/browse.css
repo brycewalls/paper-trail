@@ -1,0 +1,64 @@
+/* Piles, Search and Paperless (spec 4.5 to 4.7; owner: browse). Only what the shared components
+   in components.css don't already draw: the labeled row thumbnail, swipe actions, the segmented
+   control's spacing, the floating "Mark n as shredded" button, search snippets, the document view
+   and the sender detail. Colors, type and spacing come from tokens.css. */
+
+/* ---------- the segmented control row (A5) ---------- */
+.b-seg { margin: 0 var(--list-inset); }
+
+/* ---------- row thumbnail with the form name (A5's "1099-INT", "W-2 2025") ---------- */
+.b-thumb { position: relative; display: grid; align-content: start; justify-items: stretch; place-items: start stretch; gap: 3px; padding: 5px 4px; box-sizing: border-box; box-shadow: inset 0 0 0 0.5px var(--separator); }
+.b-thumb-label { font: 700 6.5px/7.5px var(--font); letter-spacing: 0; color: var(--ink); text-transform: uppercase; overflow: hidden; white-space: nowrap; }
+.b-thumb-lines { display: block; justify-self: stretch; width: 100%; height: 18px; background: repeating-linear-gradient(to bottom, var(--fill-strong) 0 2px, transparent 2px 5px); border-radius: 1px; }
+.b-thumb-label + .b-thumb-lines { height: 13px; }
+
+/* ---------- trailing swipe actions (spec 3.10) ---------- */
+.b-swipe { position: relative; overflow: hidden; }
+.b-swipe-actions { position: absolute; top: 0; right: 0; bottom: 0; display: flex; opacity: 0; }
+/* Hidden until a drag or focus opens the row, so its edges never show around a closed row. */
+.b-swipe.open .b-swipe-actions, .b-swipe.dragging .b-swipe-actions, .b-swipe:focus-within .b-swipe-actions { opacity: 1; }
+.b-swipe-act { min-width: 84px; padding: 0 var(--s-4); border: none; cursor: pointer; color: var(--on-fill); font: var(--t-subheadline); font-weight: 600; letter-spacing: var(--tr-subheadline); }
+.b-swipe-act.tone-file { background: var(--file-fill); }
+.b-swipe-act.tone-accent { background: var(--accent-fill); }
+.b-swipe-act.tone-gray { background: var(--muted-solid); }
+.b-swipe-act.tone-danger { background: var(--danger); }
+.b-swipe-act:focus-visible { outline: 2px solid var(--on-fill); outline-offset: -4px; }
+.b-swipe-content { position: relative; z-index: 1; background: var(--surface); touch-action: pan-y; transition: transform var(--spring-snap-ms) var(--spring-snap); }
+.b-swipe-content .list-row { background: transparent; }
+
+/* ---------- Piles ---------- */
+.b-stored { display: inline-flex; color: var(--muted); }
+.b-stored .sym { width: 20px; height: 20px; }
+.b-float { position: sticky; z-index: 5; bottom: calc(var(--dock-h, 130px) + var(--s-3)); display: flex; justify-content: center; pointer-events: none; margin-top: var(--s-2); }
+.b-mark { pointer-events: auto; min-height: var(--action-h); padding: 0 var(--s-6); border: none; border-radius: var(--r-capsule); cursor: pointer;
+  color: var(--accent); font: var(--t-headline); letter-spacing: var(--tr-headline); box-shadow: var(--glass-shadow), inset 0 0 0 0.5px var(--glass-edge); }
+.b-mark:active { transform: scale(0.97); }
+#piles-filter.on { color: var(--accent); background: var(--accent-soft); }
+#piles-filter .sym { width: 20px; height: 20px; }
+
+/* ---------- Search ---------- */
+.b-chipwrap { margin: 0 var(--list-inset); min-width: 0; }
+.b-chipwrap.flush { margin: 0; }
+.b-chips { padding-top: var(--s-1); padding-bottom: var(--s-1); margin-bottom: calc(-1 * var(--s-2)); }
+.b-suggested .chips { padding-top: var(--s-1); }
+.b-nav-link { display: inline-flex; align-items: center; text-decoration: none; white-space: nowrap; }
+.b-snippet { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; margin-top: 2px; }
+.b-out { display: inline-flex; color: var(--tertiary); }
+.b-out .sym { width: 14px; height: 14px; }
+
+/* ---------- document view (4.13 read-only) and sender detail ---------- */
+.list-row.b-doc-head { display: grid; justify-items: start; gap: var(--s-2); padding-block: var(--s-3); }
+.b-doc-why { margin: 0; font: var(--t-subheadline); letter-spacing: var(--tr-subheadline); color: var(--muted); }
+.b-kv .row-text { flex: 0 0 auto; }
+.b-kv .row-trailing { flex: 1 1 auto; min-width: 0; justify-content: flex-end; text-align: right; }
+.b-kv .row-value { overflow-wrap: anywhere; }
+.b-text .row-subtitle { font: var(--t-subheadline); letter-spacing: var(--tr-subheadline); }
+.b-doc-actions { margin: 0 var(--list-inset) var(--s-6); }
+a.btn-primary { text-decoration: none; box-sizing: border-box; }
+.b-step { align-items: baseline; }
+.b-step-n { flex: 0 0 auto; min-width: 1.4em; color: var(--muted); font-variant-numeric: tabular-nums; }
+.b-date { font: var(--t-body); color: var(--accent); background: var(--fill); border: none; border-radius: 8px; padding: 6px 10px; min-height: 34px; }
+.b-date::-webkit-calendar-picker-indicator { opacity: 0.6; }
+
+/* Banners line up with the inset sections but sit closer to what follows (A5, A7). */
+.group.b-banner { margin-bottom: 0; }

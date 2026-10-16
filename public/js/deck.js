@@ -352,7 +352,7 @@ on("session:started", () => {
 });
 on("session:ended", () => { if (unwatchSettings) unwatchSettings(); unwatchSettings = null; offerBulkFile = false; last = null; clearTimeout(holdTimer); render(); });
 registerSettingsSection({
-  id: "sorting", order: 30,
+  id: "sorting", order: 32,
   render: () => section(toggleRow("Offer to file confident cards together", { checked: offerBulkFile, id: "set-bulk" }),
     { header: "Sorting", footer: "When it's on, Sort offers to file the cards Claude is sure about in one go. You still see each one in the list first." }),
   bind(el) {

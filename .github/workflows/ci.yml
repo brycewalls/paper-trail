@@ -13,6 +13,8 @@
 #              and its return, not allowed, Drive consent skipped, Drive tokens, Reconnect, Sign out
 #   outbox     the local-first queue (#17, #1, #18): undo hold, chunked resumable uploads, year folders,
 #              verification, retries, offline, Reconnect Drive, Send back, the Outbox screen, Shred hold
+#   browse     Piles, Search and Paperless against the fake's seeded library (#18, #22, #23): the
+#              safe-to-shred rule and hold, swipes and their twins, search and Also in Drive, the ledger
 #   scanner    drives Scan document with a fake camera (a generated video of a tilted page): edges
 #              found, the page flattened, Done adds one item that files as one PDF, Cancel adds none
 #   capture    the Scan menu's sources, the scan review (split, join, stack mode, duplicates), the page
@@ -65,6 +67,9 @@ jobs:
       - name: Capture, the scan review, stack mode and sender rules
         if: always()
         run: node tools/capture_test.mjs
+      - name: Piles, Search and Paperless against a seeded library
+        if: always()
+        run: node tools/browse_test.mjs
       - name: Keep the screenshots
         if: always()
         uses: actions/upload-artifact@v4

@@ -352,8 +352,8 @@ try {
     check(true, "File in the detail's bar files the card");
     // the read-only document view, as Piles and Search push it
     await page.evaluate(() => { location.hash = "#/piles/doc:w2-2023"; });
-    await page.waitForFunction(() => document.querySelector("#screen .cd-why"));
-    check((await page.textContent("#screen .nav-compact")) === "2023 W-2" && await page.isVisible('#screen a.nav-text-btn:has-text("Open in Drive")'), "the document view shows the filed W-2 with Open in Drive");
+    await page.waitForFunction(() => document.querySelector("#screen .b-doc-why"));
+    check(/2023 W-2/.test(await page.textContent("#screen .navbar")) && await page.isVisible('#screen a.nav-text-btn:has-text("Open in Drive")'), "the document view shows the filed W-2 with Open in Drive");
     check(problems.length === 0, `no console errors (${problems.join(" | ") || "none"})`);
     await ctx.close();
   }

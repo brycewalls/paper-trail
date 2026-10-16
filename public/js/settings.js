@@ -7,8 +7,9 @@
 //                             bind(el) { el.querySelector("#set-bulk").onchange = ... } });
 //
 // Orders, so the sections land where spec 4.9 puts them: the account row and Google Drive come
-// first (auth), then 30 Sorting (deck: Sender rules, Offer to file confident cards together;
-// outbox: Shred hold), 40 Scanning and privacy (capture: Shutter; auth: Lock, later), 50 Data.
+// first (auth), then Sorting (30 senders.js: Sender rules; 31 outbox-view.js: Shred hold; 32 deck.js:
+// Offer to file confident cards together, with the footer; joined into one group by joinGroups()),
+// 40 Scanning and privacy (capture: Shutter; auth: Lock, later), 50 Data.
 // The iPhone twin is ios/PaperTrail/Features/Settings/SettingsScreen.swift and
 // Features/Auth/AccountSettings.swift.
 import { esc, on } from "./ui.js";
@@ -112,6 +113,26 @@ function showPage(name) {
   (name === "account" ? open.body.querySelector("[data-settings-back]") : open.body.querySelector("#settings-account"))?.focus({ preventScroll: true });
 }
 
+// Sections from different owners that share a header ("Sorting": senders.js's Sender rules at 30,
+// outbox-view.js's Shred hold at 31, deck.js's bulk toggle and footer at 32) draw as one inset group,
+// as spec 4.9 shows them. Visual only: each owner keeps its own element, so its bind() still works.
+function joinGroups(host) {
+  if (!host) return;
+  let prev = null, prevHeader = "";
+  for (const wrap of host.querySelectorAll(":scope > [data-settings-section]")) {
+    const groups = wrap.querySelectorAll(":scope > .group");
+    if (!groups.length) continue;
+    const first = groups[0], header = first.querySelector(":scope > .group-header")?.textContent.trim() || "";
+    if (prev && header && header === prevHeader && !prev.querySelector(":scope > .group-footer")) {
+      prev.classList.add("join-next");
+      first.classList.add("join-prev");
+      first.querySelector(":scope > .group-header").hidden = true;
+    }
+    prev = groups[groups.length - 1];
+    prevHeader = prev.querySelector(":scope > .group-header")?.textContent.trim() || prevHeader;
+  }
+}
+
 export function openSettings() {
   if (open) return open;
   const u = currentUser() || {};
@@ -122,6 +143,7 @@ export function openSettings() {
   open = openSheet({ title: "Settings", largeTitle: true, detents: ["large"], label: "Settings", className: "settings-sheet",
     trailing: '<button type="button" class="nav-text-btn" data-settings-done>Done</button>', body });
   for (const s of sections) s.bind && s.bind(body.querySelector(`[data-settings-section="${s.id}"]`));
+  joinGroups(body.querySelector("#settings-sections"));
   open.el.querySelector("[data-settings-done]").addEventListener("click", () => open.close("done"));
   body.querySelector("[data-settings-account]").addEventListener("click", () => showPage("account"));
   body.querySelector("[data-settings-back]").addEventListener("click", () => showPage("main"));

@@ -12,7 +12,8 @@
 //                    the first N calls (the reading queue retries a rate limit twice by itself)
 // Added for the web v2 build (#83, docs/web-contract.md, "Fake backend"):
 //   seed             start with a filed library: docs in every pile and state, paperless senders in
-//                    every status, two sender rules and config/settings (for Piles, Search, Paperless)
+//                    every status, two sender rules and config/settings (for Piles, Search, Paperless),
+//                    plus one Drive file the log doesn't list (Search's "Also in Drive")
 //   unsure           reads that ask for confidence come back unsure of the sender and the date, with
 //                    alternatives (the A2 card and the check-fields sheet)
 //   driverevoked     the driveToken callable answers drive_revoked (Reconnect Drive, spec 4.16)
@@ -54,7 +55,7 @@ const SAMPLES = [
 import { md5 } from "../../public/js/md5.js";
 
 // A filed library for ?seed. Dates are relative to today so holds and "check back" stay current.
-function seedLibrary(db) {
+function seedLibrary(db, state) {
   const day = 86400000, now = Date.now();
   const iso = (d) => new Date(now - d * day).toISOString();
   const ymd = (d) => iso(d).slice(0, 10);
@@ -93,6 +94,14 @@ function seedLibrary(db) {
     filenamePattern: "{date}_{issuer}-electric-bill", updatedAt: iso(9) });
   db.set("senders/northwind-logistics", { key: "northwind-logistics", issuer: "Northwind Logistics", folder: "02 Taxes", verdict: "scan_shred", updatedAt: iso(30) });
   db.set("config/settings", { shredHoldDays: 3 });
+  // Search's "Also in Drive" (#22): a file in the archive that the app's log doesn't list (filed
+  // before Paper Trail kept a log), found by Drive's own full-text search.
+  if (state) {
+    state.folders.push({ id: "seed-root", name: "Paperwork Archive", parent: "root" }, { id: "seed-taxes", name: "02 Taxes", parent: "seed-root" });
+    db.set("config/drive", { root: "seed-root", folders: { "02 Taxes": "seed-taxes" }, updatedAt: iso(30) });
+    const bytes = new TextEncoder().encode("%PDF-1.4 2022 Form W-2 Wage and Tax Statement. Northwind Logistics. %%EOF");
+    state.files.push({ id: "seed-drive-w2-2022", name: "2023-01-28_W-2_Northwind-Logistics-2022.pdf", parents: ["seed-taxes"], mimeType: "application/pdf", size: bytes.length, bytes, md5Checksum: md5(bytes), trashed: false });
+  }
 }
 
 const AUTH_KEY = "pt-fake-auth";
@@ -141,7 +150,7 @@ export function createFakeBackend(params) {
     nextId: 1,
   };
   window.__PT_FAKE__ = state;
-  if (params.has("seed")) seedLibrary(state.db);
+  if (params.has("seed")) seedLibrary(state.db, state);
   if (params.get("dupe")) state.db.set("docs/dupe-w2", { title: "2025 W-2", docType: "W-2", issuer: "Northwind Logistics", docDate: "2026-01-30", folder: "02 Taxes",
     filename: "2026-01-30_W-2_Northwind-Logistics", verdict: "scan_shred", filed: true, physical: "to_shred", pages: 1, source: "web",
     filedAt: `${new Date().getFullYear()}-10-02T15:00:00.000Z`, contentHash: params.get("dupe").toLowerCase() });

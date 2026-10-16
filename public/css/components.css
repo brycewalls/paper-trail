@@ -279,3 +279,10 @@ button.list-row:active, a.list-row:active { background: var(--fill); }
 .radio-row .row-title.t-mono { font: var(--t-mono-caption); font-size: 14px; }
 .radio-row { position: relative; }   /* holds its hidden radio, so focusing it never scrolls the sheet sideways */
 .radio-field:focus-visible { outline: none; }   /* the row already draws the 2 pt accent stroke */
+
+/* Settings: sections from different owners under one header draw as one group (settings.js joinGroups) */
+.group.join-next { margin-bottom: 0; }
+.group.join-next > .group-body { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.group.join-prev > .group-body { border-top-left-radius: 0; border-top-right-radius: 0; }
+.group.join-prev > .group-body > .list-row:first-child { position: relative; }
+.group.join-prev > .group-body > .list-row:first-child::before { content: ""; position: absolute; top: 0; right: 0; left: var(--sep-inset); height: 0.5px; background: var(--separator); }

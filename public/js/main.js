@@ -10,6 +10,7 @@ import { loadToken, renderDrive, resetFolders, setNeedsDrive } from "./drive.js"
 import { checkAccess, watchDocs, watchPaperless } from "./store.js";
 import { items, clearItems } from "./items.js";
 import { addEach, addAsOne, pump } from "./deck.js";
+import "./detail.js";   // registers the card detail and document screens (deck)
 import { clearOutbox } from "./outbox.js";
 import { setDocs, setPaperless, resetPiles, renderPiles } from "./piles.js";
 import { sc } from "./scanner.js";

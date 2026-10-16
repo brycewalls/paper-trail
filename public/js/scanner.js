@@ -175,7 +175,8 @@ function closeScanner() {
   $("scanner").hidden = true;
   $("app").inert = false;
   document.documentElement.classList.remove("scanning");
-  $("btn-scan").focus();
+  // Back to whatever opened it: the legacy button when it shows, else Sort's Scan menu button (#79).
+  ($("btn-scan").offsetParent ? $("btn-scan") : $("btn-scan-menu")).focus();
 }
 function cancelScan() {
   const n = sc.pages.length;

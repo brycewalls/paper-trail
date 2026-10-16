@@ -1,0 +1,184 @@
+/* Sort (spec 4.2, A1, A2, A9), the check-fields sheet (3.8) and the card detail (4.13). Owner: deck.
+   Values come from tokens.css only. Linked after shell.css. */
+
+/* ---------- The Sort view: nav, prompts, then the deck filling the room above the dock ---------- */
+#view-sort { display: flex; flex-direction: column; }
+#sort-body { flex: 1 1 auto; display: flex; flex-direction: column; gap: var(--s-2); min-height: 0; }
+#sort-body > .banner-inset { margin-bottom: var(--s-2); }
+#sort-body #status:not(.err) { display: none; }
+#sort-body #status.err { margin: 0 var(--card-margin); color: var(--danger); font: var(--t-footnote); }
+
+.dk-prompts { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s-2); padding: 0 var(--card-margin); }
+.dk-prompts .cbtn { max-width: 100%; }
+.dk-prompts .cbtn span { overflow: hidden; text-overflow: ellipsis; }
+
+.dk-main { flex: 1 1 auto; min-height: 380px; overflow-x: clip; display: flex; flex-direction: column; gap: var(--s-5); padding-top: var(--s-2); }
+.dk-empty { flex: 1 1 auto; display: grid; align-content: center; }
+.dk-empty[hidden] { display: none; }
+
+/* The stack: every card shares one grid cell, so the peeks take the top card's size. The bottom
+   padding is the lowest peek's drop (36), so the action row sits 20 under it. */
+.dk-stack { position: relative; display: grid; margin: 0 var(--card-margin); padding-bottom: 36px; }
+.dk-stack.is-empty { padding-bottom: 0; }
+.dk-stack > .dk-card, .dk-stack > .dk-peek { grid-area: 1 / 1; }
+.dk-peek { border-radius: var(--r-card); background: var(--surface); box-shadow: var(--shadow-peek);
+  transform-origin: 50% 100%; transform: translateY(var(--peek-y, 22px)) scale(var(--peek-s, 0.96)); }
+
+/* ---------- 3.1 DeckCard ---------- */
+.dk-card { position: relative; z-index: 3; display: flex; flex-direction: column; max-height: var(--card-max, 560px); min-height: 0; overflow: hidden;
+  border-radius: var(--r-card); background: var(--surface); box-shadow: var(--shadow-card); color: var(--ink);
+  transform-origin: 50% 120%; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; cursor: grab; outline: none; }
+.dk-card:focus-visible { box-shadow: var(--shadow-card), 0 0 0 3px var(--accent); }
+.dk-card.dragging { cursor: grabbing; }
+.dk-card.dk-ghost { z-index: 5; pointer-events: none; }
+.dk-card img { -webkit-user-drag: none; }
+
+.dk-well { position: relative; flex: 0 1 236px; min-height: 96px; background: var(--card-well); overflow: hidden; }
+.dk-well.short { flex-basis: 96px; }
+/* The first page, aspect fit, at most 196 tall, 20 above and below so a shrinking well still frames it. */
+.dk-page { position: absolute; inset: 20px 0; display: flex; align-items: center; justify-content: center; }
+.dk-page img { display: block; max-width: 62%; max-height: min(196px, 100%); width: auto; height: auto; object-fit: contain; background: var(--on-fill);
+  box-shadow: 0 0 0 0.5px var(--separator), var(--shadow-paper); pointer-events: none; }
+.dk-well.short .dk-page { inset: 12px 0; }
+.dk-page-none { color: var(--tertiary); }
+.dk-page-none .sym { width: 48px; height: 48px; stroke-width: 1.4; }
+.dk-badges { position: absolute; top: var(--s-3); right: var(--s-3); display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--s-2); max-width: calc(100% - 120px); }
+.dk-pages { position: absolute; left: var(--s-3); bottom: var(--s-3); font: var(--t-caption); color: var(--muted); }
+.dk-well.short .dk-pages { display: none; }
+
+/* ---------- 3.2 Swipe overlays: glass capsule labels, opacity from the drag ---------- */
+.dk-ov { position: absolute; top: var(--s-3); z-index: 2; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: var(--r-capsule);
+  font: var(--t-headline); font-weight: 700; letter-spacing: var(--tr-headline); white-space: nowrap; opacity: 0; pointer-events: none;
+  background: var(--glass-bg); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-shadow), inset 0 0 0 0.5px var(--glass-edge);
+  transform: scale(0.9); transition: transform var(--spring-pop-ms) var(--spring-pop); }
+.dk-ov .sym { width: 18px; height: 18px; stroke-width: 2.4; }
+.dk-ov.crossed { transform: scale(1); }
+.dk-ov-file { left: var(--s-3); color: var(--file); transform-origin: left center; }
+.dk-ov-shred { right: var(--s-3); color: var(--danger); transform-origin: right center; }
+.dk-ov-skip { left: 50%; translate: -50% 0; color: var(--accent); }
+@media (prefers-reduced-motion: reduce) { .dk-ov, .dk-ov.crossed { transform: none; transition: none; } }
+
+/* Card body: padding 16 / 18 (spec 2.3), lines 8 apart. */
+.dk-body { flex: 0 0 auto; display: grid; gap: var(--s-2); padding: var(--s-4) 18px; min-width: 0; }
+.dk-title { margin: 0; font: var(--t-title2); letter-spacing: var(--tr-title2); color: var(--ink); overflow-wrap: anywhere; font-stretch: normal; }
+.dk-meta { margin: 0; font: var(--t-subheadline); letter-spacing: var(--tr-subheadline); color: var(--muted); overflow-wrap: anywhere; }
+.dk-folder { margin: 0; display: flex; align-items: center; gap: 6px; font: var(--t-subheadline); letter-spacing: var(--tr-subheadline); color: var(--ink); }
+.dk-folder .sym { width: 17px; height: 17px; color: var(--muted); }
+.dk-chips { display: flex; flex-wrap: wrap; gap: var(--s-2); min-width: 0; }
+.dk-chips .pill-trunc { max-width: 100%; }
+.dk-filename { margin: 0; font: var(--t-mono-caption); color: var(--muted); overflow-wrap: anywhere; }
+.dk-body .unsure-row { min-height: 36px; }
+.dk-body .unsure-row:first-child span:first-child { font: var(--t-title3); font-weight: 700; letter-spacing: var(--tr-title3); }
+.dk-fail-actions { display: flex; flex-wrap: wrap; gap: var(--s-3); padding-top: var(--s-2); }
+
+/* The anchor a card's menu opens from (right-click or a long press): a point, not a box. */
+.dk-menu-anchor { position: absolute; width: 1px; height: 1px; pointer-events: none; }
+
+/* ---------- 3.3 Action row: Shred, Undo, Skip, File on glass ---------- */
+.dk-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); padding: 0 var(--card-margin); }
+.dk-actions[hidden] { display: none; }
+.dk-mid { display: inline-flex; gap: var(--s-3); }
+.dk-mid .glass-circle .sym { width: 20px; height: 20px; }
+.dk-act { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: var(--action-h); padding: 0 22px; border: none; border-radius: var(--r-capsule); cursor: pointer;
+  font: var(--t-headline); letter-spacing: var(--tr-headline); white-space: nowrap;
+  background: var(--glass-bg); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-shadow), inset 0 0 0 0.5px var(--glass-edge);
+  transition: transform 120ms ease, opacity 120ms ease; }
+.dk-act .sym { width: 20px; height: 20px; }
+.dk-act:active:not(:disabled) { transform: scale(0.96); }
+.dk-act:disabled { opacity: 0.4; cursor: default; }
+.dk-shred { color: var(--danger); }
+.dk-file { color: var(--file); }
+/* Narrow screens: Shred and File drop to icon only, their labels kept for screen readers. */
+@media (max-width: 330px) {
+  .dk-act { padding: 0 18px; }
+  .dk-act span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+}
+
+/* Legacy upload failures, until the Outbox screen. */
+.dk-trouble:empty { display: none; }
+.dk-trouble .group { margin-top: var(--s-4); }
+
+/* ---------- Bulk file and Skipped sheets ---------- */
+.dk-sheet .group:first-child { margin-top: var(--s-2); }
+.dk-sheet .list-row .row-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.dk-check { display: inline-flex; color: var(--tertiary); }
+.dk-check.on { color: var(--accent); }
+.dk-check .sym { width: 24px; height: 24px; }
+
+/* ---------- 3.8 Check-fields sheet ---------- */
+.cf-sheet .sheet-body { padding-inline: var(--s-5); }
+.cf-sec { margin: 0 0 var(--s-5); border-radius: 14px; transition: background-color 600ms ease; }
+.cf-sec .group-header { padding-left: var(--s-1); }
+.cf-sec.cf-focus { animation: cf-flash 1.4s ease-out; }
+@keyframes cf-flash { 0%, 40% { background: var(--unsure-soft); box-shadow: 0 0 0 8px var(--unsure-soft); } 100% { background: transparent; box-shadow: 0 0 0 8px transparent; } }
+.cf-options { display: grid; gap: var(--s-2); }
+.cf-options .radio-row + .radio-row { margin-top: 0; }
+.cf-more { width: 100%; border: none; color: var(--accent); text-align: left; }
+.cf-more .row-title { flex: 1; }
+.cf-more .sym { width: 16px; height: 16px; color: var(--tertiary); stroke-width: 2.4; }
+.cf-chips { gap: var(--s-2); }
+.cf-date-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; padding: 0; }
+.cf-sec .segmented { margin-top: 2px; }
+.cf-remember .group { margin: 0; }
+.cf-remember .group-footer { padding-left: var(--s-4); }
+.cf-folders .group { margin: 0; }
+.cf-sub-bar { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--s-2); margin: 0 0 var(--s-3); }
+.cf-sub-bar .nav-back { box-shadow: none; background: var(--fill); }
+.cf-sub-title { margin: 0; text-align: center; font: var(--t-headline); letter-spacing: var(--tr-headline); padding-right: 80px; }
+.cf-check { color: var(--accent); display: inline-flex; }
+.cf-check .sym { width: 20px; height: 20px; stroke-width: 2.4; }
+.cf-sheet .group-body .list-row[aria-checked] { cursor: pointer; }
+@media (prefers-reduced-motion: reduce) { .cf-sec.cf-focus { animation: none; } }
+
+/* ---------- 4.13 Card detail ---------- */
+.cd-body { padding-bottom: calc(var(--action-h) + var(--s-6)); }
+.cd-viewer { margin: 0 var(--list-inset); display: grid; gap: var(--s-2); }
+.cd-pages { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; height: 320px; border-radius: 20px; background: var(--card-well); }
+.cd-pages::-webkit-scrollbar { display: none; }
+.cd-pages.empty { margin: 0 var(--list-inset); display: grid; place-items: center; color: var(--tertiary); }
+.cd-pages.empty .sym { width: 48px; height: 48px; stroke-width: 1.4; }
+.cd-page { flex: 0 0 100%; scroll-snap-align: center; display: grid; place-items: center; padding: var(--s-4); border: none; background: none; cursor: zoom-in; }
+.cd-page img { max-width: 100%; max-height: calc(320px - 2 * var(--s-4)); object-fit: contain; background: var(--on-fill); box-shadow: 0 0 0 0.5px var(--separator), var(--shadow-paper); }
+.cd-dots { display: flex; justify-content: center; gap: 6px; }
+.cd-dots span { width: 7px; height: 7px; border-radius: 50%; background: var(--tertiary); }
+.cd-dots span.on { background: var(--ink); }
+.cd-head { margin: 0 var(--s-5); display: grid; justify-items: start; gap: var(--s-2); }
+.cd-why { margin: 0; font: var(--t-subheadline); letter-spacing: var(--tr-subheadline); color: var(--muted); }
+.cd-row { gap: var(--s-3); }
+.cd-label { flex: 0 0 auto; font: var(--t-body); letter-spacing: var(--tr-body); color: var(--ink); }
+.cd-input { flex: 1 1 auto; min-width: 0; display: flex; justify-content: flex-end; color: var(--muted); text-align: right; }
+.cd-row input[type=text], .cd-row input[type=date] { width: 100%; min-width: 0; border: none; background: none; padding: 0; color: var(--muted); text-align: right;
+  font: var(--t-body); letter-spacing: var(--tr-body); outline: none; }
+.cd-row input:focus { color: var(--ink); }
+.cd-row input[type=date] { max-width: 170px; min-height: 28px; }
+.cd-stack { flex-direction: column; align-items: stretch; gap: var(--s-2); }
+.cd-line { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); }
+.cd-name { display: flex; align-items: baseline; gap: 0; border-radius: 8px; background: var(--fill); padding: 8px 10px; }
+.cd-name input { flex: 1; min-width: 0; border: none; background: none; padding: 0; color: var(--ink); font: var(--t-mono-caption); font-size: 15px; outline: none; }
+.cd-suffix { font: var(--t-mono-caption); font-size: 15px; color: var(--muted); }
+.cd-name-chips .chip { height: 30px; font: var(--t-footnote); font-family: var(--font-mono); }
+.cd-stack textarea { width: 100%; min-height: 66px; resize: vertical; border: none; background: none; padding: 0; color: var(--ink); font: var(--t-body); letter-spacing: var(--tr-body); outline: none; }
+.cd-value { max-width: 60vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cd-remember .group { margin-bottom: 0; }
+.cd-remember .group-footer { margin: 0 var(--list-inset) var(--s-6); }
+.cd-open { padding: 0 var(--list-inset); display: flex; justify-content: center; }
+/* The Shred and File bar takes the accessory's place above the tab bar (the accessory hides). */
+.cd-bar { position: fixed; z-index: 9; left: 50%; transform: translateX(-50%); width: 100%; max-width: var(--column);
+  bottom: calc(var(--tabbar-h) + max(var(--s-2), env(safe-area-inset-bottom)) + var(--s-2)); padding: 0 var(--s-4);
+  display: flex; justify-content: space-between; pointer-events: none; }
+.cd-bar > * { pointer-events: auto; }
+
+/* Full-screen pages from the detail's viewer */
+.cd-full { position: absolute; inset: 0; z-index: 30; display: flex; flex-direction: column; background: var(--background); }
+.cd-full-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); padding: max(var(--s-2), env(safe-area-inset-top)) var(--s-4) var(--s-2);
+  background: var(--glass-bg); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: 0 0.5px 0 var(--separator); }
+.cd-full-title { margin: 0; font: var(--t-headline); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cd-full-pages { flex: 1; overflow: auto; display: grid; gap: var(--s-4); padding: var(--s-4); align-content: start; touch-action: pan-x pan-y pinch-zoom; }
+.cd-full-pages img { width: 100%; height: auto; background: var(--on-fill); box-shadow: 0 0 0 0.5px var(--separator), var(--shadow-paper); }
+
+/* The detail's inline nav bar: a long title shares the bar with Back and Done instead of covering them. */
+.cd-nav .nav-bar { grid-template-columns: auto minmax(0, 1fr) auto; }
+.cd-nav .nav-compact { text-align: center; }
+/* The bar's scroll edge: content fades out under Shred and File instead of colliding with them. */
+.cd-bar::before { content: ""; position: absolute; z-index: -1; left: 0; right: 0; top: -20px; bottom: calc(-1 * (var(--tabbar-h) + 40px));
+  background: linear-gradient(to bottom, transparent, var(--background) 34%); pointer-events: none; }

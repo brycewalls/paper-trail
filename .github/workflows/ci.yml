@@ -5,6 +5,8 @@
 #              test, from Web Development Resources/github-template)
 #   deck       sorts a small stack in the real page against tools/fake/fake-backend.js and checks
 #              the original file reaches (fake) Drive byte for byte
+#   sort       the rebuilt Sort deck (#20, #77): drag and overlays, skip and the Skipped sheet, the
+#              undo hold, Keep original confirm, check fields, bulk filing, the card detail
 #   shell      the app shell and design system (#83): tabs and stacks, pushed screens, the outbox
 #              accessory, Search's bottom field, the Scan menu, Settings, sheets and the dialog, themes
 #   scanner    drives Scan document with a fake camera (a generated video of a tilted page): edges
@@ -39,6 +41,9 @@ jobs:
         run: node tools/smoke_test.mjs
       - name: Sort a stack against the fake backend
         run: node tools/deck_test.mjs
+      - name: The Sort deck (gestures, skip, undo hold, check fields, bulk, detail)
+        if: always()
+        run: node tools/sort_test.mjs
       - name: The app shell and design system
         if: always()
         run: node tools/shell_test.mjs

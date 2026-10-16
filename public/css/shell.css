@@ -87,9 +87,7 @@ a { color: var(--accent); }
 .settings-panel .account-row .row-title { font: var(--t-title3); font-weight: 500; }
 .settings-version { text-align: center; padding-top: var(--s-4); }
 
-/* ---------- Sort: first-time state and the legacy intake, restyled to the tokens ---------- */
-.sort-empty { display: grid; justify-items: center; gap: var(--s-2); text-align: center; padding: var(--s-8) var(--s-8) var(--s-4); }
-#sort-body:has(#deck-wrap:not([hidden])) .sort-empty { display: none; }
+/* ---------- Sort: the legacy intake, restyled to the tokens (hidden; the deck is css/deck.css) ---------- */
 .intake { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s-3); padding: 0 var(--s-4); }
 .intake .scan-btn, .intake .drop { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding: 0 var(--s-4); border-radius: var(--r-capsule);
   border: none; cursor: pointer; font: var(--t-subheadline); font-weight: 600; letter-spacing: var(--tr-subheadline); text-align: center; }
@@ -104,7 +102,6 @@ a { color: var(--accent); }
   font: var(--t-subheadline); font-weight: 500; }
 .trouble:empty, #status:empty { display: none; }
 #status { padding: 0 var(--s-5); }
-#deck-wrap { padding: 0 var(--card-margin); }
 
 /* ---------- Piles: the legacy lists, restyled to the tokens until browse rebuilds them ---------- */
 .legacy-piles { display: grid; gap: var(--s-4); padding: 0 var(--list-inset); }

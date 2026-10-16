@@ -24,7 +24,7 @@ const server = createServer((req, res) => {
   res.end(readFileSync(file));
 });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
-const base = `http://127.0.0.1:${server.address().port}/public/index.html?fake=1`;
+const base = `http://127.0.0.1:${server.address().port}/public/index.html?fake=1&hold=1`;   // hold=1: a one-second undo hold
 const shots = join(root, "tools", "smoke");
 mkdirSync(shots, { recursive: true });
 
@@ -125,11 +125,17 @@ const measurePage = (page, i) => page.evaluate(async ({ i, lines }) => {
   return { w: Wd, h: Ht, corners, inkTop: row((first.v0 + first.v1) / 2), gapTop: row(first.v1 + 0.02), inkBottom: row((last.v0 + last.v1) / 2), gapBottom: row(last.v1 + 0.02), bytes: [...new Uint8Array(await p.blob.arrayBuffer())] };
 }, { i, lines: LINES });
 
+// Every scan entry point is the Scan menu (#79): Sort's Scan button, then Scan document.
+async function openScanner(page) {
+  await page.click("#btn-scan-menu");
+  await page.click('.menu-item:has-text("Scan document")');
+}
+
 try {
   // 1. Scan a two-page document, with a corner drag, a delete and a retake on the way.
   {
     const { ctx, page, problems } = await open();
-    await page.click("#btn-scan");
+    await openScanner(page);
     check(await page.isVisible("#scanner"), "Scan document opens the scanner full screen");
     check(/Getting the scanner ready/.test(await page.textContent("#sc-msg")), "it says Getting the scanner ready while OpenCV loads");
     check(await page.evaluate(() => document.getElementById("sc-video").hasAttribute("playsinline")), "the video is playsinline, so iPhone Safari doesn't take it full screen");
@@ -212,8 +218,8 @@ try {
     check(itemsBefore === 0 && added.length === 1 && added[0].files === 2 && added[0].kind === "photos", "Done adds ONE item to the deck, with both pages");
     check(added[0]?.name === "Scan, 2 pages", "it's named Scan, 2 pages until Claude reads it");
     check(await sc(page, () => window.__tracks.every((t) => t.readyState === "ended") && !window.__PT__.scanner.stream), "closing the scanner stops the camera");
-    check(await page.evaluate(() => document.activeElement?.id) === "btn-scan", "focus goes back to Scan document");
-    await page.waitForSelector(".card.top .stamp", { timeout: 20000 });
+    check(await page.evaluate(() => document.activeElement?.id) === "btn-scan-menu", "focus goes back to the Scan button");
+    await page.waitForSelector(".dk-card:not(.dk-ghost) .verdict-badge", { timeout: 20000 });
     const call = await sc(page, () => window.__PT_FAKE__.classifyCalls[0]);
     check(call?.kind === "images" && call.images.length === 2, "Claude gets both scanned pages");
     await page.keyboard.press("ArrowRight");
@@ -224,7 +230,7 @@ try {
     check(pdf.includes(Buffer.from(pageBytes)), "the flattened page JPEG is inside the PDF untouched");
 
     // Cancel: scan a page, cancel, nothing joins the deck.
-    await page.click("#btn-scan");
+    await openScanner(page);
     await waitLive(page);
     await captureAndReview(page);
     await keep(page);
@@ -235,7 +241,7 @@ try {
     check(await sc(page, () => window.__tracks.every((t) => t.readyState === "ended")), "Cancel stops the camera");
 
     // Auto-capture: fires once when the page holds still, then waits for the next page.
-    await page.click("#btn-scan");
+    await openScanner(page);
     await waitLive(page);
     await page.click("#sc-auto");
     check(await page.getAttribute("#sc-auto", "aria-pressed") === "true", "Auto-capture turns on");
@@ -253,7 +259,7 @@ try {
   {
     const { ctx, page, problems } = await open({ viewport: { width: 390, height: 844 }, colorScheme: "dark" });
     await page.screenshot({ path: join(shots, "scanner-intake-phone-dark.png") });
-    await page.click("#btn-scan");
+    await openScanner(page);
     await waitLive(page);
     const fitOk = await page.evaluate(() => {
       const inView = (id) => { const r = document.getElementById(id).getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth; };
@@ -278,7 +284,7 @@ try {
     ["no camera API", "Object.defineProperty(navigator, 'mediaDevices', { value: undefined });", "This browser can't use the camera", false],
   ]) {
     const { ctx, page, problems } = await open({ init });
-    await page.click("#btn-scan");
+    await openScanner(page);
     await page.waitForSelector("#sc-error:not([hidden])");
     check((await page.textContent("#sc-err-h")).trim() === heading && (await page.isVisible("#sc-retry")) === retry, `${what}: "${heading}"${retry ? " with Try again" : ""}`);
     if (what === "denied permission") await page.screenshot({ path: join(shots, "scanner-denied-desktop.png") });

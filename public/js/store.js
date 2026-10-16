@@ -31,3 +31,24 @@ export async function saveRecord(it, extra) {
 export const updateDoc = (id, data) => B.update(PATHS.docs + "/" + id, data);
 export const removeDoc = (id) => B.del(PATHS.docs + "/" + id);
 export const updateSender = (id, data) => B.update(PATHS.paperless + "/" + id, data);
+
+// ---------- deck (#20, #21, #77) ----------
+// users/{uid}/docs/{id}, once: the read-only document view (spec 4.13).
+export const getDoc = (id) => B.get(PATHS.docs + "/" + id);
+// users/{uid}/senders/{slug(issuer)}: the sender rules (ios/ARCHITECTURE.md, SenderRule).
+export const watchSenders = (cb, err) => B.watch("senders", null, cb, err);
+export const setSenderRule = (key, rule) => B.set("senders/" + key, rule);
+export const deleteSenderRule = (key) => B.del("senders/" + key);
+// users/{uid}/config/settings: shredHoldDays (outbox), offerBulkFile (deck, default false). cb gets
+// the settings object ({} when there is none yet).
+export const watchSettings = (cb, err) => B.watch("config", null, (list) => {
+  const s = list.find((d) => d.id === "settings");
+  if (!s) { cb({}); return; }
+  const { id, ...rest } = s;
+  cb(rest);
+}, err);
+// Merges the patch into config/settings (made on first use), so one owner never wipes another's keys.
+export async function saveSettings(patch) {
+  const cur = (await B.get("config/settings")) || {};
+  await B.set("config/settings", { ...cur, ...patch });
+}

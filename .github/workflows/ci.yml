@@ -11,7 +11,7 @@
 #              found, the page flattened, Done adds one item that files as one PDF, Cancel adds none
 #   functions  the classify function's unit tests, Claude stood in
 #   ios        the iPhone app (ios/): xcodegen, a simulator build and the unit tests. macOS minutes
-#              cost 10x on a private repo, so it runs only when ios/ changed or the PR targets ios.
+#              cost 10x, and the Swift app is paused, so it runs only when started by hand (Run workflow).
 # Pushing a tag like v1.2 publishes a Release with a zip of the site attached.
 name: CI
 
@@ -93,7 +93,9 @@ jobs:
   ios:
     name: iPhone app build and tests
     needs: changes
-    if: needs.changes.outputs.ios == 'true' || github.base_ref == 'ios'
+    # The Swift app is paused (2026-10-15, #83) and macOS minutes are expensive, so this job only runs
+    # when started by hand: Actions, CI, Run workflow.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
     timeout-minutes: 45
     defaults:

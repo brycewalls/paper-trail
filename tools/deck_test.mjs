@@ -123,17 +123,20 @@ try {
     check(await fake(page, () => window.__PT_FAKE__.folders.length) === 12, "folders are reused, not made again");
 
     await page.waitForSelector(".done-card");
-    await page.waitForFunction(() => document.querySelector("#c-all").textContent === "3");
-    check((await page.textContent("#c-shred")).trim() === "2" && (await page.textContent("#c-keep")).trim() === "1", "the piles count two to shred and one original");
     const recs = await fake(page, () => [...window.__PT_FAKE__.db.entries()].filter(([k]) => k.startsWith("docs/")).map(([, v]) => v));
     const filedBill = recs.find((r) => r.title.startsWith("Duke"));
     check(filedBill?.filed === true && /drive\.google\.com\/file\/d\//.test(filedBill.driveUrl) && filedBill.physical === "to_shred", "the log has the Drive link and the pile");
     check(recs.find((r) => r.title.startsWith("W-2"))?.filed === false, "a left swipe is logged as shred without filing");
     check(await fake(page, () => window.__PT_FAKE__.db.has("paperless/duke-energy")), "Duke Energy lands on the Go paperless list");
     await page.click("[data-tab-link=piles]");                   // Piles is its own tab now (#83)
-    await page.click("#tab-shred"); await page.click("[data-act=shredded]");
-    await page.waitForFunction(() => document.querySelector("#st-shred").textContent === "1");
-    check(true, "Mark shredded updates the stats");
+    await page.click("[data-seg=shred]");
+    const segs = () => page.evaluate(() => [...document.querySelectorAll("#piles-body [data-seg]")].map((b) => b.textContent.trim()).join("|"));
+    await page.waitForFunction(() => document.querySelector("#piles-body [data-seg=all]")?.textContent.trim() === "All filed 2").catch(() => {});
+    check(await segs() === "Shred 2|Keep 1|All filed 2", `the piles count two to shred, one original and two filed (${await segs()})`);
+    await page.click("[data-mark]");                              // spec 4.5: Mark n as shredded, then confirm
+    await page.click(".action-sheet .as-btn[data-i='0']");
+    await page.waitForFunction(() => document.querySelector("#piles-body [data-seg=shred]")?.textContent.trim() === "Shred 0");
+    check(await fake(page, () => [...window.__PT_FAKE__.db.values()].filter((v) => v.physical === "shredded" && v.shreddedAt).length) === 2, "Mark 2 as shredded marks both, with shreddedAt");
     check(problems.length === 0, `no console errors (${problems.join(" | ") || "none"})`);
     await ctx.close();
   }

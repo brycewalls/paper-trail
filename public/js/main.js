@@ -3,15 +3,18 @@
 // does not go here: if a feature needs to react to the session, it listens for an event instead
 // (docs/web-contract.md).
 import { FAKE, DENIED } from "./config.js";
-import { $, errCode, setSaveNote, emit, on } from "./ui.js";
+import { $, errCode, emit, on } from "./ui.js";
 import { initBackend } from "./backend.js";
 import { watchUser, showGate } from "./auth.js";
 import { loadToken, renderDrive, resetFolders, setNeedsDrive } from "./drive.js";
-import { checkAccess, watchDocs, watchPaperless } from "./store.js";
+import { checkAccess } from "./store.js";
 import { items, clearItems } from "./items.js";
 import { addEach, addAsOne, pump } from "./deck.js";
 import { clearOutbox } from "./outbox.js";
-import { setDocs, setPaperless, resetPiles, renderPiles } from "./piles.js";
+// Browse (Piles, Search, Paperless) starts its own listeners on "session:started" (browse.js).
+import "./piles.js";
+import "./search.js";
+import "./paperless.js";
 import { sc } from "./scanner.js";
 import { startShell, shellSignedIn } from "./shell.js";
 
@@ -22,7 +25,7 @@ async function onUser(u) {
   unwatch = [];
   resetFolders();
   if (!u) {
-    clearItems(); clearOutbox(); resetPiles(); setNeedsDrive(false); shellSignedIn(null);
+    clearItems(); clearOutbox(); setNeedsDrive(false); shellSignedIn(null);
     showGate("signin", "");
     emit("session:ended");
     return;
@@ -40,9 +43,6 @@ async function onUser(u) {
   $("app").hidden = false;
   shellSignedIn(u);
   renderDrive();
-  unwatch.push(watchDocs(setDocs, () => setSaveNote("Your log couldn't load. Reload the page to try again.")));
-  unwatch.push(watchPaperless(setPaperless, () => {}));
-  setSaveNote();
   pump();
   emit("session:started", u);
 }
@@ -66,7 +66,6 @@ on("capture:request", ({ source }) => {
     $("btn-signin").hidden = true; $("gate-note").hidden = true;
     return;
   }
-  renderPiles();
   startShell();
   watchUser(onUser);
 })();

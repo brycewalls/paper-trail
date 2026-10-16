@@ -11,7 +11,7 @@ export const mb = (n) => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + " MB";
 export const errCode = (e) => String((e && e.code) || "");
 export const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-export function setSaveNote(msg) { $("save-note").textContent = msg || "Your log saves automatically."; }
+export function setSaveNote(msg) { const n = $("save-note"); if (n) n.textContent = msg || "Your log saves automatically."; }
 export function setStatus(msg, err = false, spin = false) {
   const s = $("status");
   s.className = "status" + (err ? " err" : "");

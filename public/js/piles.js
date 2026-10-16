@@ -1,109 +1,197 @@
-// piles.js: the right-hand panel and the stats row. Owns the tabs (Shred pile, Keep originals,
-// Go paperless, All filed), their lists and buttons, the counts, and the four stats. It renders
-// from the Firestore lists main.js hands it (setDocs, setPaperless) and writes through store.js.
-import { VERDICT } from "./config.js";
-import { $, esc, setSaveNote } from "./ui.js";
-import { updateDoc, updateSender, removeDoc } from "./store.js";
+// piles.js: Piles (spec 4.5, A5; owner: browse; #18, #24). The Shred, Keep and All filed segments
+// with plain counts ("Shred 9", #58), the safe-to-shred banner and "Mark n as shredded", Put away
+// and Take out, All filed by month with the Sensitive filter, and the Shred hold row in Settings.
+// Renders into #piles-body from the live library in browse.js and writes through store.js. The
+// counterpart of ios/PaperTrail/Features/Piles (PilesScreen, PilesViewModel).
+import { $, esc, prefs } from "./ui.js";
+import { updateDoc, saveSettings } from "./store.js";
+import { lib, onBrowse, holdDays, shredState, parseISO, shortDay, monthTitle, daysUntil, days, folderName, isoNow,
+  thumb, swipeRow, bindRows, driveMenu, rerender, saveFailed, loadFailedState, reconnectBanner, openDoc } from "./browse.js";
+import { registerSettingsSection } from "./settings.js";
+import { icon } from "./ui/icons.js";
+import { verdictBadge, statusPill, section, row, banner, emptyState, segmented } from "./ui/components.js";
+import { bindMenu, openMenu } from "./ui/menu.js";
+import { actionSheet } from "./ui/sheet.js";
 
-let docs = [], paperless = [];
-let tab = "shred";
+const ui = { segment: ["shred", "keep", "all"].includes(prefs.get("pt-piles-segment")) ? prefs.get("pt-piles-segment") : "shred", filter: "all", showAllSafe: false };
 
-export function setDocs(list) { docs = list; renderPiles(); }
-export function setPaperless(list) { paperless = list; renderPiles(); }
-// Signed out: forget the lists without drawing (the gate is showing).
-export function resetPiles() { docs = []; paperless = []; }
+// ---------- the model (PilesViewModel) ----------
+export function piles(now = Date.now()) {
+  const hold = holdDays();
+  const pile = lib.docs.filter((d) => d.physical === "to_shred");
+  const state = new Map(pile.map((d) => [d.id, shredState(d, hold, now)]));
+  const safe = pile.filter((d) => state.get(d.id)?.kind === "safe");
+  const waiting = pile.filter((d) => state.get(d.id)?.kind !== "safe");
+  const toPutAway = lib.docs.filter((d) => d.physical === "keep");
+  const inBinder = lib.docs.filter((d) => d.physical === "stored");
+  const filedAll = lib.docs.filter((d) => d.filed);
+  const filed = filedAll.filter((d) => ui.filter === "all" || d.sensitive).sort((a, b) => String(b.filedAt).localeCompare(String(a.filedAt)));
+  return { hold, pile, state, safe, waiting, toPutAway, inBinder, filedAll, filed };
+}
+// Spec 3.9: "6 are safe to shred." then the rest.
+export function safeBannerCopy(n, hold) {
+  if (!n) return null;
+  return { bold: n === 1 ? "1 is safe to shred." : `${n} are safe to shred.`,
+    text: hold > 0 ? `The Drive copy is confirmed and the ${hold}-day hold is over.` : "The Drive copy is confirmed." };
+}
+const shredSubtitle = (d) => (d.sensitive ? `${d.issuer} · Cross-cut` : d.issuer || "");
+const keepSubtitle = (d) => [d.issuer, folderName(d.folder)].filter(Boolean).join(" · ");
+function waitingCopy(st) {
+  if (st?.kind !== "holding") return { pill: "Checking", sub: "Checking the Drive copy" };
+  const n = daysUntil(st.until);
+  return { pill: n === 0 ? "Today" : days(n), sub: `Drive copy confirmed · hold ends ${shortDay(st.until)}` };
+}
 
-document.querySelector(".tabs").addEventListener("click", (e) => {
-  const t = e.target.closest("[data-tab]"); if (!t) return;
-  tab = t.dataset.tab; renderPiles();
-});
+// ---------- rendering ----------
+const docRow = (d, subtitle, trailing) => row({ tag: "button", leading: thumb(d), title: d.title || "Untitled", subtitle, trailing,
+  "data-open": d.id, "data-key": `doc-${d.id}`, "data-drive-url": d.driveUrl || undefined });
 
-$("pile").addEventListener("click", async (e) => {
-  const b = e.target.closest("[data-act]"); if (!b) return;
-  const { act, id } = b.dataset;
-  b.disabled = true;
-  try {
-    const now = new Date().toISOString();
-    if (act === "shredded") await updateDoc(id, { physical: "shredded", shreddedAt: now });
-    if (act === "unshred") await updateDoc(id, { physical: "to_shred" });
-    if (act === "stored") await updateDoc(id, { physical: "stored" });
-    if (act === "unstore") await updateDoc(id, { physical: "keep" });
-    if (act === "pl-done") await updateSender(id, { status: "done", doneAt: now });
-    if (act === "pl-skip") await updateSender(id, { status: "skip" });
-    if (act === "pl-todo") await updateSender(id, { status: "todo" });
-    if (act === "remove") await removeDoc(id);
-  } catch {
-    setSaveNote("That change didn't save. Try again.");
-    b.disabled = false;
+function shredSegment(m) {
+  let h = "";
+  if (lib.docsLoaded && !m.pile.length) h += emptyState({ symbol: "checkmark.circle", title: "Nothing to shred", description: "Documents you file show up here once their Drive copy is confirmed." });
+  const copy = safeBannerCopy(m.safe.length, m.hold);
+  if (copy) h += `<div class="group b-banner">${banner({ kind: "safe", ...copy, "data-safe-banner": "" })}</div>`;
+  if (m.safe.length) {
+    const shown = ui.showAllSafe ? m.safe : m.safe.slice(0, 3);
+    const more = m.safe.length - shown.length;
+    h += section(shown.map((d) => swipeRow(docRow(d, shredSubtitle(d), statusPill("safe")), [{ label: "Shredded", act: "shredded", tone: "file" }], { key: `sw-${d.id}` })).join("")
+      + (more > 0 ? row({ title: `${more} more`, chevron: true, "data-more-safe": "", "data-key": "more-safe", "aria-label": `${more} more safe to shred` }) : ""),
+    { header: "Safe to shred", "data-section": "safe" });
   }
-});
-
-function driveLink(d) {
-  if (!d.driveUrl) return `<span class="muted">Not filed</span>`;
-  const urls = d.partUrls?.length > 1 ? d.partUrls : [d.driveUrl];
-  return urls.map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener">${urls.length > 1 ? `Part ${i + 1}` : "Open in Drive"}</a>`).join(" · ");
+  if (m.waiting.length) {
+    h += section(m.waiting.map((d) => { const w = waitingCopy(m.state.get(d.id)); return docRow(d, w.sub, statusPill("waiting", w.pill)); }).join(""),
+      { header: "Waiting", "data-section": "waiting" });
+  }
+  // Floating glass button above the accessory; Waiting rows are never included.
+  if (m.safe.length) h += `<div class="b-float"><button type="button" class="glass b-mark" data-mark data-key="mark">Mark ${m.safe.length} as shredded</button></div>`;
+  return h;
+}
+function keepSegment(m) {
+  let h = "";
+  if (lib.docsLoaded && !m.toPutAway.length && !m.inBinder.length) h += emptyState({ symbol: "archivebox", title: "No originals to keep", description: "Cards marked Keep original show up here." });
+  if (m.toPutAway.length) h += section(m.toPutAway.map((d) => swipeRow(docRow(d, keepSubtitle(d), ""), [{ label: "Put away", act: "putaway", tone: "accent" }], { key: `sw-${d.id}` })).join(""),
+    { header: "To put away", "data-section": "putaway" });
+  if (m.inBinder.length) h += section(m.inBinder.map((d) => swipeRow(docRow(d, keepSubtitle(d), `<span class="b-stored" role="img" aria-label="Put away">${icon("archivebox")}</span>`),
+    [{ label: "Take out", act: "takeout", tone: "gray" }], { key: `sw-${d.id}` })).join(""), { header: "In the binder", "data-section": "binder" });
+  return h;
+}
+function allSegment(m) {
+  if (lib.docsLoaded && !m.filed.length) {
+    return ui.filter === "sensitive" && m.filedAll.length
+      ? emptyState({ symbol: "lock.fill", title: "Nothing sensitive", description: "No filed documents are marked Sensitive." })
+      : emptyState({ symbol: "folder", title: "Nothing filed yet", description: "Everything you file to Drive shows up here." });
+  }
+  const groups = [];
+  for (const d of m.filed) {
+    const at = parseISO(d.filedAt);
+    const title = at ? monthTitle(at) : "Earlier";
+    if (groups.length && groups[groups.length - 1].title === title) groups[groups.length - 1].docs.push(d);
+    else groups.push({ title, docs: [d] });
+  }
+  return groups.map((g) => section(g.docs.map((d) => docRow(d, keepSubtitle(d), verdictBadge(d.verdict))).join(""), { header: g.title, "data-section": "month" })).join("");
 }
 
 export function renderPiles() {
-  const toShred = docs.filter((d) => d.physical === "to_shred");
-  const shredded = docs.filter((d) => d.physical === "shredded");
-  const keep = docs.filter((d) => d.physical === "keep" || d.physical === "stored");
-  const pl = paperless.filter((p) => p.status !== "skip");
-  const plDone = paperless.filter((p) => p.status === "done");
-
-  $("st-filed").textContent = docs.filter((d) => d.filed).length;
-  $("st-shred").textContent = shredded.length;
-  $("st-shred-wait").textContent = toShred.length;
-  $("st-keep").textContent = keep.length;
-  $("st-pl").textContent = plDone.length;
-  $("st-pl-all").textContent = pl.length;
-  $("c-shred").textContent = toShred.length;
-  $("c-keep").textContent = keep.length;
-  $("c-paper").textContent = paperless.filter((p) => p.status === "todo").length;
-  $("c-all").textContent = docs.length;
-  document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === tab)));
-
-  const box = $("pile");
-  const empty = (h, p) => `<div class="empty"><strong>${h}</strong><span>${p}</span></div>`;
-  const line = (d, acts) => `
-    <div class="item">
-      <div class="meta">
-        <p><strong>${esc(d.title)}</strong></p>
-        <p class="mono muted">${esc(d.folder)} / ${esc(d.filename)}.pdf</p>
-        <p class="note">${driveLink(d)}${d.sensitive ? " · Sensitive, cross-cut shred" : ""}</p>
-      </div>
-      <div class="acts">${acts}</div>
-    </div>`;
-
-  if (tab === "shred") {
-    box.innerHTML = toShred.length
-      ? toShred.map((d) => line(d, `<button class="btn small" data-act="shredded" data-id="${esc(d.id)}">Mark shredded</button>`)).join("")
-        + (shredded.length ? `<p class="note" style="padding-top:12px">${shredded.length} already shredded.</p>` : "")
-      : empty(shredded.length ? "Pile's clear" : "Nothing to shred yet", shredded.length ? `${shredded.length} documents shredded so far.` : "Documents stamped Shred or Scan + shred land here once filed. Open each in Drive before you shred it.");
-  } else if (tab === "keep") {
-    box.innerHTML = keep.length
-      ? keep.map((d) => line(d, d.physical === "stored"
-          ? `<span class="pill done">Stored</span><button class="btn small" data-act="unstore" data-id="${esc(d.id)}">Undo</button>`
-          : `<button class="btn small" data-act="stored" data-id="${esc(d.id)}">Put away</button>`)).join("")
-      : empty("No originals yet", "Certificates, titles, deeds and other papers you need to keep will collect here, so you know what goes in the safe folder.");
-  } else if (tab === "paper") {
-    const order = { todo: 0, done: 1, skip: 2 };
-    const list = [...paperless].sort((a, b) => order[a.status] - order[b.status] || String(a.issuer).localeCompare(String(b.issuer)));
-    box.innerHTML = list.length
-      ? list.map((p) => `
-        <div class="item">
-          <div class="meta">
-            <p><strong>${esc(p.issuer)}</strong> ${p.status === "done" ? '<span class="pill done">Paperless</span>' : p.status === "skip" ? '<span class="pill">Skipped</span>' : ""}</p>
-            <p class="note">${esc(p.how)}</p>
-          </div>
-          <div class="acts">${p.status === "todo"
-            ? `<button class="btn small" data-act="pl-done" data-id="${esc(p.id)}">Switched</button><button class="btn small" data-act="pl-skip" data-id="${esc(p.id)}">Skip</button>`
-            : `<button class="btn small" data-act="pl-todo" data-id="${esc(p.id)}">Undo</button>`}</div>
-        </div>`).join("")
-      : empty("No senders yet", "When Claude spots mail from a company that offers e-delivery, like a bank, utility or insurer, it lands here so you can stop the paper at the source.");
-  } else {
-    box.innerHTML = docs.length
-      ? docs.map((d) => line(d, `<span class="pill ${esc(d.verdict)}">${esc(VERDICT[d.verdict]?.stamp || "")}</span><button class="btn small" data-act="remove" data-id="${esc(d.id)}" aria-label="Remove ${esc(d.title)} from the log">Remove</button>`)).join("")
-      : empty("Nothing filed yet", "Scan your first document on the left. Everything you file shows up here with a link to the PDF in Drive.");
+  const body = $("piles-body");
+  if (!body) return;
+  const m = piles();
+  const filter = $("piles-filter");
+  if (filter) {
+    filter.hidden = ui.segment !== "all";
+    filter.classList.toggle("on", ui.filter !== "all");
+    filter.setAttribute("aria-label", ui.filter === "all" ? "Filter" : "Filter, showing Sensitive");
   }
+  if (lib.failed && !lib.docsLoaded) { rerender(body, reconnectBanner() + loadFailedState()); return; }
+  const seg = `<div class="b-seg">${segmented([
+    { value: "shred", label: `Shred ${m.pile.length}` },
+    { value: "keep", label: `Keep ${m.toPutAway.length + m.inBinder.length}` },
+    { value: "all", label: `All filed ${m.filedAll.length}` },
+  ], { selected: ui.segment, label: "Pile", "data-key": "seg" })}</div>`;
+  const content = ui.segment === "shred" ? shredSegment(m) : ui.segment === "keep" ? keepSegment(m) : allSegment(m);
+  rerender(body, reconnectBanner() + seg + content);
 }
+
+// ---------- actions ----------
+async function write(id, patch) { try { await updateDoc(id, patch); } catch { saveFailed(); } }
+async function act(name, swipeEl) {
+  const id = swipeEl.querySelector("[data-open]")?.dataset.open;
+  const d = lib.docs.find((x) => x.id === id);
+  if (!d) return;
+  if (name === "shredded" && shredState(d)?.kind === "safe") await write(id, { physical: "shredded", shreddedAt: isoNow() });
+  if (name === "putaway" && d.physical === "keep") await write(id, { physical: "stored" });
+  if (name === "takeout" && d.physical === "stored") await write(id, { physical: "keep" });
+}
+export async function markSafeShredded() {
+  const { safe } = piles();
+  const now = isoNow();
+  try { await Promise.all(safe.map((d) => updateDoc(d.id, { physical: "shredded", shreddedAt: now }))); } catch { saveFailed(); }
+}
+
+function bind() {
+  const body = $("piles-body");
+  body.innerHTML = "";
+  bindRows(body, { onAct: act, menuFor: driveMenu });
+  body.addEventListener("click", async (e) => {
+    const seg = e.target.closest("[data-seg]");
+    if (seg) { ui.segment = seg.dataset.seg; prefs.set("pt-piles-segment", ui.segment); renderPiles(); return; }
+    if (e.target.closest("[data-more-safe]")) { ui.showAllSafe = true; renderPiles(); return; }
+    if (e.target.closest("[data-mark]")) {
+      const n = piles().safe.length;
+      if (!n) return;
+      const label = `Mark ${n} as shredded`;
+      const choice = await actionSheet({ title: `${label}?`, message: "Do this once the paper has gone through the shredder.", actions: [{ label, value: "mark" }] });
+      if (choice === "mark") await markSafeShredded();
+      return;
+    }
+    const open = e.target.closest("[data-open]");
+    if (open) openDoc(open.dataset.open);
+  });
+  // Arrow keys move between segments, like the system segmented control.
+  body.addEventListener("keydown", (e) => {
+    const b = e.target.closest("[data-seg]");
+    if (!b || !["ArrowLeft", "ArrowRight"].includes(e.key)) return;
+    const order = ["shred", "keep", "all"];
+    ui.segment = order[(order.indexOf(ui.segment) + (e.key === "ArrowRight" ? 1 : 2)) % 3];
+    prefs.set("pt-piles-segment", ui.segment);
+    renderPiles();
+    body.querySelector(`[data-seg="${ui.segment}"]`)?.focus();
+    e.preventDefault();
+  });
+  const filter = $("piles-filter");
+  if (filter) {
+    filter.innerHTML = icon("line.3.horizontal.decrease");
+    bindMenu(filter, () => [
+      { label: "All", symbol: ui.filter === "all" ? "checkmark" : undefined, action: () => { ui.filter = "all"; renderPiles(); } },
+      { label: "Sensitive", symbol: ui.filter === "sensitive" ? "checkmark" : undefined, action: () => { ui.filter = "sensitive"; renderPiles(); } },
+    ]);
+  }
+  onBrowse(renderPiles);
+  renderPiles();
+}
+bind();
+
+// ---------- Settings, Sorting: "Shred hold · 3 days ›" (spec 4.9; #18) ----------
+// The iPhone app files this row under outbox (ShredHoldSetting.swift); spec 4.9 lists it for piles.
+// When deck's Sorting section is in the sheet, the row joins it; otherwise it brings its own header.
+export const holdLabel = (n) => (n === 0 ? "None" : days(n));
+const HOLD_CHOICES = [0, 1, 3, 7];
+const HOLD_FOOTER = "A document counts as safe to shred once its Drive copy is confirmed and this many days have passed.";
+const holdRow = () => row({ title: "Shred hold", trailing: `<span class="row-value" data-hold-value>${esc(holdLabel(holdDays()))}</span>`, chevron: true, id: "set-shred-hold", "aria-haspopup": "menu" });
+try {
+  registerSettingsSection({
+    id: "shred-hold", order: 31,
+    render: () => section(holdRow(), { header: "Sorting", footer: HOLD_FOOTER }),
+    bind(el) {
+      const sorting = el.previousElementSibling?.matches?.('[data-settings-section="sorting"]') ? el.previousElementSibling.querySelector(".group-body") : null;
+      if (sorting) { sorting.insertAdjacentHTML("beforeend", holdRow()); el.innerHTML = ""; }
+      const btn = (sorting || el).querySelector("#set-shred-hold");
+      btn.addEventListener("click", () => openMenu(btn, HOLD_CHOICES.map((n) => ({
+        label: holdLabel(n), symbol: n === holdDays() ? "checkmark" : undefined,
+        action: async () => {
+          btn.querySelector("[data-hold-value]").textContent = holdLabel(n);
+          try { await saveSettings({ shredHoldDays: n }); } catch { saveFailed(); btn.querySelector("[data-hold-value]").textContent = holdLabel(holdDays()); }
+        },
+      })), { align: "end" }));
+    },
+  });
+} catch (e) { console.warn(e.message); }

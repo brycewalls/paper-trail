@@ -7,6 +7,8 @@
 #              the original file reaches (fake) Drive byte for byte
 #   shell      the app shell and design system (#83): tabs and stacks, pushed screens, the outbox
 #              accessory, Search's bottom field, the Scan menu, Settings, sheets and the dialog, themes
+#   browse     Piles, Search and Paperless against the fake's seeded library (#18, #22, #23): the
+#              safe-to-shred rule and hold, swipes and their twins, search and Also in Drive, the ledger
 #   scanner    drives Scan document with a fake camera (a generated video of a tilted page): edges
 #              found, the page flattened, Done adds one item that files as one PDF, Cancel adds none
 #   functions  the classify function's unit tests, Claude stood in
@@ -45,6 +47,9 @@ jobs:
       - name: Scan a document with a fake camera
         if: always()
         run: node tools/scanner_test.mjs
+      - name: Piles, Search and Paperless against a seeded library
+        if: always()
+        run: node tools/browse_test.mjs
       - name: Keep the screenshots
         if: always()
         uses: actions/upload-artifact@v4

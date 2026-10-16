@@ -2,7 +2,7 @@
 // `B` is Firebase in production, or tools/fake/fake-backend.js on localhost with ?fake=1. Both
 // implement the same interface (docs/web-contract.md, "Backend interface"); a feature that adds a
 // method adds it to both, in the same change.
-import { FIREBASE, DRIVE_SCOPE, FAKE, params } from "./config.js";
+import { FIREBASE, OAUTH, FAKE, params } from "./config.js";
 
 export let B = null;
 
@@ -27,13 +27,28 @@ async function firebaseBackend() {
   let uid = null;
   const col = (name) => fsM.collection(db, "users", uid, name);
   const ref = (path) => fsM.doc(db, "users", uid, ...path.split("/"));
-  const provider = (custom) => { const p = new authM.GoogleAuthProvider(); p.addScope(DRIVE_SCOPE); p.setCustomParameters(custom); return p; };
-  const tokenOf = (r) => authM.GoogleAuthProvider.credentialFromResult(r)?.accessToken || null;
+  const who = (u) => ({ uid: u.uid, email: u.email || "", name: u.displayName || "" });
   return {
-    onUser(cb) { authM.onAuthStateChanged(auth, (u) => { uid = u ? u.uid : null; cb(u ? { uid: u.uid, email: u.email || "" } : null); }); },
-    async signIn() { const r = await authM.signInWithPopup(auth, provider({ prompt: "select_account" })); return { uid: r.user.uid, token: tokenOf(r) }; },
-    // Same account again, for a fresh Drive token (about an hour each). A different pick fails with auth/user-mismatch.
-    async reconnect() { const u = auth.currentUser; const r = await authM.reauthenticateWithPopup(u, provider({ login_hint: u.email || "" })); return { uid: r.user.uid, token: tokenOf(r) }; },
+    // Firebase keeps the session in IndexedDB (browserLocalPersistence), so a reload stays signed in.
+    onUser(cb) { authM.onAuthStateChanged(auth, (u) => { uid = u ? u.uid : null; cb(u ? who(u) : null); }); },
+    // The sign-in flow (#15, docs/web-contract.md "Auth"): a full-page redirect to Google; the page
+    // comes back through oauthCallback to #/auth/done, redeems the handoff, then signs in.
+    authorize(url) { location.assign(url); },
+    async redeem({ handoff, state, verifier }) {
+      let res;
+      try { res = await fetch(OAUTH.redeemPath, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ handoff, state, verifier }), credentials: "same-origin", cache: "no-store" }); }
+      catch (e) { throw Object.assign(new Error("The sign-in server couldn't be reached."), { code: "oauth/network", cause: e }); }
+      let j = {};
+      try { j = await res.json(); } catch { /* not JSON */ }
+      if (!res.ok) throw Object.assign(new Error(`Redeem failed (${res.status})`), { code: `oauth/${j.code || "unknown"}` });
+      return j;
+    },
+    // Same Google account, same Firebase project: the same uid as the iPhone app.
+    async signInWithTokens({ idToken, accessToken }) {
+      const r = await authM.signInWithCredential(auth, authM.GoogleAuthProvider.credential(idToken, accessToken || null));
+      uid = r.user.uid;
+      return who(r.user);
+    },
     signOut: () => authM.signOut(auth),
     classify: async (payload) => (await classifyFn(payload)).data,
     // Any other callable by name, e.g. driveToken (#15). Owners: auth.js (driveToken), classify.js.

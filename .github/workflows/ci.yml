@@ -7,6 +7,8 @@
 #              the original file reaches (fake) Drive byte for byte
 #   shell      the app shell and design system (#83): tabs and stacks, pushed screens, the outbox
 #              accessory, Search's bottom field, the Scan menu, Settings, sheets and the dialog, themes
+#   auth       the web sign-in against the fake backend: no check on open, the redirect code flow
+#              and its return, not allowed, Drive consent skipped, Drive tokens, Reconnect, Sign out
 #   scanner    drives Scan document with a fake camera (a generated video of a tilted page): edges
 #              found, the page flattened, Done adds one item that files as one PDF, Cancel adds none
 #   functions  the classify function's unit tests, Claude stood in
@@ -42,6 +44,9 @@ jobs:
       - name: The app shell and design system
         if: always()
         run: node tools/shell_test.mjs
+      - name: Sign-in, staying signed in and Drive tokens (#14, #15)
+        if: always()
+        run: node tools/auth_test.mjs
       - name: Scan a document with a fake camera
         if: always()
         run: node tools/scanner_test.mjs

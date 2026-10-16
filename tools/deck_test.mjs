@@ -138,20 +138,31 @@ try {
     await ctx.close();
   }
 
-  // 2. Drive says 401 mid-session: uploads pause, the deck keeps going, Reconnect finishes them.
+  // 2. Drive says 401 once: a fresh token from driveToken fixes it and nothing shows (#15). When the
+  //    server says the grant is gone, uploads pause, Reconnect Drive shows, and the deck keeps going.
   {
     const { ctx, page, problems } = await open("&drive401", { width: 390, height: 844 });
     await page.waitForSelector("#app:not([hidden])");
+    await page.setInputFiles("#file", [{ name: "a.pdf", mimeType: "application/pdf", buffer: makePdf(1, "A") }]);
+    await waitReady(page);
+    await page.click("#btn-right");
+    await page.waitForFunction(() => window.__PT_FAKE__.files.length === 1, null, { timeout: 15000 });
+    check(await page.isHidden("[data-reconnect-banner] .banner"), "a single 401 from Drive mints a fresh token and the upload finishes, no banner");
+    check(await fake(page, () => window.__PT_FAKE__.calls.filter((c) => c.name === "driveToken").length) === 2, "the 401 cost exactly one more driveToken call");
+    await ctx.close();
+  }
+  {
+    const { ctx, page, problems } = await open("&driverevoked", { width: 390, height: 844 });
+    await page.waitForSelector("#app:not([hidden])");
+    await page.waitForSelector("#sort-body [data-reconnect-banner] .banner", { timeout: 15000 });
+    check(/Drive needs reconnecting\. Your scans are safe on this phone and upload once it's back\./.test(await page.textContent("#sort-body [data-reconnect-banner]")), "the server's drive_revoked shows the Reconnect Drive banner on Sort");
+    check((await page.textContent("#outbox-accessory")).includes("Reconnect Drive to keep filing"), "and the accessory's reconnect state");
     await page.setInputFiles("#file", [{ name: "a.pdf", mimeType: "application/pdf", buffer: makePdf(1, "A") }, { name: "b.pdf", mimeType: "application/pdf", buffer: makePdf(1, "B") }]);
     await waitReady(page);
     await page.click("#btn-right");
-    await page.waitForSelector("#drive-banner:not([hidden])", { timeout: 15000 });
-    check(true, "a 401 from Drive shows Reconnect Drive");
     await waitReady(page);
     check(await page.isVisible(".card.top .stamp"), "the deck is still there while Drive waits");
-    await page.click("#btn-reconnect");
-    await page.waitForFunction(() => window.__PT_FAKE__.files.length === 1, null, { timeout: 15000 });
-    check(await page.isHidden("#drive-banner"), "after reconnecting, the paused upload finishes");
+    check(await fake(page, () => window.__PT_FAKE__.files.length) === 0, "nothing uploads while Drive needs reconnecting");
     const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     check(over <= 1, "no sideways scroll at 390px");
     check(problems.length === 0, `no console errors at 390px (${problems.join(" | ") || "none"})`);
@@ -179,8 +190,8 @@ try {
     await ctx.close();
     const s = await open("&signedout");
     await s.page.waitForSelector("#btn-signin:not([hidden])");
-    await s.page.click("#btn-signin");
-    await s.page.waitForSelector("#app:not([hidden])");
+    await s.page.click("#btn-signin");                            // the fake's Google: a full-page redirect and back
+    await s.page.waitForSelector("#app:not([hidden])", { timeout: 15000 });
     check(true, "signed out sees Sign in, and signing in opens the app");
     await s.ctx.close();
   }

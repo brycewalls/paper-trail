@@ -9,6 +9,8 @@
 #              accessory, Search's bottom field, the Scan menu, Settings, sheets and the dialog, themes
 #   auth       the web sign-in against the fake backend: no check on open, the redirect code flow
 #              and its return, not allowed, Drive consent skipped, Drive tokens, Reconnect, Sign out
+#   outbox     the local-first queue (#17, #1, #18): undo hold, chunked resumable uploads, year folders,
+#              verification, retries, offline, Reconnect Drive, Send back, the Outbox screen, Shred hold
 #   scanner    drives Scan document with a fake camera (a generated video of a tilted page): edges
 #              found, the page flattened, Done adds one item that files as one PDF, Cancel adds none
 #   functions  the classify function's unit tests, Claude stood in
@@ -50,6 +52,9 @@ jobs:
       - name: Scan a document with a fake camera
         if: always()
         run: node tools/scanner_test.mjs
+      - name: The outbox against the fake backend
+        if: always()
+        run: node tools/outbox_test.mjs
       - name: Keep the screenshots
         if: always()
         uses: actions/upload-artifact@v4

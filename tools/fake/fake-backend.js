@@ -25,6 +25,14 @@
 // Firebase's own persistence, because the sign-in flow is a full-page redirect. B.authorize(url)
 // stands in for Google and oauthCallback: it records the URL and reloads the page on
 // #/auth/done?handoff=fake&state=... (or ?error=...). B.redeem checks the verifier against the state.
+// Added by the outbox (#17, #1, #18):
+//   md5mismatch      the first file uploaded reports a wrong md5Checksum (one re-upload, #18)
+//   md5pending       the first files.get answers without md5Checksum (Drive still working it out)
+//   uploadfail=N     the first N upload sessions are refused (403), to walk the retry backoff
+//   chunk=N, fastretry   (read by outbox.js on the fake path) N-byte chunks; retries after 1 to 4 s
+// Uploads are resumable like Drive's: PUTs with Content-Range: bytes a-b/total answer 308 with a
+// Range header until the last byte, then 200 with the file; Content-Range: bytes */total asks how
+// much has arrived.
 // Drive also answers files.get (metadata with a real md5Checksum), files.update with trashed: true,
 // alt=media downloads and fullText search over what was uploaded; B.call("driveToken") mints the
 // fake token.
@@ -118,6 +126,10 @@ export function createFakeBackend(params) {
     set driveRevoked(v) { auth.drive = v ? "revoked" : "ok"; persist(); },
     offline: params.has("offline"),
     slowUpload: params.has("slowupload"),
+    md5mismatch: params.has("md5mismatch"),
+    md5pending: params.has("md5pending"),
+    uploadFail: Number(params.get("uploadfail")) || 0,
+    chunks: [],                // { session, from, to, total } for every resumable PUT
     calls: [],                 // { name, data } for every B.call
     authCb: null,
     nextId: 1,
@@ -138,8 +150,10 @@ export function createFakeBackend(params) {
   }
 
   const json = (obj, status = 200, headers = {}) => new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json", ...headers } });
+  const aborted = (opts) => { if (opts.signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError"); };
   async function fakeFetch(url, opts = {}) {
     await wait(120);
+    aborted(opts);
     if (state.offline) throw new TypeError("Failed to fetch");
     const u = new URL(url);
     const method = (opts.method || "GET").toUpperCase();
@@ -148,18 +162,43 @@ export function createFakeBackend(params) {
     if (u.hostname === "fake-upload.test" && method === "PUT") {
       const meta = state.sessions.get(url);
       if (!meta) return json({ error: { code: 404 } }, 404);
-      const bytes = new Uint8Array(await opts.body.arrayBuffer());
-      if (state.slowUpload) await wait(4000);
-      const file = { id: id("file-"), name: meta.name, parents: meta.parents, mimeType: meta.mimeType, size: bytes.length, bytes, md5Checksum: md5(bytes), trashed: false };
-      state.files.push(file);
-      return json({ id: file.id, webViewLink: `https://drive.google.com/file/d/${file.id}/view`, md5Checksum: file.md5Checksum, size: String(file.size) });
+      const fileReply = (f) => json({ id: f.id, name: f.name, webViewLink: `https://drive.google.com/file/d/${f.id}/view`, md5Checksum: f.md5Checksum, size: String(f.size), trashed: false });
+      const incomplete = () => new Response(null, { status: 308, headers: meta.received ? { Range: `bytes=0-${meta.received - 1}` } : {} });
+      const finish = (bytes) => {
+        let sum = md5(bytes);
+        if (state.md5mismatch) { state.md5mismatch = false; sum = md5(new Uint8Array([...bytes, 0])); }
+        const file = { id: id("file-"), name: meta.name, parents: meta.parents, mimeType: meta.mimeType, size: bytes.length, bytes, md5Checksum: sum, trashed: false };
+        state.files.push(file);
+        meta.file = file;
+        return fileReply(file);
+      };
+      const range = String((opts.headers && opts.headers["Content-Range"]) || "");
+      if (/^bytes \*\/\d+$/.test(range)) { state.chunks.push({ session: url, status: true }); return meta.file ? fileReply(meta.file) : incomplete(); }   // where does it stand?
+      const body = new Uint8Array(opts.body ? await new Response(opts.body).arrayBuffer() : new ArrayBuffer(0));
+      const m = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(range);
+      if (!m) {                                            // one PUT of the whole file
+        if (state.slowUpload) await wait(4000);
+        return finish(body);
+      }
+      const [from, to, total] = [Number(m[1]), Number(m[2]), Number(m[3])];
+      state.chunks.push({ session: url, from, to, total });
+      if (meta.file) return fileReply(meta.file);
+      if (from !== meta.received) return incomplete();     // Drive keeps what it has; the client resends from there
+      if (state.slowUpload) await wait(Math.max(150, 4000 * body.length / total));
+      aborted(opts);
+      if (state.offline) throw new TypeError("Failed to fetch");
+      if (!meta.bytes) meta.bytes = new Uint8Array(total);
+      meta.bytes.set(body, from);
+      meta.received = to + 1;
+      return meta.received >= total ? finish(meta.bytes) : incomplete();
     }
     if (u.pathname === "/upload/drive/v3/files" && method === "POST") {
       if (state.drive401) { state.drive401 = false; return json({ error: { code: 401, status: "UNAUTHENTICATED" } }, 401); }
+      if (state.uploadFail > 0) { state.uploadFail--; return json({ error: { code: 403, errors: [{ reason: "forbidden" }], message: "The user does not have sufficient permissions" } }, 403); }
       const meta = JSON.parse(opts.body);
       if (!state.folders.some((f) => f.id === meta.parents[0])) return json({ error: { code: 404, errors: [{ reason: "notFound" }] } }, 404);
       const session = `https://fake-upload.test/session/${id("s")}`;
-      state.sessions.set(session, meta);
+      state.sessions.set(session, { ...meta, size: Number((opts.headers || {})["X-Upload-Content-Length"]) || 0, received: 0, bytes: null, file: null });
       return new Response(null, { status: 200, headers: { Location: session } });
     }
     const one = u.pathname.match(/^\/drive\/v3\/files\/([^/]+)$/);
@@ -168,6 +207,7 @@ export function createFakeBackend(params) {
       if (!f) return json({ error: { code: 404, errors: [{ reason: "notFound" }] } }, 404);
       if (method === "PATCH") { Object.assign(f, JSON.parse(opts.body || "{}")); return json({ id: f.id, trashed: f.trashed }); }
       if (u.searchParams.get("alt") === "media") return new Response(f.bytes, { status: 200, headers: { "Content-Type": f.mimeType || "application/pdf" } });
+      if (state.md5pending) { state.md5pending = false; return json({ id: f.id, name: f.name, size: String(f.size), trashed: !!f.trashed }); }
       return json({ id: f.id, name: f.name, md5Checksum: f.md5Checksum, size: String(f.size), trashed: !!f.trashed, parents: f.parents, webViewLink: `https://drive.google.com/file/d/${f.id}/view` });
     }
     if (u.pathname === "/drive/v3/files" && method === "GET" && /fullText contains/.test(u.searchParams.get("q") || "")) {

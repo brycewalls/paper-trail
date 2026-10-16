@@ -1,0 +1,30 @@
+/* outbox.css: the Outbox screen (spec 4.4), Earlier and the Shred hold picker. Owner: outbox.
+   Colors, type and spacing come from tokens.css; rows, sections and banners from components.css. */
+
+.outbox-body { padding-bottom: var(--s-6); }
+.outbox-body > .banner { margin: 0 var(--list-inset) var(--s-4); }
+
+/* Rows that open their menu on a tap (Retry, Send back to the deck, Open in Drive). */
+.list-row.ob-row { cursor: pointer; text-align: start; }
+.list-row.ob-row:active { background: var(--fill); }
+.list-row.ob-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* Leading checkmark or xmark on filed rows (20 pt column). */
+.ob-mark { display: inline-grid; place-items: center; width: 24px; }
+.ob-mark .sym { width: 18px; height: 18px; stroke-width: 2.6; }
+.ob-mark.file { color: var(--file); }
+.ob-mark.shred { color: var(--muted); }
+.list-row:has(.row-leading > .ob-mark) { --sep-inset: calc(var(--s-4) + 24px + var(--s-3)); }
+
+/* The uploading row's linear ProgressView: 5 pt, AccentColor over the fill track. */
+.ob-progress { display: block; width: 100%; height: 5px; margin-top: 6px; border-radius: var(--r-capsule); background: var(--fill-strong, var(--fill)); overflow: hidden; }
+.ob-progress > span { display: block; height: 100%; width: 0; border-radius: inherit; background: var(--accent);
+  transition: width var(--spring-smooth-ms, 300ms) var(--spring-smooth, ease-out); }
+.ob-pct { font: var(--t-footnote); color: var(--muted); font-variant-numeric: tabular-nums; min-width: 3.2em; text-align: end; }
+
+.ob-note { margin: var(--s-2) 0 0; font: var(--t-footnote); color: var(--muted); }
+
+/* Shred hold picker: plain rows with a trailing accent checkmark. */
+.hold-choice .row-title { color: var(--ink); }
+.hold-choice .row-trailing { color: var(--accent); }
+.hold-choice .row-trailing .sym { width: 18px; height: 18px; stroke-width: 2.6; }

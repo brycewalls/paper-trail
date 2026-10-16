@@ -31,3 +31,28 @@ export async function saveRecord(it, extra) {
 export const updateDoc = (id, data) => B.update(PATHS.docs + "/" + id, data);
 export const removeDoc = (id) => B.del(PATHS.docs + "/" + id);
 export const updateSender = (id, data) => B.update(PATHS.paperless + "/" + id, data);
+
+// ---------- outbox (#17, #18) ----------
+// users/{uid}/docs/{outboxId}: the outbox writes each record under the pipeline item's id, so a
+// retry overwrites instead of writing a second copy. Undefined fields are left out (Firestore
+// refuses them).
+const defined = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
+export const getDoc = (id) => B.get(PATHS.docs + "/" + id);
+export const putDoc = (id, rec) => B.set(PATHS.docs + "/" + id, defined(rec));
+// users/{uid}/paperless/{slug(issuer)}: created the first time a paperless-capable doc files.
+export const getSender = (id) => B.get(PATHS.paperless + "/" + id);
+export const createSender = (id, data) => B.set(PATHS.paperless + "/" + id, defined(data));
+
+// users/{uid}/config/settings: shredHoldDays (0, 1, 3, 7; default 3), offerBulkFile (web only).
+export const SETTINGS_PATH = "config/settings";
+export const getSettings = () => B.get(SETTINGS_PATH);
+// Watches config/settings; cb gets the settings object ({} when it doesn't exist yet).
+export const watchSettings = (cb, err) => B.watch("config", null, (list) => cb(list.find((d) => d.id === "settings") || {}), err);
+// Merges a patch into config/settings, keeping keys the other app or feature wrote.
+export async function saveSettings(patch) {
+  const cur = (await B.get(SETTINGS_PATH).catch(() => null)) || {};
+  const next = { ...cur, ...patch };
+  delete next.id;
+  await B.set(SETTINGS_PATH, defined(next));
+  return next;
+}

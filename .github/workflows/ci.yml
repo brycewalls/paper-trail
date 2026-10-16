@@ -22,7 +22,8 @@
 #   lab        the no-AI lab build's infrastructure (#92) on ?lab: the badge and tint, the lab_ sign-in
 #              nonce, users/{uid}/lab/data and "Paperwork Archive (Lab)", the Lab settings section,
 #              and the live app unchanged without ?lab
-#   functions  the classify function's unit tests, Claude stood in
+#   functions  the classify function's unit tests, Claude stood in; the lab's no-AI rules engine (#92):
+#              its unit tests and the eval against the synthetic corpus, which fails under its floors
 #   ios        the iPhone app (ios/): xcodegen, a simulator build and the unit tests. macOS minutes
 #              cost 10x, and the Swift app is paused, so it runs only when started by hand (Run workflow).
 # Pushing a tag like v1.2 publishes a Release with a zip of the site attached.
@@ -96,7 +97,13 @@ jobs:
           cache-dependency-path: functions/package-lock.json
       - run: npm ci --prefix functions
       - run: node --test functions/test/*.test.mjs
+      - name: The lab rules engine (#92), unit tests and eval floors
+        if: always()
+        run: |
+          node --test tools/lab/*.test.mjs
+          node tools/lab/eval-rules.mjs --assert
       - name: Check the web module contract
+        if: always()
         run: node tools/contract_check.mjs
 
   changes:

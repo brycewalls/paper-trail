@@ -80,6 +80,15 @@ All under `public/js/`. Entry `main.js` (a module script in `index.html`). jsPDF
 | 7 | `viewer.js` (new) | capture | The full-screen page viewer (4.11.1). |
 | 8 | `shell.js` | shared | The app shell: tab views, pushed screens, nav bars, the dock (accessory and tab bar, search mode), avatar, the Scan menu, keyboard. Exports `scanMenuItems`, `bindScanMenu`, `setAccessoryHidden`, `shellSignedIn`, `startShell`, `pushScreen`, `goTab`, `currentTabEl`. |
 | 9 | `main.js` | shared | Boot, the fake test hooks (`window.__PT__`), what a sign-in or sign-out does across modules. No feature code. |
+| 0 | `lab/rules/text.js` | lab | The no-AI rules engine's text matching (#92): OCR-folded phrase search (exact, squashed, near), word-bounded names, title case. Pure, no DOM. |
+| 0 | `lab/rules/fields.js` | lab | Dates (labels, ranges, OCR slips), tax years, labeled amounts, last 4 digits. Pure, no DOM. |
+| 0 | `lab/rules/tables.js` | lab | Document type to folder, verdict, retention, paperless, filename and title words; paperless how-to by sender kind. Pure data. |
+| 0 | `lab/rules/sensitive.js` | lab | Full SSN, account and routing numbers, medical terms. Pure, no DOM. |
+| 0 | `lab/rules/compare.js` | lab | Field-by-field agreement of two cards (compare mode and `tools/lab/eval-rules.mjs`): `agreement(a, b)`, `docKind`, `sameIssuer`. Pure, no DOM. |
+| 1 | `lab/rules/senders.js` | lab | Known senders (`lab/rules/known-senders.json`, extensible), letterhead, label values, agencies, vital record issuers. Pure, no DOM. |
+| 1 | `lab/rules/types.js` | lab | The ordered document-type detectors and `scoreTypes`, `MIN_SCORE`. Pure, no DOM. |
+| 1 | `lab/rules/templates.js` | lab | Title, filename and summary templates in Claude's card shapes. Pure, no DOM. |
+| 2 | `lab/rules/engine.js` | lab | `readByRules({ pages, pageCount, filename, senderRules, today })`: the classify-shaped card with per-field confidence, alternatives and `rules` (why), with no AI. Sender rules applied like `functions/lib.js`. Runs in Node for `node --test tools/lab/*.test.mjs`. |
 
 CSS: `css/tokens.css` (tokens only), `css/components.css` (shared components), `css/shell.css` (the shell and sign-in), `css/app.css` (legacy screens, aliasing the old variable names to tokens; each owner deletes its section as it rebuilds). A new surface may add `css/<module>.css`, linked after `components.css`. `css/lab.css` (owner lab) draws only under `html.pt-lab`.
 

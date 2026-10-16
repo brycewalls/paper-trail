@@ -10,7 +10,9 @@ import { loadToken, renderDrive, resetFolders, setNeedsDrive } from "./drive.js"
 import { checkAccess, watchDocs, watchPaperless } from "./store.js";
 import { items, clearItems } from "./items.js";
 import { addEach, addAsOne, pump } from "./deck.js";
-import { clearOutbox } from "./outbox.js";
+import * as outbox from "./outbox.js";
+import * as db from "./db.js";
+import "./outbox-view.js";            // registers the Outbox and Earlier screens and the Shred hold row
 import { setDocs, setPaperless, resetPiles, renderPiles } from "./piles.js";
 import { sc } from "./scanner.js";
 import { startShell, shellSignedIn } from "./shell.js";
@@ -22,7 +24,7 @@ async function onUser(u) {
   unwatch = [];
   resetFolders();
   if (!u) {
-    clearItems(); clearOutbox(); resetPiles(); setNeedsDrive(false); shellSignedIn(null);
+    clearItems(); outbox.clearOutbox(); resetPiles(); setNeedsDrive(false); shellSignedIn(null);
     showGate("signin", "");
     emit("session:ended");
     return;
@@ -59,7 +61,7 @@ on("capture:request", ({ source }) => {
   try {
     await initBackend();
     // Test hooks, on the fake path only: add files without the picker.
-    if (FAKE) window.__PT__ = { addFiles: addEach, addPhotos: addAsOne, items: () => items, scanner: sc };
+    if (FAKE) window.__PT__ = { addFiles: addEach, addPhotos: addAsOne, items: () => items, scanner: sc, outbox, db };
   } catch (e) {
     console.error("Paper Trail could not start", e);
     showGate("error", "Paper Trail couldn't load. Check your connection and reload the page.");

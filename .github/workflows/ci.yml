@@ -25,6 +25,9 @@
 #   lab reader the lab reader on ?lab (tools/lab_reader_test.mjs): reading with the text layer, OCR and
 #              the rules (no classify call with compare off), the rules worker, local split, compare
 #              mode's chip and sheet, picks as ground truth and sender rules, Lab Stats
+#   lab deck   the lab deck (tools/lab_deck_test.mjs, #99): Send before the reads finish, Reading cards
+#              with their own progress that can't be swiped, read cards on top in the order they finish,
+#              the next read card after a swipe, Skip and the Skipped chip alongside Reading cards
 #   functions  the classify function's unit tests, Claude stood in; the lab's no-AI rules engine (#92):
 #              its unit tests and the eval against the synthetic corpus, which fails under its floors
 #   ios        the iPhone app (ios/): xcodegen, a simulator build and the unit tests. macOS minutes
@@ -83,6 +86,9 @@ jobs:
       - name: The lab reader, compare mode and Lab Stats (#92)
         if: always()
         run: node tools/lab_reader_test.mjs
+      - name: The lab deck, sending before reading finishes (#99)
+        if: always()
+        run: node tools/lab_deck_test.mjs
       - name: Keep the screenshots
         if: always()
         uses: actions/upload-artifact@v4

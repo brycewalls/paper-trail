@@ -9,7 +9,8 @@
 //                          localhost with ?lab), "claude" everywhere else, so the live app's reader
 //                          never changes. On the fake backend ?reader=claude also keeps the Claude path
 //   readText(input, onProgress)   one string per page, and where it came from
-//   labRead(input, { senderRules, onProgress })   text, then the rules; { result, text, ms }
+//   labRead(input, { senderRules, onProgress })   text, then the rules, then the matcher;
+//                          { result, match, text, ms }
 //   localSplit(pages)      stack mode without Claude: a document starts at "Page 1" (or after "Page n
 //                          of n"), the same rule the fake split uses
 //   progressCopy(p)        the card's progress line
@@ -18,11 +19,15 @@
 // scan review already read (textPages) is used as is; otherwise a PDF's text layer is read page by
 // page, then the pages with almost no text of their own are OCR'd one at a time, and photos are OCR'd.
 // The rules run in a module Web Worker (lab/rules-worker.js); if it can't start, on the main thread.
+// Then the on-device matcher (lab/match/matcher.js, #102), in its own worker, adds its say: sender
+// rules first, then the rules where they are sure, then the matcher. Its model starts loading when
+// a read starts, so it is usually ready by the time the text is.
 // Owner: lab reader.
 import { FAKE, LAB, params } from "../config.js";
 import { openPdfDoc, pdfPageText } from "../media.js";
 import { runRules } from "./engine.js";
 import { ocrImage, ocrPdfPages, yieldToBrowser } from "./ocr.js";
+import { prepareMatcher, matchRead } from "./match/matcher.js";
 
 export const READER = LAB && !(FAKE && params.get("reader") === "claude") ? "rules" : "claude";
 export const PAGE_MIN_CHARS = 40;      // a page with less text of its own than this is OCR'd
@@ -36,6 +41,7 @@ export function progressCopy(p) {
   if (!p) return "";
   if (p.stage === "rules") return "Sorting it with the rules";
   if (p.stage === "ocr" && typeof p.loading === "number") return `Getting the text reader ready, ${Math.round(p.loading * 100)}%`;
+  if (p.stage === "match") return "Checking it against your filed documents";
   const of = p.pages > 1 ? `Reading page ${p.page} of ${p.pages}` : "Reading the page";
   if (p.stage === "ocr") return `${of} with OCR${typeof p.pct === "number" ? `, ${Math.round(p.pct * 100)}%` : ""}`;
   return of;
@@ -133,11 +139,22 @@ function rulesOffThread(textPages, meta) {
 // ---------- one read ----------
 export async function labRead(input = {}, { senderRules = [], onProgress = () => {} } = {}) {
   const started = performance.now();
+  prepareMatcher();
   const text = await readText(input, onProgress);
   onProgress({ stage: "rules" });
   const meta = { name: String(input.name || ""), pages: input.pages || text.pages.length, textSource: text.source, senderRules: JSON.parse(JSON.stringify(senderRules || [])), today: today() };
-  const result = await rulesOffThread(text.pages, meta);
-  return { result, text: { source: text.source, chars: text.pages.reduce((n, t) => n + squeeze(t), 0), pages: text.pages.length, ocrPages: text.ocrPages }, ms: Math.round(performance.now() - started) };
+  let result = await rulesOffThread(text.pages, meta);
+  let match = null;
+  if (text.pages.some(squeeze)) {
+    onProgress({ stage: "match" });
+    const m = await matchRead(text.pages, meta, result);
+    if (m && m.card) {
+      result = m.card;
+      match = { decidedBy: m.decidedBy, vector: m.vector, ms: m.ms, model: m.model, neighbors: m.neighbors || [],
+        sender: (m.card.match && m.card.match.sender) || null, type: (m.card.match && m.card.match.type) || null };
+    }
+  }
+  return { result, match, text: { source: text.source, chars: text.pages.reduce((n, t) => n + squeeze(t), 0), pages: text.pages.length, ocrPages: text.ocrPages }, ms: Math.round(performance.now() - started) };
 }
 
 // ---------- stack mode without Claude ----------

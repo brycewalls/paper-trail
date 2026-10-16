@@ -6,6 +6,7 @@
 //     textPages  one string per page: the PDF's own text, or on-device OCR of the page picture
 //     meta       { name, pages, textSource: "text"|"ocr"|"mixed"|"none", senderRules: [rule], today: "YYYY-MM-DD" }
 //                senderRules are users/{uid}/senders (or the lab's), the same objects classify.js keeps
+//                hints (optional) are the matcher's picks for docType and issuer (lab/match/combine.js)
 //   The result is the classify card plus confidence { overall, fields }, alternatives, appliedRule and
 //   rules (how each field was decided).
 // Owner: lab reader.
@@ -26,5 +27,6 @@ export async function runRules(textPages, meta = {}) {
     filename: meta.name || "",
     senderRules: Array.isArray(meta.senderRules) ? meta.senderRules : [],
     today: asDate(meta.today),
+    hints: meta.hints && typeof meta.hints === "object" ? meta.hints : {},
   });
 }

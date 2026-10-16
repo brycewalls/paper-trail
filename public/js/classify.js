@@ -313,7 +313,8 @@ async function readOne({ item, source, queuedAt }) {
 function labCard(out, item, list = rules) {
   let card = normalize(out.result);
   if (!card.appliedRule) card = applySenderRule(card, list);
-  item.lab = { readId: item.id, rules: card, textSource: out.text.source, textChars: out.text.chars, ocrPages: out.text.ocrPages, ms: out.ms, compare: "off", claude: null, agreement: null, picks: null };
+  item.lab = { readId: item.id, rules: card, textSource: out.text.source, textChars: out.text.chars, ocrPages: out.text.ocrPages, ms: out.ms, compare: "off", claude: null, agreement: null, picks: null,
+    match: out.match || null };   // the on-device matcher's say (#102): decidedBy, vector, ms
   return card;
 }
 async function labReadOne(item, source) {

@@ -101,3 +101,8 @@ const plain = (o) => JSON.parse(JSON.stringify(o));
 export const watchLabReads = (cb, err) => B.watch(LAB_PATHS.reads, "createdAt", cb, err);
 export const putLabRead = (id, rec) => B.set(`${LAB_PATHS.reads}/${id}`, plain(rec));
 export const updateLabRead = (id, patch) => B.update(`${LAB_PATHS.reads}/${id}`, plain(patch));
+// users/{uid}/lab/data/examples/{readId}: one per document Bryce filed or corrected in the lab, for
+// the on-device matcher (#102): { v, s (the packed vector), docType, issuer, source ("filed" or
+// "corrected"), model, revision, at }. No document text. Owner: lab/match/matcher.js.
+export const watchLabExamples = (cb, err) => B.watch("examples", "at", cb, err);
+export const putLabExample = (id, rec) => B.set(`examples/${id}`, plain(rec));

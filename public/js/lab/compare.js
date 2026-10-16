@@ -116,8 +116,31 @@ function readRecord(item) {
     unsure, needsLook: unsure.length > 0,
     compare: compareEnabled() ? "pending" : "off",
     contentHash: item.contentHash || "",
+    // The on-device matcher (#102): who decided the type and the sender, and how long it took.
+    decidedBy: lab.match ? lab.match.decidedBy : null,
+    match: lab.match ? { model: lab.match.model || "", ms: lab.match.ms || null, sender: lab.match.sender || null } : null,
   };
 }
+
+// Which reader decided a field of the on-device card (#102): "sender rule", "matcher" or "rules".
+// The type and the sender are decided directly; the folder, verdict, filename, title, retention
+// and paperless follow from them, so they carry the matcher's mark when it chose the type or the
+// sender, and the sender rule's when one set them.
+const FOLLOWS = { docType: ["folder", "verdict", "retention", "title", "filename", "paperless"], issuer: ["title", "filename", "paperless"] };
+const RULE_SETS = ["issuer", "folder", "verdict", "filename"];
+export function decidedBy(field, lab) {
+  const d = (lab && lab.match && lab.match.decidedBy) || {};
+  if (field === "docType" || field === "issuer") return d[field] || "rules";
+  if (lab && lab.rules && lab.rules.appliedRule && RULE_SETS.includes(field)) return "sender rule";
+  for (const f of ["docType", "issuer"]) if (d[f] && d[f] !== "rules" && FOLLOWS[f].includes(field)) return d[f];
+  return "rules";
+}
+export const SOURCE_LABEL = { rules: "Rules", matcher: "Matcher", "sender rule": "Your sender rule" };
+// Drawn under the on-device answer only when the matcher ran; its column is then "On device".
+const sourceTag = (field, lab) => {
+  const who = decidedBy(field, lab);
+  return `<span class="lab-src" data-src="${esc(who)}">${esc(SOURCE_LABEL[who] || "Rules")}</span>`;
+};
 
 on("lab:read", ({ item, source }) => { record(item, source || {}); });
 async function record(item, source) {
@@ -218,7 +241,7 @@ export function openCompare(it, { onApply } = {}) {
     return `<div class="lab-field${same ? " same" : " differs"}" data-field="${f}">
       <div class="lab-field-head"><span class="lab-field-name">${esc(LAB_LABEL[f])}</span><span class="lab-field-mark">${same ? `${icon("checkmark")}Same` : "Differs"}</span></div>
       <div class="lab-pair">
-        <div class="lab-side${pick === "rules" ? " picked" : ""}"><span class="lab-who">Rules</span><span class="lab-val${f === "filename" ? " mono" : ""}">${esc(show(f, rules))}</span></div>
+        <div class="lab-side${pick === "rules" ? " picked" : ""}"><span class="lab-who">${lab.match ? "On device" : "Rules"}</span><span class="lab-val${f === "filename" ? " mono" : ""}">${esc(show(f, rules))}</span>${lab.match ? sourceTag(f, lab) : ""}</div>
         <div class="lab-side${pick === "claude" ? " picked" : ""}"><span class="lab-who">Claude</span><span class="lab-val${f === "filename" ? " mono" : ""}">${esc(show(f, claude))}</span></div>
       </div>
       ${same ? "" : `<div class="lab-pick">${segmented([{ value: "rules", label: "Rules is right" }, { value: "claude", label: "Claude is right" }], { selected: pick || "", label: `Which ${LAB_LABEL[f].toLowerCase()} is right`, "data-pick": f })}</div>`}

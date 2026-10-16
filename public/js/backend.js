@@ -1,6 +1,6 @@
 // backend.js: the one object every other module talks to Firebase, Claude and Drive's fetch through.
 // `B` is Firebase in production, or tools/fake/fake-backend.js on localhost with ?fake=1. Both
-// implement the same interface (docs/v2-contract.md, "Backend interface"); a feature that adds a
+// implement the same interface (docs/web-contract.md, "Backend interface"); a feature that adds a
 // method adds it to both, in the same change.
 import { FIREBASE, DRIVE_SCOPE, FAKE, params } from "./config.js";
 
@@ -36,6 +36,8 @@ async function firebaseBackend() {
     async reconnect() { const u = auth.currentUser; const r = await authM.reauthenticateWithPopup(u, provider({ login_hint: u.email || "" })); return { uid: r.user.uid, token: tokenOf(r) }; },
     signOut: () => authM.signOut(auth),
     classify: async (payload) => (await classifyFn(payload)).data,
+    // Any other callable by name, e.g. driveToken (#15). Owners: auth.js (driveToken), classify.js.
+    call: async (name, data) => (await fnM.httpsCallable(fnM.getFunctions(app, "us-central1"), name, { timeout: 60000 })(data || {})).data,
     watch(name, order, cb, err) {
       const q = order ? fsM.query(col(name), fsM.orderBy(order, "desc"), fsM.limit(1000)) : col(name);
       return fsM.onSnapshot(q, (s) => cb(s.docs.map((d) => ({ id: d.id, ...d.data() }))), err);

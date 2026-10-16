@@ -1,9 +1,9 @@
 // main.js: boot and wiring. Picks the backend, starts every module (importing one runs its
 // top-level listeners), and decides what a sign-in or sign-out does across modules. Feature code
 // does not go here: if a feature needs to react to the session, it listens for an event instead
-// (docs/v2-contract.md).
+// (docs/web-contract.md).
 import { FAKE, DENIED } from "./config.js";
-import { $, errCode, setSaveNote, emit } from "./ui.js";
+import { $, errCode, setSaveNote, emit, on } from "./ui.js";
 import { initBackend } from "./backend.js";
 import { watchUser, showGate } from "./auth.js";
 import { loadToken, renderDrive, resetFolders, setNeedsDrive } from "./drive.js";
@@ -13,6 +13,7 @@ import { addEach, addAsOne, pump } from "./deck.js";
 import { clearOutbox } from "./outbox.js";
 import { setDocs, setPaperless, resetPiles, renderPiles } from "./piles.js";
 import { sc } from "./scanner.js";
+import { startShell, shellSignedIn } from "./shell.js";
 
 let unwatch = [];
 
@@ -21,8 +22,8 @@ async function onUser(u) {
   unwatch = [];
   resetFolders();
   if (!u) {
-    clearItems(); clearOutbox(); resetPiles(); setNeedsDrive(false);
-    showGate("signin", "Sign in with the Google account whose Drive holds your Paperwork Archive.");
+    clearItems(); clearOutbox(); resetPiles(); setNeedsDrive(false); shellSignedIn(null);
+    showGate("signin", "");
     emit("session:ended");
     return;
   }
@@ -37,7 +38,7 @@ async function onUser(u) {
   loadToken();
   $("gate").hidden = true;
   $("app").hidden = false;
-  $("acct-email").textContent = u.email;
+  shellSignedIn(u);
   renderDrive();
   unwatch.push(watchDocs(setDocs, () => setSaveNote("Your log couldn't load. Reload the page to try again.")));
   unwatch.push(watchPaperless(setPaperless, () => {}));
@@ -45,6 +46,13 @@ async function onUser(u) {
   pump();
   emit("session:started", u);
 }
+
+// The Scan menu asks for a source with "capture:request" (shell.js). Until capture's new review
+// screen lands, the request opens the legacy scanner and pickers.
+on("capture:request", ({ source }) => {
+  if (source === "camera") $("btn-scan").click();
+  else $(source === "photos" ? "pages-file" : "file").click();
+});
 
 // ---------- boot ----------
 (async () => {
@@ -59,5 +67,6 @@ async function onUser(u) {
     return;
   }
   renderPiles();
+  startShell();
   watchUser(onUser);
 })();

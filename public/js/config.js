@@ -7,7 +7,7 @@
 // On localhost, ?fake=1 swaps all three for in-memory stand-ins (tools/fake/fake-backend.js) so the
 // deck can be exercised without a Google account. Serve the repo root for that: node tools/serve.mjs
 //
-// config.js: constants only. No DOM, no imports. The module map is in docs/v2-contract.md.
+// config.js: constants only. No DOM, no imports. The module map is in docs/web-contract.md.
 export const FIREBASE = {
   version: "12.19.0",
   config: { apiKey: "AIzaSyBeYnYKS4RnbptfZFZU5xSE9UYO-Brn5_E", authDomain: "paper-trail-bw.firebaseapp.com", projectId: "paper-trail-bw",
@@ -22,6 +22,8 @@ export const FOLDER_NAMES = [
   "01 Identity & Legal", "02 Taxes", "03 Money & Banking", "04 Insurance", "05 Medical", "06 Home",
   "07 Auto", "08 Work & Income", "09 Warranties & Manuals", "10 Personal & Sentimental", "11 Other",
 ];
+// Year subfolders (decision 2): only these three, e.g. "02 Taxes/2025", created on demand.
+export const YEAR_FOLDERS = ["02 Taxes", "03 Money & Banking", "05 Medical"];
 export const VERDICT = {
   shred: { stamp: "Shred", label: "Shred it" },
   scan_shred: { stamp: "Scan + shred", label: "Scan, then shred" },
@@ -36,7 +38,10 @@ export const MAX_SEND_CHARS = 24 * 1024 * 1024;   // base64 characters; the func
 export const READERS = 2;                         // documents Claude reads at once
 
 // Shown on the gate and as a read error when the account isn't on the allowlist.
-export const DENIED = "This app is private. That account does not have access.";
+export const DENIED = "This account isn't on the list. Sign in with a different Google account.";
+
+// Shown in the Settings footer ("Paper Trail {version}"). The web app's own version, not the iPhone app's.
+export const VERSION = "2.0 (web)";
 
 // ---------- backend: Firebase, or the local stand-in ----------
 export const params = new URLSearchParams(location.search);

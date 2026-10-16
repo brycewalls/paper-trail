@@ -1,6 +1,6 @@
 // store.js: every Firestore read and write, by name. Nothing else calls B.get / B.set / B.add /
 // B.update / B.del / B.watch with a path; it calls one of these. Paths are relative to users/{uid}/
-// (the backend adds the uid). The data model these write is in docs/v2-contract.md.
+// (the backend adds the uid). The data model these write is in docs/web-contract.md.
 import { B } from "./backend.js";
 import { slug, emit } from "./ui.js";
 

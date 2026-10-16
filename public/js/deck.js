@@ -264,7 +264,7 @@ $("btn-later").addEventListener("click", () => {
   top.editing = false; renderDeck();
 });
 document.addEventListener("keydown", (e) => {
-  if ($("app").hidden || !$("scanner").hidden || $("deck-wrap").hidden || e.target.closest?.("input, select, textarea")) return;
+  if ($("app").hidden || $("view-sort").hidden || !$("scanner").hidden || $("deck-wrap").hidden || e.target.closest?.("input, select, textarea")) return;
   if (e.key === "ArrowRight") { e.preventDefault(); decide(deckItems()[0], "right"); }
   if (e.key === "ArrowLeft") { e.preventDefault(); decide(deckItems()[0], "left"); }
 });

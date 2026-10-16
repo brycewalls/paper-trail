@@ -1,0 +1,202 @@
+/* Paper Trail design tokens: Direction A ("Glass: native and calm"), ported from docs/design-spec.md
+   section 2 and the iPhone app's Core/UI (Palette, Space, Radius, Metrics, Motion, CardShadow).
+   This file is the only place a color, size, radius, shadow or spring is defined. Components and
+   screens read the custom properties below; no feature keeps its own hex values (ios/ARCHITECTURE.md,
+   #49). Owner: deck (shared UI), set up by the web foundation (#83).
+
+   Themes: light by default, dark from prefers-color-scheme, and either one forced with
+   <html data-theme="light|dark"> (the dev gallery uses it). */
+
+:root {
+  color-scheme: light;
+
+  /* ---------- 2.1 Colors: system neutrals ---------- */
+  --background: #f2f2f7;          /* systemGroupedBackground */
+  --surface: #ffffff;             /* secondarySystemGroupedBackground: cards, rows */
+  --surface-raised: #ffffff;      /* sheets and menus over the grouped background */
+  --ink: #000000;                 /* .primary */
+  --muted: rgba(60, 60, 67, 0.6); /* .secondary (secondaryLabel) */
+  --muted-solid: #6c6c70;         /* .secondary flattened, for text on tinted fills */
+  --tertiary: rgba(60, 60, 67, 0.3);
+  --separator: rgba(60, 60, 67, 0.29);
+  --separator-opaque: #c6c6c8;
+  --fill: rgba(120, 120, 128, 0.12);       /* tertiarySystemFill: search field, toggle track */
+  --fill-strong: rgba(120, 120, 128, 0.2);
+
+  /* ---------- 2.1 Colors: brand (asset catalog) ---------- */
+  --accent: #2346b8;              /* AccentColor: tint, links, selected tab, progress ring */
+  --accent-fill: #2346b8;         /* AccentFill: solid primary button behind a white label */
+  --accent-soft: #e8edfb;         /* AccentSoft: selected chip, Scan + shred pill, selected tab capsule */
+  --card-well: #eceef2;           /* CardWell: the card's scan area, thumbnails, gray pills */
+
+  /* Verdicts, used only by VerdictBadge (ui/components.js) */
+  --shred: #c4271b;
+  --shred-soft: #fdecea;
+  --keep: #8a5a00;
+  --keep-soft: #fbf1dc;
+
+  /* Actions and status */
+  --file: #17773f;
+  --file-soft: #e3f4ea;
+  --file-fill: #17773f;           /* solid fill behind white: Shredded, Confirmed swipe actions */
+  --danger: var(--shred);
+  --danger-soft: var(--shred-soft);
+  --unsure: #a15c00;
+  --unsure-soft: #fff3d6;
+  --on-fill: #ffffff;             /* label on any solid fill */
+
+  /* Glass: the tab bar, search circle, accessory, menus, floating buttons */
+  --glass: rgba(255, 255, 255, 0.72);
+  --glass-solid: #f9f9f9;         /* reduced transparency, or no backdrop-filter */
+  --glass-stroke: rgba(255, 255, 255, 0.6);
+  --glass-edge: rgba(0, 0, 0, 0.06);
+  --glass-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
+  --glass-blur: saturate(180%) blur(20px);
+  --glass-bg: var(--glass);        /* what components paint; goes solid below when it must */
+  --scrim: rgba(0, 0, 0, 0.2);    /* behind a sheet at the medium detent */
+  --scrim-large: rgba(0, 0, 0, 0.35);
+
+  /* System controls drawn by hand on the web */
+  --switch-on: #34c759;           /* systemGreen: the iOS switch */
+  --segment-on: #ffffff;          /* the selected segment's thumb */
+  --knob: #ffffff;                /* switch knob */
+  /* Google's sign-in button, by Google's branding rules (spec 4.1) */
+  --google-ink: #1f1f1f; --google-bg: #ffffff; --google-stroke: #747775;
+
+  /* Desktop: the quiet background around the phone column */
+  --desk: #e6e6eb;
+
+  /* ---------- 2.2 Type: SwiftUI text styles at the default (Large) size ---------- */
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro", "Helvetica Neue", "Segoe UI", Roboto, system-ui, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro", "Helvetica Neue", "Segoe UI", Roboto, system-ui, sans-serif;
+  --font-rounded: ui-rounded, "SF Pro Rounded", var(--font);
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* size / line height / tracking, Apple's published values */
+  --t-large-title: 700 34px/41px var(--font-display);   --tr-large-title: 0.37px;
+  --t-title: 700 28px/34px var(--font-display);         --tr-title: 0.36px;
+  --t-title2: 700 22px/28px var(--font-display);        --tr-title2: -0.26px;   /* card title is .title2.bold() */
+  --t-title3: 600 20px/25px var(--font-display);        --tr-title3: -0.45px;   /* sheet title .title3.bold() uses 700 */
+  --t-headline: 600 17px/22px var(--font);              --tr-headline: -0.43px;
+  --t-body: 400 17px/22px var(--font);                  --tr-body: -0.43px;
+  --t-callout: 400 16px/21px var(--font);               --tr-callout: -0.31px;
+  --t-subheadline: 400 15px/20px var(--font);           --tr-subheadline: -0.23px;
+  --t-footnote: 400 13px/18px var(--font);              --tr-footnote: -0.08px;
+  --t-caption: 400 12px/16px var(--font);               --tr-caption: 0;
+  --t-caption2: 400 11px/13px var(--font);              --tr-caption2: 0.06px;
+  --t-mono-caption: 400 12px/16px var(--font-mono);
+
+  /* ---------- 2.3 Spacing: base 4, only these values ---------- */
+  --s-1: 4px;  --s-2: 8px;  --s-3: 12px;  --s-4: 16px;  --s-5: 20px;  --s-6: 24px;  --s-8: 32px;
+  --card-margin: 20px;
+  --list-inset: 16px;             /* inset grouped side margin */
+  --row-min: 44px;                /* row min height (system 44, rows with a subtitle grow) */
+  --row-pad-x: 16px;
+  --tap: 44px;                    /* every tap target */
+  --thumb-w: 36px; --thumb-h: 46px;
+  --action-h: 54px; --circle: 48px;
+  --primary-h: 52px;
+  --chip-h: 34px;
+  --tabbar-h: 62px;
+  --accessory-h: 48px;
+  --navbar-h: 44px;
+  --column: 480px;                /* the phone column on desktop */
+
+  /* ---------- 2.4 Radii (iOS draws them continuous; CSS draws circular arcs) ---------- */
+  --r-card: 30px;
+  --r-section: 10px;              /* inset grouped section (iOS 26) */
+  --r-unsure: 10px;
+  --r-thumb: 6px;
+  --r-sheet: 38px;
+  --r-menu: 14px;
+  --r-capsule: 999px;
+
+  /* ---------- 2.5 Card shadow: neutral black, never tinted ---------- */
+  --shadow-card: 0 14px 34px rgba(0, 0, 0, 0.10);
+  --shadow-peek: 0 6px 18px rgba(0, 0, 0, 0.06);
+  --shadow-paper: 0 1px 2px rgba(0, 0, 0, 0.12);   /* the 2 pt shadow on a white page in the well */
+  --shadow-sheet: 0 -2px 24px rgba(0, 0, 0, 0.12);
+
+  /* ---------- 2.7 Motion: SwiftUI springs as CSS linear() curves ----------
+     Each is .spring(duration:bounce:) simulated to its settle time (tools in the PR, #83). Use the
+     matching -ms value as the duration. JS has the same springs in ui/motion.js for the Web
+     Animations API (fly-offs that need the gesture's velocity). */
+  --spring-snap: linear(0.001, 0.061, 0.185, 0.337, 0.503, 0.644, 0.764, 0.859, 0.931, 0.982, 1.016, 1.034, 1.042, 1.043, 1.04, 1.034, 1.027, 1.02, 1.014, 1.009, 1.005, 1.002, 1, 0.999, 1);
+  --spring-snap-ms: 527ms;        /* snap-back: .spring(duration: 0.4, bounce: 0.3) */
+  --spring-flyoff: linear(0.001, 0.075, 0.207, 0.34, 0.475, 0.592, 0.687, 0.764, 0.818, 0.865, 0.9, 0.927, 0.945, 0.96, 0.971, 0.979, 0.984, 0.988, 0.992, 0.994, 0.996, 0.997, 0.998, 0.998, 1);
+  --spring-flyoff-ms: 472ms;      /* fly-off: .spring(duration: 0.32, bounce: 0) */
+  --spring-promote: linear(0.001, 0.066, 0.192, 0.325, 0.469, 0.597, 0.705, 0.791, 0.852, 0.903, 0.94, 0.965, 0.981, 0.992, 0.999, 1.003, 1.004, 1.005, 1.005, 1.004, 1.003, 1.003, 1.002, 1.002, 1);
+  --spring-promote-ms: 472ms;     /* next card, page zoom: .spring(duration: 0.35, bounce: 0.15) */
+  --spring-undo: linear(0.001, 0.061, 0.192, 0.339, 0.483, 0.622, 0.73, 0.817, 0.887, 0.934, 0.967, 0.99, 1.003, 1.01, 1.013, 1.013, 1.012, 1.011, 1.009, 1.007, 1.005, 1.003, 1.002, 1.001, 1);
+  --spring-undo-ms: 613ms;        /* undo return: .spring(duration: 0.45, bounce: 0.2) */
+  --spring-pop: linear(0.003, 0.123, 0.313, 0.547, 0.755, 0.913, 1.007, 1.066, 1.088, 1.085, 1.071, 1.051, 1.031, 1.014, 1.004, 0.996, 0.993, 0.992, 0.993, 0.995, 0.996, 0.998, 0.999, 1, 1);
+  --spring-pop-ms: 350ms;         /* overlay label at the threshold: .spring(duration: 0.2, bounce: 0.4) */
+  --spring-smooth: linear(0, 0.059, 0.181, 0.311, 0.437, 0.549, 0.649, 0.727, 0.789, 0.838, 0.879, 0.908, 0.931, 0.948, 0.962, 0.971, 0.979, 0.984, 0.988, 0.991, 0.994, 0.995, 0.997, 0.997, 1);
+  --spring-smooth-ms: 690ms;      /* .smooth: sheets, the accessory ring, tab capsule */
+  --ease-out-fast: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --fade-ms: 200ms;               /* every Reduce Motion fallback: .easeOut(duration: 0.2) */
+}
+
+/* Dark, from the system or forced. A9 is the dark reference. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --background: #000000; --surface: #1c1c1e; --surface-raised: #2c2c2e;
+    --ink: #ffffff; --muted: rgba(235, 235, 245, 0.6); --muted-solid: #98989f; --tertiary: rgba(235, 235, 245, 0.3);
+    --separator: rgba(84, 84, 88, 0.6); --separator-opaque: #38383a;
+    --fill: rgba(118, 118, 128, 0.24); --fill-strong: rgba(118, 118, 128, 0.36);
+    --accent: #8ea7ff; --accent-fill: #3d5fd6; --accent-soft: #1b2547; --card-well: #2a2a2e;
+    --shred: #ff8a7f; --shred-soft: #3a1a18; --keep: #f2c05a; --keep-soft: #33280f;
+    --file: #5fd393; --file-soft: #15301f; --file-fill: #1a7f4b;
+    --unsure: #f2c05a; --unsure-soft: #33280f;
+    --glass: rgba(37, 37, 40, 0.68); --glass-solid: #1f1f22; --glass-stroke: rgba(255, 255, 255, 0.12); --glass-edge: rgba(255, 255, 255, 0.08);
+    --glass-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.4);
+    --scrim: rgba(0, 0, 0, 0.45); --scrim-large: rgba(0, 0, 0, 0.6);
+    --switch-on: #30d158; --segment-on: #636366; --google-ink: #e3e3e3; --google-bg: #131314; --google-stroke: #8e918f;
+    --switch-on: #30d158; --segment-on: #636366; --google-ink: #e3e3e3; --google-bg: #131314; --google-stroke: #8e918f;
+  --desk: #0e0e10;
+    --shadow-card: 0 14px 34px rgba(0, 0, 0, 0.60);
+    --shadow-peek: 0 6px 18px rgba(0, 0, 0, 0.40);
+    --shadow-paper: 0 1px 2px rgba(0, 0, 0, 0.5);
+    --shadow-sheet: 0 -2px 24px rgba(0, 0, 0, 0.5);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #000000; --surface: #1c1c1e; --surface-raised: #2c2c2e;
+  --ink: #ffffff; --muted: rgba(235, 235, 245, 0.6); --muted-solid: #98989f; --tertiary: rgba(235, 235, 245, 0.3);
+  --separator: rgba(84, 84, 88, 0.6); --separator-opaque: #38383a;
+  --fill: rgba(118, 118, 128, 0.24); --fill-strong: rgba(118, 118, 128, 0.36);
+  --accent: #8ea7ff; --accent-fill: #3d5fd6; --accent-soft: #1b2547; --card-well: #2a2a2e;
+  --shred: #ff8a7f; --shred-soft: #3a1a18; --keep: #f2c05a; --keep-soft: #33280f;
+  --file: #5fd393; --file-soft: #15301f; --file-fill: #1a7f4b;
+  --unsure: #f2c05a; --unsure-soft: #33280f;
+  --glass: rgba(37, 37, 40, 0.68); --glass-solid: #1f1f22; --glass-stroke: rgba(255, 255, 255, 0.12); --glass-edge: rgba(255, 255, 255, 0.08);
+  --glass-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.4);
+  --scrim: rgba(0, 0, 0, 0.45); --scrim-large: rgba(0, 0, 0, 0.6);
+  --desk: #0e0e10;
+  --shadow-card: 0 14px 34px rgba(0, 0, 0, 0.60);
+  --shadow-peek: 0 6px 18px rgba(0, 0, 0, 0.40);
+  --shadow-paper: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-sheet: 0 -2px 24px rgba(0, 0, 0, 0.5);
+}
+
+/* Increase Contrast, Reduce Transparency, or no backdrop-filter at all: every glass element goes
+   solid (spec 1.6). Components paint var(--glass-bg) with var(--glass-blur), never --glass directly. */
+@media (prefers-contrast: more) { :root { --glass-bg: var(--glass-solid); } }
+@media (prefers-reduced-transparency: reduce) { :root { --glass-bg: var(--glass-solid); --glass-blur: none; } }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { :root { --glass-bg: var(--glass-solid); } }
+
+/* Reduce Motion: springs collapse to the 0.2 s fade. Components read --motion-ok to drop movement. */
+:root { --motion-ok: 1; }
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-ok: 0;
+    --spring-snap: ease-out; --spring-snap-ms: 200ms;
+    --spring-flyoff: ease-out; --spring-flyoff-ms: 200ms;
+    --spring-promote: ease-out; --spring-promote-ms: 200ms;
+    --spring-undo: ease-out; --spring-undo-ms: 200ms;
+    --spring-pop: ease-out; --spring-pop-ms: 200ms;
+    --spring-smooth: ease-out; --spring-smooth-ms: 200ms;
+  }
+}

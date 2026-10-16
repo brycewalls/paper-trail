@@ -130,6 +130,7 @@ try {
     check(filedBill?.filed === true && /drive\.google\.com\/file\/d\//.test(filedBill.driveUrl) && filedBill.physical === "to_shred", "the log has the Drive link and the pile");
     check(recs.find((r) => r.title.startsWith("W-2"))?.filed === false, "a left swipe is logged as shred without filing");
     check(await fake(page, () => window.__PT_FAKE__.db.has("paperless/duke-energy")), "Duke Energy lands on the Go paperless list");
+    await page.click("[data-tab-link=piles]");                   // Piles is its own tab now (#83)
     await page.click("#tab-shred"); await page.click("[data-act=shredded]");
     await page.waitForFunction(() => document.querySelector("#st-shred").textContent === "1");
     check(true, "Mark shredded updates the stats");
@@ -174,7 +175,7 @@ try {
   {
     const { ctx, page } = await open("&as=stranger");
     await page.waitForSelector("#btn-gate-out:not([hidden])");
-    check(/This app is private/.test(await page.textContent("#gate-msg")) && await page.isHidden("#app"), "another account sees This app is private");
+    check(/isn't on the list/.test(await page.textContent("#gate-msg")) && await page.isHidden("#app"), "another account sees This account isn't on the list");
     await ctx.close();
     const s = await open("&signedout");
     await s.page.waitForSelector("#btn-signin:not([hidden])");

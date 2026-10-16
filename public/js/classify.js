@@ -1,6 +1,6 @@
 // classify.js: the client side of the `classify` callable. Builds the request from an item (the PDF
 // itself when it's small, page images otherwise), calls it through the backend, cleans the reply,
-// and turns failures into copy. The request and response shapes are in docs/v2-contract.md and
+// and turns failures into copy. The request and response shapes are in docs/web-contract.md and
 // must match functions/lib.js.
 import { FOLDER_NAMES, VERDICT, PDF_MAX_PAGES, PDF_MAX_BYTES, READ_PAGES, READ_EDGE, MAX_SEND_CHARS, DENIED } from "./config.js";
 import { slug, cleanName, errCode } from "./ui.js";

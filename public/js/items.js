@@ -1,6 +1,6 @@
 // items.js: the documents in hand this session (in memory, not Firestore), the model the deck runs
 // on. Owned by deck.js; it's a separate leaf so drive.js, outbox.js and auth.js can read it
-// without importing the deck. Item shape and statuses: docs/v2-contract.md, "Session items".
+// without importing the deck. Item shape and statuses: docs/web-contract.md, "Session items".
 export const items = [];
 let seq = 0;
 

@@ -8,11 +8,12 @@
 import { FAKE } from "./config.js";
 import { $, errCode, setSaveNote, emit, on } from "./ui.js";
 import { initBackend } from "./backend.js";
-import { watchUser, startAuth, finishReturn, cachedSession, markNotAllowed, showGate } from "./auth.js";
+import { watchUser, startAuth, finishReturn, cachedSession, markNotAllowed, showGate, currentUser } from "./auth.js";
 import { renderDrive, resetFolders, setNeedsDrive } from "./drive.js";
 import { checkAccess, watchDocs, watchPaperless } from "./store.js";
 import { items, clearItems, newItem } from "./items.js";
 import { addEach, addAsOne, pump } from "./deck.js";
+import "./detail.js";   // registers the card detail and document screens (deck)
 import * as outbox from "./outbox.js";
 import * as db from "./db.js";
 import "./outbox-view.js";            // registers the Outbox and Earlier screens and the Shred hold row
@@ -73,13 +74,14 @@ function onUser(u, { confirmed }) {
 // and this goes.
 on("capture:sent", ({ items: sent, blobs }) => {
   if (!sent) return;
+  const uid = currentUser()?.uid || "";
   for (const it of sent) {
     const b = blobs[it.id];
-    const li = newItem(it.name, [new File([b.pdf], `${it.name}.pdf`, { type: "application/pdf" })]);
-    Object.assign(li, { kind: "pdf", numPages: it.pages, thumb: URL.createObjectURL(b.thumb), ocrText: it.ocrText, contentHash: it.contentHash, status: "reading", progress: "Claude is reading it" });
+    const li = newItem(it.name, [new File([b.pdf], `${it.name}.pdf`, { type: "application/pdf" })], uid);
+    Object.assign(li, { kind: "pdf", numPages: it.pages, thumb: URL.createObjectURL(b.thumb), ocrText: it.ocrText, contentHash: it.contentHash, opened: true, stage: "reading" });
     const settle = () => {
-      if (it.stage === "ready") { li.result = it.card; li.status = "ready"; }
-      else { li.status = "error"; li.error = it.errorMessage || "Something interrupted the read. Tap Try again."; }
+      if (it.stage === "ready") { li.card = it.card; li.unsureFields = it.unsureFields || []; li.stage = "ready"; }
+      else { li.stage = "failed"; li.failedStage = "reading"; li.readErrorCode = it.readErrorCode || "unknown"; li.errorMessage = it.errorMessage || "Something interrupted the read. Tap Try again."; }
       pump();
     };
     if (it.stage === "ready" || it.stage === "failed") settle(); else it.whenRead.then(settle);

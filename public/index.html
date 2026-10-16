@@ -29,6 +29,7 @@
 <link rel="stylesheet" href="css/components.css">
 <link rel="stylesheet" href="css/outbox.css">
 <link rel="stylesheet" href="css/shell.css">
+<link rel="stylesheet" href="css/deck.css">
 <link rel="stylesheet" href="css/capture.css">
 <link rel="stylesheet" href="css/senders.css">
 <script type="module" src="js/main.js"></script>
@@ -79,42 +80,36 @@
     <div class="view-body" id="sort-body">
       <!-- The Reconnect Drive banner (3.9, 4.16) is auth's: mountReconnectBanner() puts it first here and in Piles. -->
 
-      <!-- First-time empty state (3.11). The deck (owner: deck) replaces this and the intake below. -->
-      <div class="sort-empty" id="sort-empty">
-        <span class="empty-sym"><svg class="sym" width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16"/><path d="M8.5 8.5h7M8.5 12h7M8.5 15.5h4.5"/></svg></span>
-        <h2 class="empty-title">Scan your first stack</h2>
-        <p class="empty-desc">Claude reads each document and gets it ready to file.</p>
-        <!-- The Scan menu (capture, #79): every scan entry point is the same menu -->
-        <div class="empty-actions"><button type="button" class="cbtn prominent" id="btn-scan-first" data-scan-menu><span>Scan</span></button></div>
-      </div>
-
-      <!-- Legacy intake, hidden since the capture build: the Scan menu replaces it (#79). Kept in the page
-           because the legacy deck binds these inputs and tools/deck_test.mjs adds files through them. -->
-      <div class="intake" id="intake" hidden>
-        <button type="button" class="scan-btn" id="btn-scan"><strong>Scan document</strong><span class="note">Use the camera. Every page you scan goes into one PDF.</span></button>
-        <label class="drop" id="drop" for="file">
-          <input type="file" id="file" accept="image/jpeg,image/png,image/webp,application/pdf,.pdf" multiple>
-          <strong>Choose documents</strong>
-          <span class="note">Each file is one document.</span>
-        </label>
-      </div>
-      <div class="pages-row" id="pages-row" hidden>
-        <label class="pages-btn" for="pages-file">Photograph a multi-page document</label>
-        <input type="file" id="pages-file" class="vh" accept="image/jpeg,image/png,image/webp" multiple>
-        <span class="note">All photos in one pick become one PDF.</span>
-      </div>
-
-      <div id="deck-wrap" hidden>
-        <div class="deck" id="deck" aria-live="polite"></div>
-        <div class="deck-actions">
-          <button class="btn act-left" id="btn-left" aria-label="Shred without filing (left arrow)">Shred</button>
-          <button class="btn" id="btn-later">Later</button>
-          <button class="btn primary act-right" id="btn-right" aria-label="File to Drive (right arrow)">File</button>
+      <!-- Sort (owner: deck, js/deck.js): the skipped chip and bulk file prompt (3.13, 3.9), then the
+           card with its two peeks (3.1) and the action row Shred, Undo, Skip, File (3.3), or an empty
+           state (3.11). -->
+      <div class="dk-prompts" id="dk-prompts" hidden></div>
+      <div class="dk-main" id="dk-main">
+        <div class="dk-stack is-empty" id="dk-stack"></div>
+        <div class="dk-empty" id="dk-empty"></div>
+        <div class="dk-actions" id="dk-actions" role="group" aria-label="Card actions" hidden>
+          <button type="button" class="dk-act dk-shred" id="dk-shred" aria-keyshortcuts="ArrowLeft"><svg class="sym" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg><span>Shred</span></button>
+          <span class="dk-mid">
+            <button type="button" class="glass-circle" id="dk-undo" aria-label="Undo, nothing to undo" aria-keyshortcuts="Meta+Z Control+Z" disabled><svg class="sym" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4.5 9.5 9 5"/><path d="M4.5 9.5H14a5.5 5.5 0 0 1 0 11h-3"/></svg></button>
+            <button type="button" class="glass-circle" id="dk-skip" aria-label="Skip" aria-description="Sets this card aside to sort later." aria-keyshortcuts="ArrowUp"><svg class="sym" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17L17 7M9 7h8v8"/></svg></button>
+          </span>
+          <button type="button" class="dk-act dk-file" id="dk-file" aria-keyshortcuts="ArrowRight"><svg class="sym" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span>File</span></button>
         </div>
       </div>
+      <p class="vh" id="dk-live" role="status" aria-live="polite"></p>
 
+      <!-- Legacy: uploads the in-memory outbox couldn't finish (the Outbox screen replaces it), and
+           its status line (only errors show). -->
       <div class="status" id="status" role="status" aria-live="polite"></div>
-      <div id="trouble" class="list trouble"></div>
+      <div id="trouble" class="dk-trouble"></div>
+
+      <!-- Legacy file inputs and scanner button the Scan menu opens until capture.js lands (#79).
+           Hidden: every scan entry point is the Scan menu. -->
+      <div class="intake" id="intake" hidden>
+        <button type="button" class="scan-btn" id="btn-scan">Scan document</button>
+        <label class="drop" id="drop" for="file"><input type="file" id="file" accept="image/jpeg,image/png,image/webp,application/pdf,.pdf" multiple>Choose documents</label>
+        <input type="file" id="pages-file" class="vh" accept="image/jpeg,image/png,image/webp" multiple>
+      </div>
     </div>
   </section>
 

@@ -112,8 +112,8 @@ try {
   //    each file; Send; the original PDF reaches Drive byte for byte; the payload rules.
   {
     const { ctx, page, problems } = await open();
-    await page.waitForSelector("#btn-scan-first");
-    await page.click("#btn-scan-first");
+    await page.waitForSelector("#dk-empty [data-scan]");
+    await page.click("#dk-empty [data-scan]");
     const items = await page.$$eval(".menu .menu-item", (els) => els.map((e) => e.textContent.trim()));
     check(items.join("|") === "Scan document|Import from Files|Import from Photos", "Sort's first-time Scan opens the three-item Scan menu (#79)");
     await page.keyboard.press("Escape");
@@ -146,10 +146,10 @@ try {
     check(await page.textContent("[data-send]") === "Send 2 to the deck", "Send counts the documents");
     await page.click("[data-send]");
     await page.waitForSelector("#review", { state: "hidden" });
-    await page.waitForSelector(".card.top .stamp", { timeout: 15000 });
-    check((await js(page, () => window.__PT__.items().filter((i) => i.status === "ready").length)) === 2, "Send puts both documents on the deck, already read");
+    await page.waitForSelector(".dk-card:not(.dk-ghost) .verdict-badge", { timeout: 15000 });
+    check((await js(page, () => window.__PT__.items().filter((i) => i.stage === "ready").length)) === 2, "Send puts both documents on the deck, already read");
     check(await js(page, () => document.activeElement && document.activeElement.closest("#view-sort") !== null), "focus goes back to Sort after Send");
-    await page.click("#btn-right");
+    await page.click("#dk-file");
     await page.waitForFunction(() => window.__PT_FAKE__.files.length === 1, null, { timeout: 15000 });
     const up = await js(page, () => [...window.__PT_FAKE__.files[0].bytes]);
     const filed = Buffer.from(up);
@@ -240,7 +240,7 @@ try {
     check(r.documents === 1 && r.groups[0].status === "held", "Scan more appends to the last document and holds it again");
     await page.click("[data-send]");
     await page.waitForSelector("#review", { state: "hidden" });
-    await page.waitForFunction(() => window.__PT__.items().length === 1 && window.__PT__.items()[0].status !== "reading", null, { timeout: 15000 });
+    await page.waitForFunction(() => window.__PT__.items().length === 1 && window.__PT__.items()[0].stage !== "reading", null, { timeout: 15000 });
     check((await calls(page)).filter((x) => x.mode === "read").length === 2, "Send reads the held pile once");
     check((await js(page, () => window.__PT__.items()[0].numPages)) === 5, "the pile goes to the deck as one 5-page document");
     check(!problems.length, `no console errors${problems.length ? ": " + problems.join(" | ") : ""}`);

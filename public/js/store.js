@@ -50,7 +50,10 @@ export const createSender = (id, data) => B.set(PATHS.paperless + "/" + id, defi
 export const SETTINGS_PATH = "config/settings";
 export const getSettings = () => B.get(SETTINGS_PATH);
 // Watches config/settings; cb gets the settings object ({} when it doesn't exist yet).
-export const watchSettings = (cb, err) => B.watch("config", null, (list) => cb(list.find((d) => d.id === "settings") || {}), err);
+export const watchSettings = (cb, err) => B.watch("config", null, (list) => {
+  const { id, ...rest } = list.find((d) => d.id === "settings") || {};
+  cb(rest);
+}, err);
 // Merges a patch into config/settings, keeping keys the other app or feature wrote.
 export async function saveSettings(patch) {
   const cur = (await B.get(SETTINGS_PATH).catch(() => null)) || {};

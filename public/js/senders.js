@@ -4,12 +4,15 @@
 // applies the matching rule when the function didn't. It also draws Settings, Sorting, "Sender
 // rules · 14 ›", and the Sender rules list and rule detail in a sheet over Settings (iOS pushes them
 // inside the Settings stack; the sheet's back button returns there).
-//   saveRule(rule), forgetRule(key)  for the check-fields sheet's "Remember for this sender" (deck)
+//   saveRule(rule), forgetRule(key)  save or forget a rule (the Sender rules screen)
+//   rememberSender(card)             "Remember for this sender" from the check-fields sheet and the card
+//                                    detail (deck): the rule the confirmed card implies; never throws
+//   ruleList(), ruleFor(issuer)      the live list, and the rule for one sender
 // Owner: deck per docs/web-contract.md; built in the capture PR with the reading queue (#83).
-import { esc, on, emit } from "./ui.js";
+import { esc, slug, on, emit } from "./ui.js";
 import { FOLDER_NAMES, VERDICT } from "./config.js";
 import { watchSenders, setSenderRule, deleteSenderRule } from "./store.js";
-import { setSenderRules, renderFilename, folderName, FILENAME_TOKENS } from "./classify.js";
+import { setSenderRules, renderFilename, folderName, FILENAME_TOKENS, ruleFromCard } from "./classify.js";
 import { registerSettingsSection } from "./settings.js";
 import { openSheet, actionSheet } from "./ui/sheet.js";
 import { section, row, valueRow, segmented, choiceChip, emptyState, verdictStamp } from "./ui/components.js";
@@ -20,6 +23,8 @@ let loaded = false;
 let unwatch = null;
 const listeners = new Set();
 export const senderRuleList = () => rules;
+export const ruleList = senderRuleList;
+export const ruleFor = (issuer) => { const k = slug(issuer); return k === "unknown" ? null : rules.find((r) => r.key === k) || null; };
 
 on("session:started", () => {
   if (unwatch) unwatch();
@@ -40,6 +45,13 @@ export async function saveRule(rule) {
   setSenderRules(rules);
   await setSenderRule(r);
   emit("sender:saved", { key: r.key });
+}
+// A rule that fails to save must not stop the card from filing (CheckFieldsModel.confirm).
+// Resolves true when it saved.
+export async function rememberSender(card) {
+  if (!card || slug(card.issuer) === "unknown") return false;
+  try { await saveRule(ruleFromCard(card)); return true; }
+  catch (e) { console.warn("Sender rule didn't save", e); return false; }
 }
 export async function forgetRule(key) {
   rules = rules.filter((x) => x.key !== key);

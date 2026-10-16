@@ -38,6 +38,7 @@
 // Uploads are resumable like Drive's: PUTs with Content-Range: bytes a-b/total answer 308 with a
 // Range header until the last byte, then 200 with the file; Content-Range: bytes */total asks how
 // much has arrived.
+// Read by the page itself on the fake path (deck): hold=<seconds> shortens the 10-second undo hold.
 // Drive also answers files.get (metadata with a real md5Checksum), files.update with trashed: true,
 // alt=media downloads and fullText search over what was uploaded; B.call("driveToken") mints the
 // fake token.
@@ -317,10 +318,29 @@ export function createFakeBackend(params) {
           ? { overall: 0.55, fields: { issuer: 0.6, docDate: 0.55 }, sparse: true } : { overall: 1, fields: {}, sparse: true };
         if (state.unsure && sample === SAMPLES[0]) result.alternatives = { issuer: ["Duke Energy Progress"], docDate: ["2024-03-28"] };
       }
-      // Sender rules (#21): the rule whose key is the slug of the issuer applies.
-      const key = String(result.issuer || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-      const rule = (payload.senderHints || []).find((r) => r.key === key);
-      if (rule) { for (const f of ["folder", "verdict", "docType"]) if (rule[f]) result[f] = rule[f]; result.appliedRule = rule.key; }
+      // Sender rules (#21): the rule whose key is the slug of the issuer applies, the way
+      // functions/lib.js applySenderRule() does it: the rule's spelling, folder, verdict, type and
+      // filename pattern, and the fields it set become certain.
+      const sl = (v) => String(v || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "unknown";
+      const rule = (payload.senderHints || []).find((r) => r.key === sl(result.issuer));
+      if (rule) {
+        const set = ["issuer"];
+        result.issuer = rule.issuer || result.issuer;
+        for (const f of ["folder", "verdict"]) if (rule[f]) { result[f] = rule[f]; set.push(f); }
+        if (rule.docType) result.docType = rule.docType;
+        if (rule.filenamePattern) {
+          const d = result.docDate || "0000-00-00";
+          result.filename = rule.filenamePattern.replace(/\{date\}/g, d).replace(/\{yyyy\}/g, d.slice(0, 4)).replace(/\{mm\}/g, d.slice(5, 7))
+            .replace(/\{issuer\}/g, sl(result.issuer)).replace(/\{type\}/g, sl(result.docType));
+          set.push("filename");
+        }
+        if (result.confidence) {
+          for (const f of set) result.confidence.fields[f] = 1;
+          result.confidence.overall = Math.min(1, ...Object.values(result.confidence.fields));
+        }
+        if (result.alternatives) for (const f of set) delete result.alternatives[f];
+        result.appliedRule = rule.key;
+      }
       return { result, model: "fake" };
     },
     // Callables other than classify (#15). driveToken mints the fake token unless ?driverevoked.

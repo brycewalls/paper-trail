@@ -15,7 +15,8 @@
 //   applySenderRule, renderFilename, patternFromFilename, ruleFromCard: sender rules (#21), the twin
 //                             of functions/lib.js and SenderRuleEngine (same cases, same answers)
 //   proposeSplit(pages)       stack mode (#19): where each document in a scanned pile starts
-//   readError, readCode, READ_COPY: failures as copy
+//   readError, readCode, readErrorCode, READ_COPY: failures as copy
+//   markConfident(card, fields): fields the person confirmed count as sure
 //   classifyItem(item)        the legacy deck's read (session items), on the same payload rules
 // Owner: deck (capture owns proposeSplit); built in the capture PR with the reading queue (#83).
 import { FOLDER_NAMES, VERDICT, PDF_MAX_PAGES, PDF_MAX_BYTES, READ_PAGES, READ_EDGE, READERS, DENIED } from "./config.js";
@@ -144,6 +145,17 @@ export function unsureFields(card) {
 }
 // Ready to file without a look: confidence came back and nothing is "Not sure". No data, never confident.
 export const isConfident = (card) => !!(card && card.confidence) && unsureFields(card).length === 0;
+// The user confirmed or edited these fields (the check-fields sheet, the card detail): they count as
+// sure from now on, with no other guesses.
+export function markConfident(card, fields) {
+  if (!fields.length) return card;
+  const conf = { overall: 0, sparse: true, ...(card.confidence || {}), fields: { ...(card.confidence?.fields || {}) } };
+  for (const k of fields) conf.fields[k] = 1;
+  conf.overall = lowestScore(conf.fields);
+  const out = { ...card, confidence: conf };
+  if (card.alternatives) { out.alternatives = { ...card.alternatives }; for (const k of fields) delete out.alternatives[k]; }
+  return out;
+}
 
 // ---------- the reply ----------
 const ALT_FIELDS = ["issuer", "docDate", "folder", "title", "filename"];
@@ -209,6 +221,8 @@ export function readCode(e) {
   return { unauthenticated: "signed_out", "permission-denied": "not_allowed", "not-found": "not_deployed", "deadline-exceeded": "timeout",
     "resource-exhausted": "rate_limited", unavailable: "overloaded", "invalid-argument": "bad_request" }[fc] || "unknown";
 }
+// The classify error code behind a failed read (PipelineItem.readErrorCode).
+export const readErrorCode = (e) => readCode(e);
 export function readError(e) {
   const code = readCode(e);
   if (code === "unknown" && errCode(e).replace(/^functions\//, "") === "internal" && !e?.details?.code)
@@ -323,7 +337,9 @@ export function splitGroups(documents, n) {
 
 // ---------- the legacy deck's read (session items from items.js) ----------
 // Same payload rules for a PDF; photos still go as page images. Throws; readError(e) gives the copy.
-export async function classifyItem(item, onProgress = () => {}) {
+// senderHints: the rules to send; the live list from senders.js when not given.
+export async function classifyItem(item, onProgress = () => {}, { senderHints } = {}) {
+  const list = Array.isArray(senderHints) ? senderHints : rules;
   let payload;
   if (item.kind === "pdf") {
     payload = await buildPayload({ pages: item.numPages, ocrText: item.ocrText }, item.files[0]);
@@ -331,11 +347,11 @@ export async function classifyItem(item, onProgress = () => {}) {
     const images = [];
     for (const f of item.files.slice(0, READ_PAGES)) images.push({ type: "image/jpeg", data: await blobB64(await photoJpeg(f, READ_EDGE, PAGE_Q)) });
     payload = { kind: "images", images, totalPages: item.files.length, wantConfidence: true };
-    if (rules.length) payload.senderHints = rules.map(hintOf);
+    if (list.length) payload.senderHints = list.map(hintOf);
   }
   item.progress = "Claude is reading it"; onProgress();
   const out = await classifyWithRetry(payload);
   lastAnswer = Date.now();
   const card = normalize(out && out.result);
-  return card.appliedRule ? card : applySenderRule(card, rules);
+  return card.appliedRule ? card : applySenderRule(card, list);
 }

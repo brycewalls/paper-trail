@@ -23,7 +23,8 @@ const server = createServer((req, res) => {
   res.end(readFileSync(file));
 });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
-const base = `http://127.0.0.1:${server.address().port}/public/index.html?fake=1`;
+// hold=1: the deck's undo hold is one second instead of ten, so uploads start quickly (deck, #83).
+const base = `http://127.0.0.1:${server.address().port}/public/index.html?fake=1&hold=1`;
 
 // ---------- test files, made here so the repo carries no binaries ----------
 function makePdf(pages, label) {
@@ -65,7 +66,8 @@ async function open(query = "", viewport = { width: 1280, height: 900 }) {
   return { ctx, page, problems };
 }
 const fake = (page, fn) => page.evaluate(fn);
-const waitReady = (page) => page.waitForSelector(".card.top .stamp", { timeout: 15000 });
+const TOP = ".dk-card:not(.dk-ghost)";
+const waitReady = (page) => page.waitForSelector(`${TOP} .verdict-badge`, { timeout: 15000 });
 
 try {
   // 1. Sort a stack: two PDFs and a two-photo document.
@@ -92,7 +94,7 @@ try {
     ]);
 
     await waitReady(page);
-    check((await page.textContent(".card.top .stamp")).trim() === "Shred", "first card is read and stamped");
+    check((await page.textContent(`${TOP} .verdict-badge`)).trim() === "Shred", "first card is read and stamped");
     const calls = await fake(page, () => window.__PT_FAKE__.classifyCalls.map((c) => ({ kind: c.kind, totalPages: c.totalPages, n: c.images?.length || 0, head: c.pdf ? atob(c.pdf.slice(0, 12)) : "" })));
     check(calls[0]?.kind === "pdf" && calls[0].totalPages === 2 && calls[0].head.startsWith("%PDF"), "a small PDF goes to Claude as the PDF itself");
 
@@ -108,13 +110,15 @@ try {
 
     await waitReady(page);
     await page.keyboard.press("ArrowLeft");                        // shred the W-2 without filing
-    const nextIs = (stamp) => page.waitForFunction((s) => document.querySelector(".card.top .stamp")?.textContent.trim() === s, stamp, { timeout: 15000 }).then(() => true, () => false);
+    const nextIs = (stamp) => page.waitForFunction((s) => document.querySelector(".dk-card:not(.dk-ghost) .verdict-badge")?.textContent.trim() === s, stamp, { timeout: 15000 }).then(() => true, () => false);
     check(await nextIs("Keep original"), "the photo document is read");
     const photoCall = await fake(page, () => window.__PT_FAKE__.classifyCalls.find((c) => c.kind === "images"));
     check(photoCall && photoCall.images.length === 2 && photoCall.images.every((i) => i.type === "image/jpeg"), "photos go to Claude as page images");
-    await page.keyboard.press("ArrowLeft");                        // a keep_original needs a second left swipe
-    check(await page.isVisible(".card.top .card-msg"), "a keep-original card asks before it's shredded");
-    await page.click("#btn-right");                                // file it instead
+    await page.keyboard.press("ArrowLeft");                        // a keep_original asks first (4.14)
+    await page.waitForSelector(".action-sheet");
+    check((await page.textContent(".action-sheet .as-title")).trim() === "Shred a Keep original?", "a keep-original card asks before it's shredded");
+    await page.click(".action-sheet .as-btn.cancel");
+    await page.click("#dk-file");                                  // file it instead
     await page.waitForFunction(() => window.__PT_FAKE__.files.length === 2, null, { timeout: 15000 });
     const pdf = await fake(page, () => { const f = window.__PT_FAKE__.files[1]; return { size: f.size, bytes: [...f.bytes] }; });
     const pdfBuf = Buffer.from(pdf.bytes), pdfText = pdfBuf.toString("latin1");
@@ -122,7 +126,7 @@ try {
     check(pdfBuf.includes(jpeg), "the upright JPEG is inside the PDF untouched");
     check(await fake(page, () => window.__PT_FAKE__.folders.length) === 12, "folders are reused, not made again");
 
-    await page.waitForSelector(".done-card");
+    await page.waitForFunction(() => document.querySelector("#dk-empty .empty-title")?.textContent === "All sorted");
     await page.waitForFunction(() => document.querySelector("#c-all").textContent === "3");
     check((await page.textContent("#c-shred")).trim() === "2" && (await page.textContent("#c-keep")).trim() === "1", "the piles count two to shred and one original");
     const recs = await fake(page, () => [...window.__PT_FAKE__.db.entries()].filter(([k]) => k.startsWith("docs/")).map(([, v]) => v));
@@ -145,7 +149,7 @@ try {
     await page.waitForSelector("#app:not([hidden])");
     await page.setInputFiles("#file", [{ name: "a.pdf", mimeType: "application/pdf", buffer: makePdf(1, "A") }]);
     await waitReady(page);
-    await page.click("#btn-right");
+    await page.click("#dk-file");
     await page.waitForFunction(() => window.__PT_FAKE__.files.length === 1, null, { timeout: 15000 });
     check(await page.isHidden("[data-reconnect-banner] .banner"), "a single 401 from Drive mints a fresh token and the upload finishes, no banner");
     check(await fake(page, () => window.__PT_FAKE__.calls.filter((c) => c.name === "driveToken").length) === 2, "the 401 cost exactly one more driveToken call");
@@ -159,9 +163,9 @@ try {
     check((await page.textContent("#outbox-accessory")).includes("Reconnect Drive to keep filing"), "and the accessory's reconnect state");
     await page.setInputFiles("#file", [{ name: "a.pdf", mimeType: "application/pdf", buffer: makePdf(1, "A") }, { name: "b.pdf", mimeType: "application/pdf", buffer: makePdf(1, "B") }]);
     await waitReady(page);
-    await page.click("#btn-right");
+    await page.click("#dk-file");
     await waitReady(page);
-    check(await page.isVisible(".card.top .stamp"), "the deck is still there while Drive waits");
+    check(await page.isVisible(`${TOP} .verdict-badge`), "the deck is still there while Drive waits");
     check(await fake(page, () => window.__PT_FAKE__.files.length) === 0, "nothing uploads while Drive needs reconnecting");
     const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     check(over <= 1, "no sideways scroll at 390px");
@@ -169,7 +173,7 @@ try {
     await ctx.close();
   }
 
-  // 3. A failed read shows in Needs attention and Try again recovers it.
+  // 3. A failed read shows the failed card (3.1) and Try again recovers it.
   {
     // The reading queue retries a rate limit twice by itself (2 s, 8 s), so three failures reach
     // the card; the waits are shortened for the test.
@@ -177,9 +181,10 @@ try {
     await page.waitForSelector("#app:not([hidden])");
     await page.evaluate(async () => (await import("/public/js/classify.js")).setBackoff([50, 50]));
     await page.setInputFiles("#file", [{ name: "a.pdf", mimeType: "application/pdf", buffer: makePdf(1, "A") }]);
-    await page.waitForSelector("[data-retry]", { timeout: 15000 });
-    check(/rate limit/.test(await page.textContent("#trouble")), "a rate limit gets its own message");
-    await page.click("[data-retry]");
+    await page.waitForSelector(`${TOP} [data-act=retry]`, { timeout: 15000 });
+    check((await page.textContent(`${TOP} .dk-title`)).trim() === "Couldn't read this one" && await page.isDisabled("#dk-file") && !(await page.isDisabled("#dk-skip")),
+      "a failed read says Couldn't read this one; File is off, Skip still works");
+    await page.click(`${TOP} [data-act=retry]`);
     await waitReady(page);
     check(true, "Try again reads it");
     await ctx.close();

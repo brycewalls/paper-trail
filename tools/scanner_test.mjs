@@ -24,7 +24,7 @@ const server = createServer((req, res) => {
   res.end(readFileSync(file));
 });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
-const base = `http://127.0.0.1:${server.address().port}/public/index.html?fake=1`;
+const base = `http://127.0.0.1:${server.address().port}/public/index.html?fake=1&hold=1`;   // hold=1: a one-second undo hold
 const shots = join(root, "tools", "smoke");
 mkdirSync(shots, { recursive: true });
 
@@ -227,7 +227,7 @@ try {
     const added = await sc(page, () => window.__PT__.items().map((i) => ({ name: i.name, files: i.files.length, kind: i.kind, pages: i.numPages })));
     check(itemsBefore === 0 && added.length === 1 && added[0].files === 1 && added[0].kind === "pdf" && added[0].pages === 2, "Send adds ONE item to the deck: one two-page PDF");
     check(added[0]?.name === "Scan, 2 pages", "it's named Scan, 2 pages until Claude reads it");
-    await page.waitForSelector(".card.top .stamp", { timeout: 20000 });
+    await page.waitForSelector(".dk-card:not(.dk-ghost) .verdict-badge", { timeout: 20000 });
     const call = await sc(page, () => window.__PT_FAKE__.classifyCalls[0]);
     check(call?.kind === "pdf" && call.totalPages === 2 && call.wantConfidence, "Claude gets the scan's two-page PDF");
     await page.keyboard.press("ArrowRight");

@@ -69,6 +69,12 @@
 .dk-filename { margin: 0; font: var(--t-mono-caption); color: var(--muted); overflow-wrap: anywhere; }
 .dk-body .unsure-row { min-height: 36px; }
 .dk-body .unsure-row:first-child span:first-child { font: var(--t-title3); font-weight: 700; letter-spacing: var(--tr-title3); }
+/* The lab's Reading card (#99): sent before its read finished, so it waits with its own progress and
+   can't be swiped. */
+.dk-card.dk-reading { cursor: default; }
+.dk-card.dk-reading .dk-page img { opacity: 0.7; }
+.dk-progress { display: flex; align-items: center; gap: var(--s-2); color: var(--ink); font-variant-numeric: tabular-nums; }
+.dk-progress .spinner { flex: 0 0 auto; width: 16px; height: 16px; color: var(--muted); }
 .dk-fail-actions { display: flex; flex-wrap: wrap; gap: var(--s-3); padding-top: var(--s-2); }
 
 /* The anchor a card's menu opens from (right-click or a long press): a point, not a box. */

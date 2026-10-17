@@ -26,7 +26,7 @@ import { registerSettingsSection } from "./settings.js";
 import { route, push } from "./router.js";
 import { bindScanMenu } from "./shell.js";
 import { icon } from "./ui/icons.js";
-import { verdictBadge, verdictStamp, sensitiveChip, retentionChip, unsurePill, unsureRow, button, primaryButton, emptyState, section, row, docThumb, toggleRow } from "./ui/components.js";
+import { verdictBadge, verdictStamp, sensitiveChip, retentionChip, unsurePill, unsureRow, button, primaryButton, emptyState, section, row, docThumb, toggleRow, statusPill } from "./ui/components.js";
 import { openSheet, actionSheet, sheetOpen } from "./ui/sheet.js";
 import { openMenu } from "./ui/menu.js";
 import { spring, reduceMotion, haptic } from "./ui/motion.js";
@@ -38,7 +38,10 @@ import { labChip, openCompare } from "./lab/compare.js";
 // compare chip on the card ("Claude agrees" / "Claude differs", lab/compare.js).
 const LAB = READER === "rules";
 on("lab:compared", () => render());
-on("lab:progress", () => { if (!deckCards().length) render(); });
+// Progress can arrive many times a second while OCR runs: one redraw per frame. A frame, not at once,
+// also lets main.js's bridge copy the line onto the deck's item first.
+let progressFrame = 0;
+on("lab:progress", () => { if (!progressFrame) progressFrame = requestAnimationFrame(() => { progressFrame = 0; render(); }); });
 
 // The undo window (decision 4). ?hold=<seconds> shortens it on the fake backend, for tests.
 const HOLD_MS = FAKE && params.has("hold") ? Math.max(0, Number(params.get("hold")) || 0) * 1000 : 10000;
@@ -83,12 +86,22 @@ let offerBulkFile = false;
 const mine = (i) => !i.uid || i.uid === currentUser()?.uid;
 export const isReadFailed = (i) => i.stage === "failed" && i.failedStage === "reading";
 const byCreated = (a, b) => a.createdAt.localeCompare(b.createdAt);
+// The lab (#99): read cards are ordered by when their read finished (readAt), so each one joins the
+// deck as it's read; dealing a card to the front moves its readAt. The live app keeps createdAt.
+const deckKey = (i) => (LAB && i.readAt) || i.createdAt;
+const byDeck = (a, b) => deckKey(a).localeCompare(deckKey(b));
+// Sent to the deck but still being read (#99, lab only): the card sits under the read ones with its
+// progress and can't be swiped, filed, shredded or skipped until the read lands.
+export const isUnread = (i) => !!i && (i.stage === "captured" || i.stage === "reading");
 function heldIds() { return new Set(last && !last.released && last.decision ? last.ids : []); }
 function waiting() {
   const held = heldIds();
-  return items.filter((i) => mine(i) && (i.stage === "ready" || isReadFailed(i)) && !i.decision && !held.has(i.id)).sort(byCreated);
+  return items.filter((i) => mine(i) && (i.stage === "ready" || isReadFailed(i)) && !i.decision && !held.has(i.id)).sort(byDeck);
 }
-export const deckCards = () => waiting().filter((i) => !i.skippedAt);
+const unreadCards = () => (LAB ? items.filter((i) => mine(i) && isUnread(i) && !i.decision).sort(byCreated) : []);
+// Read cards first, in the order they finished; in the lab the unread ones wait underneath.
+export const deckCards = () => [...waiting().filter((i) => !i.skippedAt), ...unreadCards()];
+const readCards = () => deckCards().filter((i) => !isUnread(i));
 export const skippedCards = () => waiting().filter((i) => i.skippedAt).sort((a, b) => a.skippedAt.localeCompare(b.skippedAt));
 export const getItem = (id) => { const it = findItem(id); return it && mine(it) ? it : null; };
 const readingCount = () => items.filter((i) => mine(i) && (i.stage === "captured" || i.stage === "reading")).length;
@@ -102,7 +115,7 @@ export const canUndo = () => !!last && (!last.released || !last.decision || type
 export function setCard(it, card) { it.card = card; it.unsureFields = unsureFields(card); }
 
 export function subtitle() {
-  const cards = deckCards(), reading = readingCount();
+  const cards = readCards(), reading = readingCount();
   if (!cards.length) return reading ? `${reading} reading` : "";
   const parts = [`${cards.length} to go`, `${cards.filter(confident).length} ready to file`];
   if (reading) parts.push(`${reading} reading`);
@@ -122,20 +135,20 @@ function bulkTitle() {
 
 // "decided" | "needsCheck" | "needsKeepConfirm" | "unavailable"
 export function file(it) {
-  if (!it || !deckCards().includes(it) || !it.card || isReadFailed(it)) return "unavailable";
+  if (!it || isUnread(it) || !deckCards().includes(it) || !it.card || isReadFailed(it)) return "unavailable";
   if (checks(it).length) return "needsCheck";
   commit([it], "file", "file");
   return "decided";
 }
 export function shred(it, { confirmed = false } = {}) {
-  if (!it || !deckCards().includes(it)) return "unavailable";
+  if (!it || isUnread(it) || !deckCards().includes(it)) return "unavailable";
   if (it.card?.verdict === "keep_original" && !confirmed) return "needsKeepConfirm";
   commit([it], "shredOnly", "shred");
   return "decided";
 }
 // Swipe up (#77): off the deck into the Skipped set. Releases the previous hold like any decision.
 export function skip(it) {
-  if (!it || !deckCards().includes(it)) return "unavailable";
+  if (!it || isUnread(it) || !deckCards().includes(it)) return "unavailable";
   releaseHeld();
   it.skippedAt = new Date().toISOString();
   last = { ids: [it.id], decision: null, side: "skip", prior: new Map(), at: it.skippedAt, released: true };
@@ -220,9 +233,14 @@ export async function undo() {
 // of the current top, in order. A skip being undone stops being the thing to undo.
 function dealToFront(list) {
   if (!list.length) return;
-  const front = deckCards()[0]?.createdAt || new Date().toISOString();
+  const top = deckCards()[0];
+  const front = (top && deckKey(top)) || new Date().toISOString();
   const t0 = new Date(front).getTime();
-  list.forEach((it, k) => { it.createdAt = new Date(t0 - (list.length - k)).toISOString(); it.skippedAt = null; });
+  list.forEach((it, k) => {
+    const at = new Date(t0 - (list.length - k)).toISOString();
+    if (LAB && it.readAt) it.readAt = at; else it.createdAt = at;
+    it.skippedAt = null;
+  });
   if (last && !last.decision && list.some((i) => last.ids.includes(i.id))) last = null;
 }
 export const sortSkipped = () => dealToFront(skippedCards());
@@ -323,10 +341,12 @@ async function readItem(it) {
     lastAnswer = Date.now();
     setCard(it, card);
     it.stage = "ready";
+    it.readAt = new Date().toISOString();
     emit("item:ready", it);
   } catch (e) {
     console.warn("Read failed", e);
     it.stage = "failed"; it.failedStage = "reading";
+    it.readAt = new Date().toISOString();
     it.readErrorCode = readErrorCode(e);
     it.errorMessage = readError(e);
   }
@@ -396,13 +416,14 @@ export function render() {
   $("deck-count").textContent = subtitle();
   renderPrompts(skipped);
   const top = cards[0];
+  const unread = isUnread(top);
   els.stack.classList.toggle("is-empty", !cards.length);
   els.actions.hidden = !cards.length;
   els.empty.hidden = !!cards.length;
   if (cards.length) renderStack(cards); else { clearStack(); renderEmpty(skipped); }
-  els.shred.disabled = !top;
-  els.skip.disabled = !top;
-  els.file.disabled = !top || !top.card || isReadFailed(top);
+  els.shred.disabled = !top || unread;
+  els.skip.disabled = !top || unread;
+  els.file.disabled = !top || unread || !top.card || isReadFailed(top);
   const undoable = canUndo();
   els.undo.disabled = !undoable;
   els.undo.setAttribute("aria-label", undoable ? "Undo last swipe" : "Undo, nothing to undo");
@@ -469,21 +490,42 @@ function renderStack(cards) {
   if (cur && cur.dataset.id === top.id && cur.dataset.html === html) return;
   const hadFocus = cur && cur.contains(document.activeElement);
   const el = document.createElement("article");
-  el.className = "dk-card";
+  const unread = isUnread(top);
+  el.className = unread ? "dk-card dk-reading" : "dk-card";
   el.dataset.id = top.id;
   el.dataset.html = html;
   el.tabIndex = 0;
   el.setAttribute("aria-roledescription", "card");
   el.setAttribute("aria-label", cardLabel(top));
-  el.setAttribute("aria-keyshortcuts", "ArrowRight ArrowLeft ArrowUp Enter");
-  el.setAttribute("aria-description", "Right arrow files, left arrow shreds, up arrow skips. Enter opens the details.");
+  if (unread) {
+    el.setAttribute("aria-busy", "true");
+    el.setAttribute("aria-description", "Still reading. You can sort it once it's read.");
+  } else {
+    el.setAttribute("aria-keyshortcuts", "ArrowRight ArrowLeft ArrowUp Enter");
+    el.setAttribute("aria-description", "Right arrow files, left arrow shreds, up arrow skips. Enter opens the details.");
+  }
   el.innerHTML = html;
   if (cur) cur.replaceWith(el); else els.stack.append(el);
   bindCard(el, top);
   if (hadFocus) el.focus({ preventScroll: true });
 }
 
+// The lab's Reading card (#99): the page, a Reading pill, its name and this card's own progress.
+function readingCardHtml(it) {
+  const page = it.thumb ? `<img src="${esc(it.thumb)}" alt="" draggable="false">` : `<span class="dk-page-none">${icon("doc")}</span>`;
+  return `<div class="dk-well">
+      <div class="dk-page">${page}</div>
+      <div class="dk-badges">${statusPill("reading")}</div>
+      ${it.numPages ? `<span class="dk-pages">${pagesText(it.numPages)}</span>` : ""}
+    </div><div class="dk-body" role="status">
+      <h2 class="dk-title">${esc(it.name || "Document")}</h2>
+      <p class="dk-meta dk-progress"><span class="spinner" aria-hidden="true"></span><span>${esc(it.progress || "Waiting its turn to be read")}</span></p>
+      <p class="dk-meta">You can sort it once it's read.</p>
+    </div>`;
+}
+
 function cardHtml(it) {
+  if (isUnread(it)) return readingCardHtml(it);
   const failed = isReadFailed(it) || !it.card;
   const c = it.card || {};
   const unsure = failed ? [] : checks(it);
@@ -522,6 +564,7 @@ function cardHtml(it) {
 
 // VoiceOver / screen reader label (section 6).
 export function cardLabel(it) {
+  if (isUnread(it)) return `Reading ${it.name || "a document"}. ${it.progress || "Waiting its turn to be read"}.`;
   if (isReadFailed(it) || !it.card) return LAB ? "Couldn't read this one. The lab reader stopped. Your scan is saved." : "Couldn't read this one. Claude didn't answer. Your scan is saved.";
   const c = it.card;
   const parts = [`${c.title}.`, `${c.issuer || "Unknown sender"}, ${fmtDate(c.docDate) || "No date"}.`, `${verdictStamp(c.verdict)}.`, `Folder ${folderName(c.folder)}.`];
@@ -539,6 +582,8 @@ const rotFor = (tx, w) => (reduceMotion() ? 0 : clamp((tx / Math.max(1, w)) * 10
 const poseCss = ({ tx = 0, ty = 0, rot = 0 } = {}) => `translate(${tx}px, ${ty}px) rotate(${rot}deg)`;
 
 function bindCard(el, it) {
+  // A card still reading (#99) does nothing yet: no swipe, no details, no menu.
+  if (isUnread(it)) { el.addEventListener("contextmenu", (e) => e.preventDefault()); return; }
   const failed = isReadFailed(it) || !it.card;
   el.addEventListener("click", (e) => {
     if (el.dataset.dragged) { delete el.dataset.dragged; return; }
@@ -692,7 +737,7 @@ function after(side, title) {
     const rest = skipped ? `${skipped} skipped. Sort them now?` : "All sorted.";
     return side === "skip" ? `Skipped ${title}. ${rest}` : rest;
   }
-  const nextTitle = next.card?.title || "a card that couldn't be read";
+  const nextTitle = isUnread(next) ? "a card still reading" : next.card?.title || "a card that couldn't be read";
   if (side === "file") return `Filed ${title}. Next: ${nextTitle}.`;
   if (side === "shred") return `Shredded ${title}.`;
   return `Skipped ${title}. Next: ${nextTitle}.`;

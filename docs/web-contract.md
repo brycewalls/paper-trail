@@ -76,7 +76,7 @@ All under `public/js/`. Entry `main.js` (a module script in `index.html`). jsPDF
 | 6 | `paperless.js` | browse | Paperless (4.7), the sender detail (`registerScreen("sender")`) and the Done list (`registerScreen("done-senders")`). |
 | 7 | `scanner.js` | capture | The camera scanner (edges, flattening, auto-capture). Exports `sc`. |
 | 7 | `capture.js` (new) | capture | Listens for `capture:request`; Files and Photos pickers; unsupported-file alert; hands pages to the review. |
-| 7 | `review.js` (new) | capture | The scan review (4.11): groups, split and join, Split into documents, duplicates, Send to the deck. |
+| 7 | `review.js` (new) | capture | The scan review (4.11): groups, split and join, Split into documents, duplicates, Send to the deck. In the lab (#99) Send hands over every group at once, read or not. |
 | 7 | `viewer.js` (new) | capture | The full-screen page viewer (4.11.1). |
 | 8 | `shell.js` | shared | The app shell: tab views, pushed screens, nav bars, the dock (accessory and tab bar, search mode), avatar, the Scan menu, keyboard. Exports `scanMenuItems`, `bindScanMenu`, `setAccessoryHidden`, `shellSignedIn`, `startShell`, `pushScreen`, `goTab`, `currentTabEl`. |
 | 9 | `main.js` | shared | Boot, the fake test hooks (`window.__PT__`), what a sign-in or sign-out does across modules. No feature code. |
@@ -179,6 +179,7 @@ Item fields (same names and stage strings as `PipelineItem`, never renamed):
 | `unsureFields` | In sheet order (sender, date, folder, title, filename, verdict); emptied when confirmed. |
 | `readErrorCode` | The last read's `ClassifyErrorCode`. |
 | `skippedAt` | Skipped on Sort (#77): stays `ready`, off the deck, never uploads. |
+| `readAt` | Lab build, in memory only (#99): when the read finished (ready or failed). The lab deck orders its read cards by it, so each joins the deck as it's read; dealing a card to the front moves it. Not written to Firestore. |
 | `pages`, `sizeBytes`, `contentHash`, `md5`, `ocrText` | Set by capture (hash, text) and the outbox (md5 just before upload). |
 | `uploadURL`, `bytesSent` | The resumable session and progress. |
 | `driveId`, `driveUrl`, `docId` | Set as the upload and record land. |
@@ -217,7 +218,8 @@ The exports other owners may call. Each owner adds its fake support in the same 
 **capture.js** (capture): listens for `capture:request` `{ source: "camera" | "files" | "photos" }` from every Scan menu; emits `capture:sent` `{ ids }` once items are in `db.js` at `captured` (or `reading`). Sort's empty states call `bindScanMenu(button)` from `shell.js`, so every entry point is the same menu (#79).
 
 **deck.js** (deck): listens for `capture:sent` and `pipeline:changed`; calls `outbox.release` and `outbox.sendBack`; emits `deck:decided` `{ id, decision }` and `deck:skipped` `{ id }`.
-- Exports for other screens: `file(it)`, `shred(it, { confirmed })`, `skip(it)` and `fileTogether(list)` (each returns `"decided" | "needsCheck" | "needsKeepConfirm" | "unavailable"`), `undo()`, `releaseHeld()`, `act(side, it)` (the animated path the buttons use), `deckCards()`, `skippedCards()`, `sortSkipped()`, `sortNow(it)`, `getItem(id)`, `saveEdits(it, card, { remember })`, `retryRead(it)`, `checks(it)`, and the formatting helpers (`fmtDate`, `folderName`, `folderPath`, `meta`, `dateLabel`).
+- Lab build (#99): the deck also holds the cards still reading (`stage` `captured` or `reading`), under the read ones and ordered by `createdAt`; read cards are ordered by `readAt`. A card still reading shows a Reading pill and its `progress`, and can't be swiped, keyed, opened, filed, shredded or skipped (`isUnread(it)`). The live app keeps the reading empty state and `createdAt` order.
+- Exports for other screens: `file(it)`, `shred(it, { confirmed })`, `skip(it)` and `fileTogether(list)` (each returns `"decided" | "needsCheck" | "needsKeepConfirm" | "unavailable"`), `undo()`, `releaseHeld()`, `act(side, it)` (the animated path the buttons use), `deckCards()`, `isUnread(it)`, `skippedCards()`, `sortSkipped()`, `sortNow(it)`, `getItem(id)`, `saveEdits(it, card, { remember })`, `retryRead(it)`, `checks(it)`, and the formatting helpers (`fmtDate`, `folderName`, `folderPath`, `meta`, `dateLabel`).
 - The hold: a decision is held for 10 s (decision 4), released by the next decision, the timer, leaving the Sort tab or the page going to the background. Releasing sets `decision`, `decidedAt` and `stage: "queued"`, then calls `outbox.release(id)` when the outbox exports it, else the legacy `enqueue` / `logShred`. Undo after the release needs `outbox.sendBack(id)`; until the outbox exports it, Undo turns off once a decision is released.
 
 **browse** (piles, search, paperless): read Firestore through `store.js` and pending items through `db.js`; push `doc:<id>` with `pushScreen("doc", id)`.
@@ -237,7 +239,7 @@ The exports other owners may call. Each owner adds its fake support in the same 
 | `session:ended` | none | `main.js` | features | Signed out. |
 | `drive:status` | `{ status }` | `auth.js` | `drive.js`, `outbox.js`, `settings.js` | Drive connected or needs reconnecting (server's word only). |
 | `capture:request` | `{ source }` | `shell.js` (Scan menu) | `capture.js` (the legacy shim in `main.js` until then) | A Scan menu item was picked. |
-| `capture:sent` | `{ ids }`, plus `items` and `blobs` until db.js lands | `review.js` (capture) | `deck.js` (`main.js` legacy bridge until then) | New items are in the pipeline. Without a pipeline store, `items` are the live item objects (each with `whenRead`, a promise that settles when Claude's read does) and `blobs[id]` is `{ pdf, thumb }`. |
+| `capture:sent` | `{ ids }`, plus `items` and `blobs` until db.js lands | `review.js` (capture) | `deck.js` (`main.js` legacy bridge until then) | New items are in the pipeline. Without a pipeline store, `items` are the live item objects (each with `whenRead`, a promise that settles when Claude's read does) and `blobs[id]` is `{ pdf, thumb }`. Lab build (#99): Send also hands over a document still reading its pages, with no entry in `blobs`; its item carries `whenBuilt` (resolves `{ pdf, thumb }` once built, or null if it couldn't be) and `progress`. |
 | `pipeline:changed` | `{ id, stage }` | `db.js` | `deck.js`, `outbox-view.js`, `search.js` | An item was written. |
 | `deck:decided` | `{ id, decision }` | `deck.js` | features | A swipe or its twin, before the hold. |
 | `deck:skipped` | `{ id }` | `deck.js` | features | A card went to the Skipped set. |
@@ -254,7 +256,7 @@ The exports other owners may call. Each owner adds its fake support in the same 
 | `item:decided` | `{ item, dir }` | `deck.js` | features | Legacy, replaced by `deck:decided`. |
 | `record:saved` | `{ item, record, id }` | `store.js` | features | Legacy. |
 | `lab:read` | `{ item, source }` | `classify.js` | `lab/compare.js` | Lab build (#92): the rules read one document (`item.lab` is set). |
-| `lab:progress` | `{ id, progress }` | `classify.js` | `deck.js`, `review.js` | Lab build: the reader's progress line for an item changed (`item.progress`). |
+| `lab:progress` | `{ id, progress }` | `classify.js`, `review.js` | `deck.js`, `review.js`, `main.js` (legacy bridge) | Lab build: the reader's progress line for an item changed (`item.progress`). `review.js` emits it while it reads the pages of a document already sent to the deck (#99); the bridge copies it onto the deck's item. |
 | `lab:compared` | `{ id }` | `lab/compare.js` | `deck.js` | Lab build: compare mode started, finished or failed for an item, or Bryce picked. |
 
 ## Backend interface

@@ -32,6 +32,9 @@
 #              learning loop (examples), sender rules first, who decided each field in the compare
 #              sheet, the switch, and no long task from the matcher at 4x CPU throttling. CI uses a
 #              hashed-words stand-in for the model (its files aren't in git); --model runs the real one
+#   lab deck   the lab deck (tools/lab_deck_test.mjs, #99): Send before the reads finish, Reading cards
+#              with their own progress that can't be swiped, read cards on top in the order they finish,
+#              the next read card after a swipe, Skip and the Skipped chip alongside Reading cards
 #   functions  the classify function's unit tests, Claude stood in; the lab's no-AI rules engine (#92):
 #              its unit tests and the eval against the synthetic corpus, which fails under its floors
 #   ios        the iPhone app (ios/): xcodegen, a simulator build and the unit tests. macOS minutes
@@ -96,6 +99,9 @@ jobs:
       - name: The lab's on-device matcher (#102)
         if: always()
         run: node tools/lab_match_test.mjs
+      - name: The lab deck, sending before reading finishes (#99)
+        if: always()
+        run: node tools/lab_deck_test.mjs
       - name: Keep the screenshots
         if: always()
         uses: actions/upload-artifact@v4

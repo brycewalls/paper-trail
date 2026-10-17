@@ -62,6 +62,8 @@ jobs:
         run: |
           npm install --no-save playwright@1
           npx playwright install --with-deps chromium
+      - name: The lab's self-hosted ONNX Runtime and matcher model (#101, #102), pinned and hash-checked
+        run: bash tools/lab/fetch-models.sh
       - name: Smoke test every page
         run: node tools/smoke_test.mjs
       - name: Sort a stack against the fake backend

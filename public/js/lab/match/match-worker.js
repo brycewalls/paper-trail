@@ -26,8 +26,18 @@ import { KNOWN_SENDERS } from "../rules/senders.js";
 
 const BASE = new URL("../../../lab-models/match/", import.meta.url);
 const LIBRARY = new URL("vendor/transformers-4.3.0/transformers.min.js", BASE);
-const WASM = new URL("vendor/ort-1.31.0-dev.20260914-8d85527a0/ort-wasm-simd-threaded.wasm", BASE);
-const WASM_MJS = new URL("vendor/ort-1.31.0-dev.20260914-8d85527a0/ort-wasm-simd-threaded.mjs", BASE);
+// ONNX Runtime: the same version and the same files the OCR worker loads (lab/ocr-worker.js), so the
+// phone downloads one runtime binary for both. The OCR worker takes the asyncify build when the
+// device has a WebGPU adapter and the plain one otherwise; the matcher picks the same way (it runs
+// on the CPU either way, and transformers.js embeds the same on both builds).
+const ORT_DIR = new URL("vendor/ort-1.31.0-dev.20260914-8d85527a0/", BASE);
+const runtimeFiles = (asyncify) => {
+  const name = asyncify ? "ort-wasm-simd-threaded.asyncify" : "ort-wasm-simd-threaded";
+  return { wasm: new URL(`${name}.wasm`, ORT_DIR).href, mjs: new URL(`${name}.mjs`, ORT_DIR).href };
+};
+async function hasGpu() {
+  try { const gpu = self.navigator && self.navigator.gpu; return !!(gpu && await gpu.requestAdapter()); } catch { return false; }
+}
 const MODELS = new URL(`models/${MODEL.revision.slice(0, 7)}/`, BASE);
 
 let embedder = "none";
@@ -66,7 +76,7 @@ function prepare() {
     env.useBrowserCache = typeof caches !== "undefined";
     env.useWasmCache = typeof caches !== "undefined";
     const onnx = env.backends.onnx;
-    onnx.wasm.wasmPaths = { wasm: WASM.href, mjs: WASM_MJS.href };
+    onnx.wasm.wasmPaths = runtimeFiles(await hasGpu());
     onnx.wasm.numThreads = 1;      // no cross-origin isolation on the site, and one core is kinder to the battery
     onnx.wasm.proxy = false;       // this is already a worker
     extractor = await pipeline("feature-extraction", MODEL.id, { dtype: MODEL.dtype, device: "wasm" });

@@ -24,7 +24,7 @@ const PAPER_REASON = "The paper itself has legal value and is hard to replace, s
 const row = (folder, verdict, retention, o = {}) => ({ folder, verdict, retention, date: "doc", issuer: "known", recurring: false, sensitive: false, reason: "", ...o });
 
 export const TYPES = {
-  "W-2": row(TAX, "scan_shred", KEEP7, { date: "tax", issuer: "employer", recurring: true, short: "w2", reason: TAX_REASON, summary: "Wage and tax statement" }),
+  "W-2": row(TAX, "scan_shred", KEEP7, { date: "tax", issuer: "employer", recurring: true, sensitive: true, short: "w2", reason: TAX_REASON, summary: "Wage and tax statement" }),
   "1099-INT": row(TAX, "scan_shred", KEEP7, { date: "tax", issuer: "payer", recurring: true, short: "1099-int", reason: TAX_REASON, summary: "Interest income form" }),
   "1099-DIV": row(TAX, "scan_shred", KEEP7, { date: "tax", issuer: "payer", recurring: true, short: "1099-div", reason: TAX_REASON, summary: "Dividend income form" }),
   "1099-B": row(TAX, "scan_shred", KEEP7, { date: "tax", issuer: "payer", recurring: true, short: "1099-b", reason: TAX_REASON, summary: "Broker proceeds form" }),

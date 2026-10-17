@@ -126,3 +126,16 @@ test("docText keeps the words and drops every token with a digit", () => {
   assert.ok(!/\d/.test(docText(["SSN 900-12-3456 Wages 61,400.00"])));
   assert.equal(plainName("The Home Depot, Inc."), "home depot");
 });
+
+test("combine leaves a notarized document's empty sender alone, not snapped to its venue line", async () => {
+  const pages = [`AFFIDAVIT OF IDENTITY
+State of North Carolina, County of Wake
+Sworn to and subscribed before me this 12th day of March, 2025.
+NOTARY PUBLIC`];
+  const card = await runRules(pages, {});
+  assert.equal(card.issuer, "");
+  const filed = [...KNOWN, { name: "State of North Carolina", source: "filed" }];
+  const { card: out, decidedBy } = await combine({ card, textPages: pages, candidates: filed });
+  assert.equal(out.issuer, "");
+  assert.equal(decidedBy.issuer, "rules");
+});

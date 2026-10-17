@@ -48,7 +48,10 @@ export async function combine({ card, textPages = [], meta = {}, typeVote = null
     const prefer = issuerVote && issuerVote.value ? [issuerVote.value] : [];
     // Only the read name is snapped when the rules found a sender they trust; the page's top lines
     // are searched only when the rules had nothing, or a guess.
-    const snap = snapSender(isKnown ? "" : raw, list, { lines: rc < ISSUER_GUESS || !raw ? firstLines(textPages) : [], prefer });
+    // Not when the rules read the page and found only a notary or a venue line (a notarized
+    // document with no party named): "State of North Carolina, County of Wake" isn't its sender.
+    const searchLines = (rc < ISSUER_GUESS || !raw) && !(card.rules && card.rules.issuerFrom === "no party named");
+    const snap = snapSender(isKnown ? "" : raw, list, { lines: searchLines ? firstLines(textPages) : [], prefer });
     if (snap && plainName(snap.name) !== plainName(raw)) {
       const fromRule = snap.from === "sender rule";
       if (fromRule || rc < HIGH.issuer || snap.via === "name") {

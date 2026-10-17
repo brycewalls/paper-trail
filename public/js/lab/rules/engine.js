@@ -130,6 +130,7 @@ function unreadable(ctx, rules) {
 
 // ---------- the date ----------
 const LETTERS = new Set(["Letter", "Personal letter", "Loan payoff letter", "Employment offer letter", "Credit card offer", "Preapproval"]);
+const SERVICE_DATED = new Set(["Explanation of benefits", "Medical bill"]);
 const TAX_ANCHORS = ["w-2", "1099", "1098", "1095", "1040", "tax return", "tax year", "d-400", "ssa-1099", "benefits paid in", "wage and tax"];
 function pickDate(type, row, ctx, today) {
   const dates = findDates(ctx, today);
@@ -150,7 +151,13 @@ function pickDate(type, row, ctx, today) {
     return { iso: sorted[0].iso, conf: 0.8, from: "earliest date", others: sorted.slice(1).map(iso) };
   }
   const usable = dates.filter((d) => !d.negative);
-  if (!usable.length) return { iso: "", conf: dates.length ? 0.4 : 0.5, from: "no document date", others: dates.map(iso) };
+  if (!usable.length) {
+    // An EOB or medical bill with no statement date of its own is dated by its (latest) date of
+    // service, a little unsure.
+    const service = SERVICE_DATED.has(type) ? dates.filter((d) => /service/.test(d.negativeLabel || "")).sort((a, b) => b.iso.localeCompare(a.iso)) : [];
+    if (service.length) return { iso: service[0].iso, conf: 0.7, from: "date of service", others: dates.filter((d) => d !== service[0]).map(iso) };
+    return { iso: "", conf: dates.length ? 0.4 : 0.5, from: "no document date", others: dates.map(iso) };
+  }
   const first = usable[0];
   const scored = usable.map((d) => {
     let s = d.labelScore;
@@ -193,10 +200,20 @@ function pickIssuer(type, row, ctx, senders, rules) {
   const field = (rx, conf, from) => { const v = afterLabel(ctx, rx); const name = v ? tidy(v) : ""; return name && !isPayroll(name) ? { name, conf: knownByName(name) ? 0.95 : conf, from } : null; };
   switch (strategy) {
     case "fixed": pick = { name: row.issuer, conf: 0.95, from: "the document type" }; break;
-    case "employer":
-      pick = field(/(e(m|rn)ployer'?s name(,? address,? and zip code)?|name of e(m|rn)ployer)\s*:?/i, 0.85, "employer box")
-        || letterheadPick(ctx) || knownPick();
+    case "employer": {
+      // The employer box ("c Employer's name, address, and ZIP code"), or a plain "Employer:" or
+      // "Employer name:" line. A payroll company named in the box is the employer (its own staff's
+      // W-2s), so the box takes it; elsewhere a payroll name is only the printer of the form.
+      const box = afterLabel(ctx, /(e(m|rn)ployer'?s name(,? address,? and zip code)?|name of e(m|rn)ployer|(^|\s)e(m|rn)ployer( name)?\s*:)\s*:?/i);
+      const boxName = box ? tidy(box) : "";
+      pick = boxName && !isGovernment(boxName) ? { name: boxName, conf: knownByName(boxName) ? 0.95 : 0.85, from: "employer box" } : null;
+      // Never the IRS or the Treasury, which every W-2 names; then a payroll provider that issued
+      // the form when no employer is named; then nothing, unsure.
+      if (!pick) { const h = letterhead(ctx, (n) => isPayroll(n) || isGovernment(n)); if (h && h.score >= 3) pick = { name: h.name, conf: 0.75, from: "letterhead" }; }
+      if (!pick) { const k = knownPick(); if (k && !isGovernment(k.name) && !isPayroll(k.name)) pick = k; }
+      if (!pick) { const p = senders.find((x) => x.kind === "payroll"); if (p) pick = { name: p.name, conf: 0.6, from: "payroll provider, no employer named" }; }
       break;
+    }
     case "payer":
       pick = knownPick();
       if (!pick || !pick.from.startsWith("known")) pick = field(/(payer'?s?|filer'?s|(recipient'?s\/)?lender'?s|issuer or other coverage provider)\s*:?\s*(na(me|rne))?(,?\s*street address)?(,?\s*city( or town)?)?(,?\s*state.*?)?\s*:?/i, 0.85, "payer box") || pick;
@@ -212,8 +229,12 @@ function pickIssuer(type, row, ctx, senders, rules) {
       break;
     }
     case "preparer": {
+      // Who prepared it, or an organization heading it. Never the notary, the affiant or the venue
+      // line ("State of North Carolina, County of Wake"): with no party named the sender stays
+      // empty, and unsure.
       const m = /prepared by:?\s*([^\n]+)/i.exec(ctx.fixed);
-      pick = m ? { name: tidy(m[1]), conf: 0.75, from: "prepared by" } : knownPick() || { name: "", conf: 0.6, from: "none" };
+      const k = m ? null : knownPick();
+      pick = m ? { name: tidy(m[1]), conf: 0.75, from: "prepared by" } : k && !NOTARY_PART.test(k.name) ? k : { name: "", conf: 0.4, from: "no party named" };
       break;
     }
     case "vital": { const v = vitalIssuer(ctx); pick = v ? { name: v, conf: 0.8, from: "county or state" } : null; break; }
@@ -247,7 +268,10 @@ function pickIssuer(type, row, ctx, senders, rules) {
   return { ...pick, conf: r2(pick.conf), others };
 }
 const PRODUCTS = "refrigerator|dishwasher|washer|dryer|oven|range|microwave|vacuum|television|tv|router|printer|camera|laptop|blender|air purifier|thermostat|water heater|furnace|lawn mower|grill|stand mixer|coffee maker";
+const NOTARY_PART = /\b(notary|affiant|commission expires)\b|^(state|county|commonwealth) of\b/i;
 const isPayroll = (name) => { const k = knownByName(name); return !!k && NEVER_ISSUER.has(k.kind); };
+// The tax agencies a wage or tax form names as its recipient, never its sender.
+const isGovernment = (name) => { const k = knownByName(name); return (!!k && GOVERNMENT.has(k.kind)) || /internal revenue|department of the treasury|social security administration|^irs$/i.test(name); };
 const letterheadPick = (ctx) => { const h = letterhead(ctx, isPayroll); return h && h.score >= 3 ? { name: h.name, conf: 0.75, from: "letterhead" } : null; };
 
 // ---------- amounts, last 4 and the little facts the templates use ----------

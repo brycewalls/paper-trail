@@ -301,4 +301,17 @@ Total 2026 tax  $4,280.24
 Statement date 02/14/2026`],
     expect: { docType: "Property tax bill", issuer: "Pierce County Assessor-Treasurer", docDate: "2026-02-14", folder: "02 Taxes", verdict: "scan_shred", sensitive: false, paperless: false },
   },
+  // The notarized affidavit as OCR reads it: the signature lines lose their underscores, so
+  // "Notary Public, State of Washington" stands alone near the top. The notary is never the sender;
+  // with no party named, the sender stays empty (and unsure).
+  {
+    id: "affidavit-notarized-ocr",
+    pages: [`AFFIDAVIT OF RESIDENCE
+I, Riley Park, being first duly sworn, say that I have lived at 22 Birch Lane, Salem OR since June 1, 2023.
+Affiant
+Subscribed and sworn to before me on April 3, 2025.
+Notary Public, State of Oregon
+My commission expires 07/2027 NOTARY SEAL`],
+    expect: { docType: "Notarized document", issuer: "", docDate: "2025-04-03", folder: "01 Identity & Legal", verdict: "keep_original", sensitive: false, paperless: false },
+  },
 ];

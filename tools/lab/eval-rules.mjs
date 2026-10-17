@@ -47,7 +47,7 @@ export const TODAY = new Date(2026, 9, 16); // the corpus's "today": 2026-10-16
 export const EVAL_FIELDS = ["docType", "issuer", "docDate", "folder", "verdict", "sensitive", "paperless"];
 // Regression floors for --assert (CI): a little under the current scores, so a change that makes the
 // rules worse fails the build. Raise them when the rules get better.
-const FLOORS = { dev: 0.9, holdout: 0.8, noisy: 0.75 };
+const FLOORS = { dev: 0.97, holdout: 0.95, noisy: 0.9 };
 
 export async function loadCorpus() {
   const dir = join(here, "corpus");

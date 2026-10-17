@@ -419,4 +419,17 @@ Total                        $129.98
 Paid  VISA ****2231`],
     expect: { docType: "Invoice", issuer: "Jiffy Lube", docDate: "2026-01-19", folder: "07 Auto", verdict: "scan_shred", sensitive: false, paperless: false },
   },
+  // From the 5-document stack pass: an EOB whose only date is the date of service.
+  {
+    id: "eob-service-date-only",
+    pages: [`Summit Health Plan
+Explanation of Benefits
+This is not a bill
+Date of service January 9, 2026
+Provider Lakeside Family Clinic
+Amount billed $240.00
+Plan paid $180.00
+You may owe $60.00`],
+    expect: { docType: "Explanation of benefits", issuer: "Summit Health Plan", docDate: "2026-01-09", folder: "05 Medical", verdict: "scan_shred", sensitive: true, paperless: true },
+  },
 ];

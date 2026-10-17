@@ -151,3 +151,81 @@ test("the eval holds its floors on clean and noisy text", async () => {
   assert.ok(hold.mean >= 0.8, `holdout ${hold.mean}`);
   assert.ok(noisy.mean >= 0.75, `noisy ${noisy.mean}`);
 });
+
+// Rule misses from the lab's 5-document stack pass (2026-10-16).
+test("a W-2's sender is its employer, never the IRS", () => {
+  const plain = read(`Form W-2 Wage and Tax Statement 2025
+Employer: Harbor Lane Outfitters
+Employee: Sam Rivera
+1 Wages, tips, other compensation 48,210.00
+Department of the Treasury Internal Revenue Service`);
+  assert.equal(plain.docType, "W-2");
+  assert.equal(plain.issuer, "Harbor Lane Outfitters");
+  assert.equal(plain.rules.issuerFrom, "employer box");
+  assert.equal(plain.sensitive, true, "a W-2 is always sensitive");
+  // With no employer named at all, the IRS still never stands in.
+  const bare = read(`Form W-2 Wage and Tax Statement 2025
+1 Wages, tips, other compensation 48,210.00
+Department of the Treasury Internal Revenue Service`);
+  assert.notEqual(bare.issuer, "IRS");
+  assert.ok(bare.confidence.fields.issuer < 0.75, "an unnamed employer is unsure");
+});
+
+test("a W-2 printed by a payroll provider names the employer, unless the provider is the employer", () => {
+  const printed = read(`Gusto
+Form W-2 Wage and Tax Statement 2025
+c Employer's name, address, and ZIP code
+Tidewater Design Studio LLC
+1 Wages, tips, other compensation 52,000.00`);
+  assert.equal(printed.issuer, "Tidewater Design Studio");
+  const own = read(`c Employer's name, address, and ZIP code
+Paychex, Inc.
+1 Wages, tips, other compensation 58,900.00
+Form W-2 Wage and Tax Statement 2025`);
+  assert.equal(own.issuer, "Paychex");
+  const onlyProvider = read(`ADP
+Form W-2 Wage and Tax Statement 2025
+1 Wages, tips, other compensation 58,900.00
+Internal Revenue Service`);
+  assert.equal(onlyProvider.issuer, "ADP");
+  assert.ok(onlyProvider.confidence.fields.issuer < 0.75, "the provider stand-in is unsure");
+});
+
+test("an EOB with only a date of service is dated by it", () => {
+  const c = read(`Summit Health Plan
+Explanation of Benefits
+This is not a bill
+Date of service January 9, 2026
+Plan paid $180.00`);
+  assert.equal(c.docType, "Explanation of benefits");
+  assert.equal(c.docDate, "2026-01-09");
+  assert.equal(c.rules.dateFrom, "date of service");
+  // A statement date still wins over the date of service.
+  const both = read(`Summit Health Plan
+Explanation of Benefits
+Statement date: February 2, 2026
+Date of service January 9, 2026`);
+  assert.equal(both.docDate, "2026-02-02");
+});
+
+test("a notarized document's sender is never the notary or the venue", () => {
+  const c = read(`AFFIDAVIT OF RESIDENCE
+I, Casey Morgan, being first duly sworn, state that I have resided at 410 Alder St since September 1, 2024.
+Affiant
+Subscribed and sworn to before me on January 9, 2026.
+Notary Public, State of Washington
+My commission expires 03/2028`);
+  assert.equal(c.docType, "Notarized document");
+  assert.equal(c.issuer, "");
+  assert.ok(c.confidence.fields.issuer < 0.75, "no party named is unsure");
+  const venue = read(`AFFIDAVIT OF IDENTITY
+State of Oregon, County of Lane
+Subscribed and sworn to before me this 2nd day of May, 2025.
+NOTARY PUBLIC`);
+  assert.equal(venue.issuer, "");
+  const prepared = read(`AFFIDAVIT OF RESIDENCE
+Subscribed and sworn to before me on January 9, 2026.
+Notary Public
+Prepared by Sound Estate Law Group PLLC`);
+  assert.equal(prepared.issuer, "Sound Estate Law Group PLLC");
+});

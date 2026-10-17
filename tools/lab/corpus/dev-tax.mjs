@@ -310,4 +310,32 @@ Sincerely,
 Dana Whitfield, Director of People Operations`],
     expect: { docType: "Employment offer letter", issuer: "Northwind Logistics", docDate: "2023-01-06", folder: "08 Work & Income", verdict: "scan_shred", sensitive: false, paperless: false },
   },
+  // Rule misses from the lab's 5-document stack pass (2026-10-16): a plain "Employer:" line, and the
+  // IRS line every W-2 carries, which is never its sender.
+  {
+    id: "w2-employer-colon",
+    pages: [`Form W-2 Wage and Tax Statement 2025
+Employer: Harbor Lane Outfitters
+Employee: Sam Rivera
+1 Wages, tips, other compensation 48,210.00
+2 Federal income tax withheld 5,102.33
+Copy B To Be Filed With Employee's Federal Tax Return
+Department of the Treasury Internal Revenue Service`],
+    expect: { docType: "W-2", issuer: "Harbor Lane Outfitters", docDate: "2025-12-31", folder: "02 Taxes", verdict: "scan_shred", sensitive: true, paperless: true },
+  },
+  // A payroll provider's own employee: the payroll company is the employer, so it is the sender.
+  {
+    id: "w2-payroll-is-employer",
+    pages: [`a Employee's social security number 900-44-1209   OMB No. 1545-0008
+b Employer identification number (EIN) 16-1124166
+c Employer's name, address, and ZIP code
+Paychex, Inc.
+911 Panorama Trail South
+Rochester NY 14625
+e Employee's first name and initial  Last name   Riley Park
+1 Wages, tips, other compensation 58,900.00
+Form W-2 Wage and Tax Statement 2025
+Department of the Treasury - Internal Revenue Service`],
+    expect: { docType: "W-2", issuer: "Paychex", docDate: "2025-12-31", folder: "02 Taxes", verdict: "scan_shred", sensitive: true, paperless: true },
+  },
 ];

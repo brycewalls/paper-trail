@@ -399,4 +399,65 @@ Northgate Property Management, Inc.  By: ________   Date: 2/14/2024
 Jordan Reyes ________   Date: 2/14/2024`],
     expect: { docType: "Settlement agreement", issuer: "Northgate Property Management", docDate: "2024-02-14", folder: "01 Identity & Legal", verdict: "scan_shred", sensitive: false, paperless: false },
   },
+  // Held out (2026-10-16), written before the W-2, EOB and notary fixes and never tuned against.
+  {
+    id: "h-w2-employer-name-colon",
+    pages: [`Department of the Treasury - Internal Revenue Service
+Form W-2  Wage and Tax Statement  2024
+Employer name: Pacific Crest Builders LLC
+Employer ID 91-2204417
+Employee name: Jordan Reyes
+Wages, tips, other compensation  72,015.40
+Federal income tax withheld  9,880.12
+Copy 2 To Be Filed With Employee's State, City, or Local Income Tax Return`],
+    expect: { docType: "W-2", issuer: "Pacific Crest Builders", docDate: "2024-12-31", folder: "02 Taxes", verdict: "scan_shred", sensitive: true, paperless: true },
+  },
+  {
+    id: "h-w2-rippling-printed",
+    pages: [`Rippling
+Your 2025 W-2 is ready
+Form W-2 Wage and Tax Statement 2025
+c Employer's name, address and ZIP code
+Quillfeather Media Inc
+88 Commerce St, Raleigh NC 27601
+1 Wages, tips, other compensation 66,300.00
+2 Federal income tax withheld 7,402.10
+Internal Revenue Service`],
+    expect: { docType: "W-2", issuer: "Quillfeather Media", docDate: "2025-12-31", folder: "02 Taxes", verdict: "scan_shred", sensitive: true, paperless: true },
+  },
+  {
+    id: "h-w2-adp-employee",
+    pages: [`Form W-2 Wage and Tax Statement 2024    OMB No. 1545-0008
+c Employer's name, address, and ZIP code
+ADP, Inc.
+1 ADP Blvd, Roseland NJ 07068
+e Employee's name   Alex Chen
+1 Wages, tips, other compensation 81,250.00
+Copy C For EMPLOYEE'S RECORDS
+Department of the Treasury Internal Revenue Service`],
+    expect: { docType: "W-2", issuer: "ADP", docDate: "2024-12-31", folder: "02 Taxes", verdict: "scan_shred", sensitive: true, paperless: true },
+  },
+  {
+    id: "h-eob-dates-of-service",
+    pages: [`Blue Ridge Health Alliance
+EXPLANATION OF BENEFITS - THIS IS NOT A BILL
+Member: Jordan Reyes   Member ID 900-55-1182
+Claim 77120-3   Provider: Oak City Physical Therapy
+Dates of service: 05/02/2025
+Billed $165.00   Allowed $98.00   Plan paid $78.40
+Your share $19.60`],
+    expect: { docType: "Explanation of benefits", issuer: "Blue Ridge Health Alliance", docDate: "2025-05-02", folder: "05 Medical", verdict: "scan_shred", sensitive: true, paperless: true },
+  },
+  {
+    id: "h-affidavit-identity",
+    pages: [`AFFIDAVIT OF IDENTITY
+State of North Carolina, County of Wake
+I, Jordan Reyes, swear that I am the person named in the attached documents.
+Signature of Affiant
+Sworn to and subscribed before me this 12th day of March, 2025.
+Signature of Notary Public
+NOTARY PUBLIC, WAKE COUNTY, NORTH CAROLINA
+My commission expires 11/30/2027`],
+    expect: { docType: "Notarized document", issuer: "", docDate: "2025-03-12", folder: "01 Identity & Legal", verdict: "keep_original", sensitive: false, paperless: false },
+  },
 ];

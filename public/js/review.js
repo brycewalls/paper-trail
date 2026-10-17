@@ -12,7 +12,9 @@
 //     Claude's read waits until the split is decided ("Reads when you split or send"): Split into
 //     documents finishing (split, one document, or failed), a cut or join, or Send. Imports and
 //     photos read at once
-//   - "Send {d} to the deck": read groups go now, the rest as they finish (capture:sent)
+//   - "Send {d} to the deck": read groups go now, the rest as they finish (capture:sent). In the lab
+//     (#99) every group goes at once, even one still reading its pages: the deck shows it as a Reading
+//     card with its own progress (item.progress, lab:progress) until the read lands
 //   - Cancel asks "Discard {p} pages?"
 //   - "Scan more" / "Add more" is the Scan menu (#79); capture.js adds what it brings to this review
 //
@@ -25,7 +27,7 @@ import { $, esc, on, emit } from "./ui.js";
 import { currentUser } from "./auth.js";
 import { findByHash } from "./store.js";
 import { readItem, proposeSplit, SPLIT } from "./classify.js";
-import { READER } from "./lab/reader.js";
+import { READER, progressCopy } from "./lab/reader.js";
 import { ocrPdfPages, ocrImage } from "./lab/ocr.js";
 import { openPdfDoc, pageImage, pdfPageText, ocr, assemblePdf, sha256Hex } from "./media.js";
 import { primaryButton, statusPill, choiceChip } from "./ui/components.js";
@@ -42,6 +44,9 @@ const MAX_FULL_TEXT = 100_000;   // fullText on the doc
 const HELD = "Reads when you split or send";
 // Who splits a stack: the lab's page markers (#92), or Claude.
 const SPLITTER = READER === "rules" ? "The rules" : "Claude";
+// The lab (#99): Send hands over a group before its pages are read and built; the item carries
+// whenBuilt (its PDF and thumbnail) and whenRead. The live app keeps waiting for the build.
+const EARLY = READER === "rules";
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const uuid = () => crypto.randomUUID();
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
@@ -122,7 +127,9 @@ class Review {
     if (st.status === "failed") return { text: "Couldn't read this one", failed: true };
     if (st.status === "held") return { text: g.label || HELD, held: true };
     // The lab (#92): OCR progress while a page is read, then the rules' own progress line.
-    if (st.item && st.item.progress) return { text: g.label || st.item.progress };
+    // The draft carries the line while its pages are read (including the first model download).
+    const line = (st.item && st.item.progress) || (READER === "rules" && st.draft && st.draft.progress);
+    if (line) return { text: g.label || line };
     const pct = st.ocrPct;
     return { text: g.label || `Reading page ${st.page || 1}${typeof pct === "number" && pct < 1 ? ` with OCR, ${Math.round(pct * 100)}%` : ""}` };
   }
@@ -355,13 +362,46 @@ class Review {
   isCurrent(gid) { return this.groups.some((g) => g.id === gid); }
 
   // ---------- reading a group ----------
+  // The item exists from the start (a draft), so Send can hand it over before its pages are read;
+  // it's filled in once the PDF is built.
   process(g) {
-    this.states.set(g.id, { status: "reading", page: 1 });
+    const st = { status: "reading", page: 1, draft: this.draftFor(g) };
+    st.draft.whenRead = new Promise((r) => { st.settle = r; });
+    st.draft.whenBuilt = new Promise((r) => { st.built = r; });
+    this.states.set(g.id, st);
     this.read(g).catch((e) => {
       console.warn("Couldn't build the document", e);
-      const st = this.states.get(g.id);
-      if (st && this.isCurrent(g.id)) { st.status = "failed"; this.render(); }
+      if (this.states.get(g.id) !== st || !this.isCurrent(g.id)) return;
+      st.status = "failed";
+      if (!st.item) {   // a draft already on the deck learns it won't be read
+        Object.assign(st.draft, { stage: "failed", failedStage: "reading", readErrorCode: "bad_request", progress: "",
+          errorMessage: "This scan didn't come together. Scan it again." });
+        st.built(null);
+        st.settle(st.draft);
+      }
+      this.render();
+      this.finishIfDone();
     });
+  }
+  nameFor(g, pages) {
+    return g.label || (pages[0]?.sourceName || "").replace(/\.[^.]+$/, "") || `${this.kind === "scan" ? "Scan" : "Photos"}, ${plural(pages.length, "page", "pages")}`;
+  }
+  draftFor(g) {
+    const pages = this.pagesOf(g);
+    const u = currentUser();
+    return {
+      id: uuid(), createdAt: new Date().toISOString(), uid: u ? u.uid : "", stage: "captured", origin: this.kind, source: "web",
+      name: this.nameFor(g, pages), pages: pages.length, card: null, unsureFields: [], readErrorCode: null, progress: "",
+    };
+  }
+  // The draft's progress line while its pages are read, for the deck's Reading card (#99).
+  // q is the OCR worker's own progress event: { pct } while it reads, { loading } while its models
+  // download the first time; none while the text layer is read.
+  draftProgress(gid, st, page, pages, q = null) {
+    const line = progressCopy(q ? { stage: "ocr", page, pages, pct: q.pct, loading: q.loading } : { stage: "text", page, pages });
+    if (st.draft.progress === line) return;
+    st.draft.progress = line;
+    if (EARLY && this.inserted.has(gid)) emit("lab:progress", { id: st.draft.id, progress: line });
   }
   async read(g) {
     const gid = g.id;
@@ -371,8 +411,14 @@ class Review {
       if (!this.isCurrent(gid)) return;
       const live = this.states.get(gid);
       live.page = i + 1; live.ocrPct = null;
+      this.draftProgress(gid, live, i + 1, pages.length);
       this.render();
-      found.push(await this.textFor(pages[i], (pct) => { if (this.states.get(gid) === live && live.page === i + 1) { live.ocrPct = pct; this.render(); } }));
+      found.push(await this.textFor(pages[i], (q) => {
+        if (this.states.get(gid) !== live || live.page !== i + 1) return;
+        live.ocrPct = typeof q.pct === "number" ? q.pct : null;
+        this.draftProgress(gid, live, i + 1, pages.length, q);
+        this.render();
+      }));
     }
     if (!this.isCurrent(gid)) return;
     const pdf = await this.buildPdf(pages, found);
@@ -380,19 +426,23 @@ class Review {
     const [hash, thumb] = await Promise.all([sha256Hex(pdf), pageImage(pages[0], ITEM_THUMB_EDGE, 0.8, await this.pdfDocFor(pages[0]))]);
     if (!this.isCurrent(gid)) return;
     const st = this.states.get(gid);
-    const u = currentUser();
-    const item = {
-      id: uuid(), createdAt: new Date().toISOString(), uid: u ? u.uid : "", stage: "captured", origin: this.kind, source: "web",
-      name: g.label || (pages[0].sourceName || "").replace(/\.[^.]+$/, "") || `${this.kind === "scan" ? "Scan" : "Photos"}, ${plural(pages.length, "page", "pages")}`,
+    // A draft already on the deck (#99) keeps its stage "reading"; one still here is "captured".
+    const item = Object.assign(st.draft, {
+      stage: this.inserted.has(gid) ? "reading" : "captured",
+      name: this.nameFor(g, pages),
       pages: pages.length, sizeBytes: pdf.size, contentHash: hash,
       ocrText: found.map((t) => t.text).filter(Boolean).join("\n\n").slice(0, MAX_FULL_TEXT),
       // The lab reader (#92) reads page by page, and says where the text came from.
       textPages: found.map((t) => String(t.text || "").slice(0, MAX_FULL_TEXT)),
       textSource: textSourceOf(found),
-      card: null, unsureFields: [], readErrorCode: null,
-    };
-    item.whenRead = new Promise((r) => { st.settle = r; });
+      progress: "",
+    });
     Object.assign(st, { item, pdf, thumb, duplicate: duplicateFor(hash) });
+    st.built({ pdf, thumb });
+    if (this.inserted.has(gid)) {
+      sentHashes.set(item.contentHash, { title: item.name, date: item.createdAt });
+      emit("lab:progress", { id: item.id, progress: "" });
+    }
     if (this.sent) this.insert(gid);
     // A scanned pile waits here, read for text and built, until its split is decided (#54).
     if (this.undecided.has(gid) && !this.sent) { st.status = "held"; this.render(); return; }
@@ -430,14 +480,14 @@ class Review {
           const own = await pdfPageText(doc, p.index + 1).catch(() => "");
           if (own.replace(/\s+/g, "")) return { text: own, words: [], width: 0, via: "text" };
           if (READER === "rules") {   // the lab (#101): the OCR worker draws and reads the page, off the main thread
-            const got = await ocrPdfPages(p.pdf, [p.index + 1], { doc, turns: p.turns, onProgress: (q) => { if (onProgress && typeof q.pct === "number") onProgress(q.pct); } });
+            const got = await ocrPdfPages(p.pdf, [p.index + 1], { doc, turns: p.turns, onProgress: (q) => { if (onProgress) onProgress(q); } });
             return { text: (got.get(p.index + 1) || {}).text || "", words: [], width: 0, via: "ocr" };
           }
-          return { ...(await ocr(await pageImage(p, 2000, 0.9, doc), 0, { onProgress })), words: [], width: 0, via: "ocr" };
+          return { ...(await ocr(await pageImage(p, 2000, 0.9, doc), 0, { onProgress: (pct) => { if (onProgress) onProgress({ pct }); } })), words: [], width: 0, via: "ocr" };
         }
         const r = READER === "rules"   // the lab (#101): PaddleOCR in its worker
-          ? await ocrImage(p.image, p.turns, { onProgress: (q) => { if (onProgress && typeof q.pct === "number") onProgress(q.pct); } })
-          : await ocr(p.image, p.turns, { onProgress });
+          ? await ocrImage(p.image, p.turns, { onProgress: (q) => { if (onProgress) onProgress(q); } })
+          : await ocr(p.image, p.turns, { onProgress: (pct) => { if (onProgress) onProgress({ pct }); } });
         return { text: r.text, words: r.words, width: r.width, via: "ocr" };
       })());
     }
@@ -569,12 +619,20 @@ class Review {
     this.hide();
     this.finishIfDone();
   }
+  // In the lab (#99) a group still reading goes too, as its draft, when there's no pipeline store.
   insert(gid) {
     const st = this.states.get(gid);
-    if (this.inserted.has(gid) || !st || !st.item) return;
+    if (this.inserted.has(gid) || !st) return;
+    const early = !st.item && EARLY && !store && !!st.draft;
+    if (!st.item && !early) return;
     this.inserted.add(gid);
     const g = this.groups.find((x) => x.id === gid);
     if (g) g.sent = true;
+    if (early) {
+      st.draft.stage = "reading";
+      emit("capture:sent", { ids: [st.draft.id], items: [st.draft], blobs: {} });
+      return;
+    }
     const item = st.item;
     sentHashes.set(item.contentHash, { title: item.card ? item.card.title : item.name, date: item.createdAt });
     if (store) {
@@ -647,7 +705,7 @@ function textSourceOf(found) {
   const ocrd = withText.filter((t) => t.via === "ocr").length;
   return ocrd === 0 ? "text" : ocrd === withText.length ? "ocr" : "mixed";
 }
-const plainItem = (it) => Object.fromEntries(Object.entries(it).filter(([k, v]) => k !== "whenRead" && typeof v !== "function"));
+const plainItem = (it) => Object.fromEntries(Object.entries(it).filter(([k, v]) => k !== "whenRead" && k !== "whenBuilt" && typeof v !== "function"));
 
 // Reopens a review left open when the page closed (spec 4.11). Once per launch, after sign-in.
 export async function resumeReview() {

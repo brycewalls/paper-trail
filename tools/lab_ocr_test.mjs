@@ -9,6 +9,9 @@
 //     and frames keep coming (the longest gap between animation frames is reported)
 //   - a photo through the deck's read: the worker decodes and reads it, with OCR progress on the card
 //   - PaddleOCR failing to load (the models blocked): the lab falls back to Tesseract and still reads
+//   - sending to the deck before reading finishes (#99) with the real reader: Send closes the review
+//     at once, the Reading cards show the OCR worker's own progress, an unread card can't be swiped
+//     or keyed, and a one-page scan sent second reaches the top before a two-page scan sent first
 // Needs the network once (ONNX Runtime and pdf.js from jsDelivr, Tesseract from cdnjs).
 //   npm install --no-save playwright@1 && npx playwright install chromium
 //   node tools/lab_ocr_test.mjs [--no-throttle] [--webkit]   (WebKit, the engine of Safari: no CPU
@@ -93,6 +96,25 @@ async function makeScans(page) {
     return { pdf: btoa(bin), jpeg: jpeg.split(",")[1] };
   }, W2_LINES);
 }
+// Scanned PDFs (pictures only, no text layer), one page per list of lines.
+async function makeScanPdf(page, pagesLines) {
+  return js(page, async (pagesLines) => {
+    const doc = new window.jspdf.jsPDF({ unit: "pt", format: "letter" });
+    pagesLines.forEach((lines, k) => {
+      const c = document.createElement("canvas"); c.width = 1275; c.height = 1650;
+      const x = c.getContext("2d");
+      x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height);
+      x.fillStyle = "#161616"; x.textBaseline = "top";
+      lines.forEach((l, i) => { x.font = `${i ? 26 : 40}px Arial, sans-serif`; x.fillText(l, 110, 130 + i * 62); });
+      if (k) doc.addPage();
+      doc.addImage(c.toDataURL("image/jpeg", 0.9), "JPEG", 0, 0, 612, 792);
+    });
+    const pdf = new Uint8Array(doc.output("arraybuffer"));
+    let bin = ""; for (const b of pdf) bin += String.fromCharCode(b);
+    return btoa(bin);
+  }, pagesLines);
+}
+const RECEIPT_LINES = ["Harbor Hardware", "Receipt", "Date 02/14/2026", "Paint roller 12.99", "Drop cloth 8.49", "Total 21.48", "Thank you for shopping"];
 const perfWindow = (page, on) => js(page, (on) => { window.__perf.watching = on; window.__perf.mark = on ? performance.now() : window.__perf.mark; window.__perf.end = on ? 0 : performance.now(); if (on) { window.__perf.gaps = []; } }, on);
 const perfReport = (page) => js(page, () => {
   const p = window.__perf, from = p.mark, to = p.end || performance.now();
@@ -137,14 +159,15 @@ try {
     const scans = await makeScans(page);
     await js(page, () => {
       window.__progress = [];
-      const watch = setInterval(() => { const t = document.querySelector("#dk-empty")?.textContent || ""; if (/OCR|text reader/.test(t)) window.__progress.push(t); if (window.__PT__.items().some((i) => i.card)) clearInterval(watch); }, 30);
+      // The photo is a Reading card on the deck while it reads (#99); its progress line is the worker's.
+      const watch = setInterval(() => { const t = (document.querySelector(".dk-card .dk-progress") || document.querySelector("#dk-empty"))?.textContent || ""; if (/OCR|text reader/.test(t)) window.__progress.push(t); if (window.__PT__.items().some((i) => i.card)) clearInterval(watch); }, 30);
     });
     await perfWindow(page, true);
     await page.evaluate(async (b64) => {
       const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
       window.__PT__.addPhotos([new File([bytes], "w2.jpg", { type: "image/jpeg" })], "W-2 photo");
     }, scans.jpeg);
-    await page.waitForSelector(TOP, { timeout: 240000 });
+    await page.waitForSelector(`${TOP}:not(.dk-reading)`, { timeout: 240000 });
     await perfWindow(page, false);
     const perf2 = await perfReport(page);
     const it = await js(page, () => { const i = window.__PT__.items().find((x) => x.card); return { lab: i.lab, card: i.card }; });
@@ -152,6 +175,71 @@ try {
     check(it.lab.textSource === "ocr" && it.card.docType === "W-2", `a photo is read with PaddleOCR in the worker (${it.lab.textSource}, ${it.card.docType}, ${it.lab.textChars} characters)`);
     check(progress.some((t) => /with OCR, \d+%/.test(t)), `the card shows OCR progress (${progress.slice(0, 3).join(" | ")})`);
     check(perf2.longest <= 100, `no long task over 100 ms while the photo read (${perf2.long.length} long tasks, longest ${perf2.longest} ms; longest frame gap ${perf2.maxGap} ms)`);
+    check(!problems.length, `no console errors${problems.length ? ": " + problems.join(" | ") : ""}`);
+    await ctx.close();
+  }
+
+  // 4. Send before reading finishes (#99), with the real reader: Reading cards carry the worker's
+  //    progress, can't be swiped, and the one-page scan sent second is read and on top first.
+  {
+    const { ctx, page, problems } = await open();
+    const twoPage = await makeScanPdf(page, [W2_LINES, ["Form W-2 Wage and Tax Statement 2025, page 2", "Notice to employee", "Keep Copy C for your records"]]);
+    const onePage = await makeScanPdf(page, [RECEIPT_LINES]);
+    await js(page, () => {
+      window.__lines = [];
+      // What the deck draws on the top card, and each deck item's own line (lab:progress), since a
+      // card under the top one isn't drawn.
+      const watch = setInterval(() => {
+        document.querySelectorAll(".dk-card .dk-progress").forEach((el) => { const t = el.textContent.trim(); if (t) window.__lines.push(t); });
+        for (const i of window.__PT__.items()) if (i.progress) window.__lines.push(i.progress);
+      }, 25);
+      window.__stopWatch = () => clearInterval(watch);
+    });
+    const [chooser] = await Promise.all([page.waitForEvent("filechooser"), menuPick(page, "Import from Files")]);
+    await chooser.setFiles([
+      { name: "w2-two-pages.pdf", mimeType: "application/pdf", buffer: Buffer.from(twoPage, "base64") },
+      { name: "receipt-scan.pdf", mimeType: "application/pdf", buffer: Buffer.from(onePage, "base64") },
+    ]);
+    await page.waitForSelector("#review:not([hidden])");
+    const before = await js(page, () => window.__PT__.review());
+    check(before.groups.length === 2 && before.groups.every((g) => g.status === "reading"), `the review is still reading both scans when Send is pressed (${before.groups.map((g) => g.status).join(", ")})`);
+    await page.click("[data-send]");
+    await page.waitForSelector("#review", { state: "hidden", timeout: 5000 });
+    check(true, "Send closes the review at once, with the real reader still at work");
+    await page.waitForSelector(`${TOP}.dk-reading`, { timeout: 10000 });
+    const pill = await page.$eval(TOP, (el) => el.querySelector(".dk-badges .pill")?.textContent.trim());
+    check(pill === "Reading", `the unread card shows the Reading pill (${pill})`);
+    // Try to swipe it, flick it and key it while it reads.
+    const box = await page.locator(TOP).boundingBox();
+    const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+    await page.mouse.move(cx, cy); await page.mouse.down();
+    for (let k = 1; k <= 10; k++) await page.mouse.move(cx + k * 28, cy);
+    await page.mouse.up();
+    await page.mouse.move(cx, cy); await page.mouse.down();
+    for (let k = 1; k <= 10; k++) await page.mouse.move(cx, cy - k * 40);
+    await page.mouse.up();
+    await page.focus(TOP).catch(() => {});
+    for (const key of ["ArrowRight", "ArrowLeft", "ArrowUp"]) await page.keyboard.press(key);
+    await page.waitForTimeout(300);
+    const untouched = await js(page, () => window.__PT__.items().every((i) => !i.decision && !i.skippedAt));
+    check(untouched, "a card the real reader is still reading can't be swiped, keyed or skipped");
+    // The receipt (one page, queued second) is read first and takes the top; the W-2 still reads.
+    await page.waitForFunction(() => window.__PT__.items().find((i) => i.name === "receipt-scan")?.stage === "ready", null, { timeout: 240000 });
+    const deckNow = await js(page, async () => {
+      const deck = await import(new URL("js/deck.js", location.href).href);
+      return deck.deckCards().map((i) => ({ name: i.name, unread: deck.isUnread(i), type: i.card && i.card.docType }));
+    });
+    check(deckNow[0] && deckNow[0].name === "receipt-scan" && !deckNow[0].unread && deckNow[1] && deckNow[1].name === "w2-two-pages" && deckNow[1].unread,
+      `the scan read first is on top, the one still reading underneath (${deckNow.map((c) => `${c.name}${c.unread ? " (reading)" : ""}`).join(", ")})`);
+    await page.waitForFunction(() => window.__PT__.items().every((i) => i.stage === "ready" || i.stage === "failed"), null, { timeout: 240000 });
+    await js(page, () => window.__stopWatch());
+    const lines = await js(page, () => [...new Set(window.__lines)]);
+    check(lines.some((t) => /with OCR, \d+%|text reader ready, \d+%/.test(t)), `the Reading cards showed the OCR worker's own progress (${lines.slice(0, 4).join(" | ")})`);
+    check(lines.some((t) => /page 2 of 2/.test(t)), `the two-page scan reported its pages (${lines.filter((t) => /of 2/.test(t)).slice(0, 2).join(" | ") || "none"})`);
+    const done = await js(page, () => window.__PT__.items().map((i) => ({ name: i.name, type: i.card && i.card.docType, src: i.lab && i.lab.textSource })));
+    const w2 = done.find((d) => d.name === "w2-two-pages");
+    check(w2 && w2.type === "W-2" && w2.src === "ocr", `the two-page scan reads as a W-2 from OCR once it lands (${w2 && w2.type}, ${w2 && w2.src})`);
+    await page.screenshot({ path: join(shots, "lab-ocr-early-send-phone.png") });
     check(!problems.length, `no console errors${problems.length ? ": " + problems.join(" | ") : ""}`);
     await ctx.close();
   }
@@ -164,7 +252,7 @@ try {
       const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
       window.__PT__.addPhotos([new File([bytes], "w2.jpg", { type: "image/jpeg" })], "W-2 photo");
     }, scans.jpeg);
-    await page.waitForSelector(TOP, { timeout: 240000 });
+    await page.waitForSelector(`${TOP}:not(.dk-reading)`, { timeout: 240000 });
     const it = await js(page, () => { const i = window.__PT__.items().find((x) => x.card); return { lab: i.lab, card: i.card }; });
     const st = await status(page);
     check(st.engine === "tesseract" && st.error, `with the models blocked, the lab falls back to Tesseract (${st.engine}: ${st.error})`);

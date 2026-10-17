@@ -76,20 +76,38 @@ function onUser(u, { confirmed }) {
 // review built (or the imported original), its thumbnail, and Claude's card once the read is back.
 // With db.js attached (review.attachStore), capture writes the pipeline instead and sends ids only,
 // and this goes.
+// The lab (#99) sends a document before its pages are read: no blob yet, but `whenBuilt` brings the
+// PDF and thumbnail, and the reader's progress (lab:progress, by the review's item id) is copied onto
+// the deck's item for its Reading card. `readAt` orders the deck's read cards by when they finished.
+const bridged = new Map();   // review item id -> deck item, while it's read
+on("lab:progress", ({ id, progress }) => { const li = bridged.get(id); if (li) li.progress = progress || ""; });
 on("capture:sent", ({ items: sent, blobs }) => {
   if (!sent) return;
   const uid = currentUser()?.uid || "";
   for (const it of sent) {
-    const b = blobs[it.id];
-    const li = newItem(it.name, [new File([b.pdf], `${it.name}.pdf`, { type: "application/pdf" })], uid);
-    Object.assign(li, { kind: "pdf", numPages: it.pages, thumb: URL.createObjectURL(b.thumb), ocrText: it.ocrText, contentHash: it.contentHash, opened: true, stage: "reading" });
+    const li = newItem(it.name, [], uid);
+    const attach = (b) => {
+      li.name = it.name;
+      li.files = [new File([b.pdf], `${it.name}.pdf`, { type: "application/pdf" })];
+      li.thumb = URL.createObjectURL(b.thumb);
+      Object.assign(li, { ocrText: it.ocrText, contentHash: it.contentHash });
+    };
+    Object.assign(li, { kind: "pdf", numPages: it.pages, opened: true, stage: "reading", progress: it.progress || "" });
+    if (blobs[it.id]) attach(blobs[it.id]);
+    else if (it.whenBuilt) it.whenBuilt.then((b) => { if (b) { attach(b); pump(); } });
     const settle = () => {
+      bridged.delete(it.id);
+      li.progress = "";
+      li.readAt = new Date().toISOString();
       // it.lab (#92) is shared, not copied: compare mode fills it in after the card lands on the deck.
       if (it.stage === "ready") { li.card = it.card; li.unsureFields = it.unsureFields || []; li.lab = it.lab; li.stage = "ready"; }
-      else { li.stage = "failed"; li.failedStage = "reading"; li.readErrorCode = it.readErrorCode || "unknown"; li.errorMessage = it.errorMessage || "Something interrupted the read. Tap Try again."; }
+      else {
+        li.stage = "failed"; li.failedStage = "reading"; li.readErrorCode = it.readErrorCode || "unknown"; li.errorMessage = it.errorMessage || "Something interrupted the read. Tap Try again.";
+        if (!li.files.length) li.openError = li.errorMessage;   // never built: nothing to read again
+      }
       pump();
     };
-    if (it.stage === "ready" || it.stage === "failed") settle(); else it.whenRead.then(settle);
+    if (it.stage === "ready" || it.stage === "failed") settle(); else { bridged.set(it.id, li); it.whenRead.then(settle); }
     items.push(li);
   }
   pump();

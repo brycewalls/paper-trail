@@ -135,14 +135,15 @@ try {
     await js(page, () => {
       window.__progress = [];
       window.__PT_OCR__ = async () => { await new Promise((r) => setTimeout(r, 300)); return "Form W-2 Wage and Tax Statement 2025. Employer Northwind Logistics. Issued 01/30/2026."; };
-      const watch = setInterval(() => { const t = document.querySelector("#dk-empty")?.textContent || ""; if (/OCR/.test(t)) { window.__progress.push(t); clearInterval(watch); } }, 20);
+      // The lab shows a document still reading as a Reading card on the deck (#99), with its progress.
+      const watch = setInterval(() => { const t = document.querySelector(".dk-card.dk-reading .dk-progress")?.textContent || ""; if (/OCR/.test(t)) { window.__progress.push(t); clearInterval(watch); } }, 20);
     });
     const png = makePng(40, 50, [250, 250, 250]);
     await page.evaluate(async (b64) => {
       const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
       window.__PT__.addPhotos([new File([bytes], "w2.png", { type: "image/png" })], "W-2 photo");
     }, png.toString("base64"));
-    await page.waitForSelector(TOP, { timeout: 15000 });
+    await page.waitForSelector(`${TOP}:not(.dk-reading)`, { timeout: 15000 });
     const it = await js(page, () => { const i = window.__PT__.items().find((x) => x.card); return { lab: i.lab, card: i.card }; });
     check(it.lab.textSource === "ocr" && it.lab.textChars > 40, `a photo is read with on-device OCR (${it.lab.textSource}, ${it.lab.textChars} characters)`);
     check((await js(page, () => window.__progress)).some((t) => /Reading the page with OCR/.test(t)), "the reading state shows OCR progress");

@@ -6,7 +6,8 @@
 // The model is all-MiniLM-L6-v2 (sentence-transformers, Apache-2.0), as the quantized ONNX export in
 // Xenova/all-MiniLM-L6-v2 (Apache-2.0), pinned to one revision. It runs through transformers.js
 // (@huggingface/transformers 4.3.0, Apache-2.0) on ONNX Runtime Web's WASM build
-// (onnxruntime-web 1.31.0-dev.20260914-8d85527a0, MIT). Every file is self-hosted on the lab site
+// (onnxruntime-web 1.31.0-dev.20260914-8d85527a0, MIT, the same runtime files the OCR worker loads:
+// the asyncify build on a WebGPU device, the plain one otherwise). Every file is self-hosted on the lab site
 // under /lab-models/match/ by tools/lab/fetch-models.sh, which checks each one's SHA-256; nothing is
 // fetched from a CDN at run time. The files aren't in git (about 38 MB). Their paths carry the
 // version (vendor/transformers-4.3.0/, models/751bff3/), so Hosting can cache them for a year.

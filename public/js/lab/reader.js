@@ -20,8 +20,8 @@
 // page, then the pages with almost no text of their own are OCR'd one at a time, and photos are OCR'd.
 // The rules run in a module Web Worker (lab/rules-worker.js); if it can't start, on the main thread.
 // Then the on-device matcher (lab/match/matcher.js, #102), in its own worker, adds its say: sender
-// rules first, then the rules where they are sure, then the matcher. Its model starts loading when
-// a read starts, so it is usually ready by the time the text is.
+// rules first, then the rules where they are sure, then the matcher. Its worker and model start
+// loading once the read's text is ready, not before, so OCR has the memory and the network first.
 // Owner: lab reader.
 import { FAKE, LAB, params } from "../config.js";
 import { openPdfDoc, pdfPageText } from "../media.js";
@@ -139,8 +139,11 @@ function rulesOffThread(textPages, meta) {
 // ---------- one read ----------
 export async function labRead(input = {}, { senderRules = [], onProgress = () => {} } = {}) {
   const started = performance.now();
-  prepareMatcher();
   const text = await readText(input, onProgress);
+  // The matcher's worker and model start only once the text is ready, so they don't compete with
+  // OCR for memory and the network while a page is read (#102). From the phone's cache the model
+  // loads in a second or two, inside the wait matchRead allows.
+  if (text.pages.some(squeeze)) prepareMatcher();
   onProgress({ stage: "rules" });
   const meta = { name: String(input.name || ""), pages: input.pages || text.pages.length, textSource: text.source, senderRules: JSON.parse(JSON.stringify(senderRules || [])), today: today() };
   let result = await rulesOffThread(text.pages, meta);

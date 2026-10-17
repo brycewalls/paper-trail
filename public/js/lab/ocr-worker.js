@@ -2,10 +2,12 @@
 // PaddleOCR's PP-OCRv5 mobile models (lab/ppocr.js) on ONNX Runtime Web, and renders PDF pages for
 // it with pdf.js on an OffscreenCanvas, so the page never waits on OCR. lab/ocr.js starts it.
 //
-// Runtime: onnxruntime-web 1.30.0 (MIT) from jsDelivr, pinned. WebGPU when the device has an adapter
-// and a warm-up run works, WebAssembly (SIMD, one thread) otherwise. The models are served by Hosting
-// from /lab-models/pp-ocrv5-mobile/ (Apache-2.0). Models and the WebAssembly binary are kept in
-// Cache Storage ("pt-lab-ocr-v1"), so they download once.
+// Runtime: onnxruntime-web 1.31.0-dev.20260914-8d85527a0 (MIT), pinned and self-hosted under
+// /lab-models/match/vendor/ (tools/lab/fetch-models.sh), the same version and the same files as the
+// matcher's (#102), so the phone downloads one runtime binary for both. WebGPU when the device has
+// an adapter and a warm-up run works, WebAssembly (SIMD, one thread) otherwise. The models are
+// served by Hosting from /lab-models/pp-ocrv5-mobile/ (Apache-2.0). Models and the WebAssembly
+// binary are kept in Cache Storage ("pt-lab-ocr-v2"; v1 held the 1.30.0 runtime and is deleted).
 //
 // Messages in:
 //   { type: "init", backend: "auto"|"webgpu"|"wasm", models: URL, detMax }
@@ -19,12 +21,13 @@
 // Owner: lab OCR.
 import { readPage, parseDict, DET_MAX } from "./ppocr.js";
 
-const ORT_VERSION = "1.30.0";
-const ORT_BASE = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/`;
+const ORT_VERSION = "1.31.0-dev.20260914-8d85527a0";
+const ORT_BASE = new URL(`../../lab-models/match/vendor/ort-${ORT_VERSION}/`, import.meta.url).href;
 const PDFJS_VERSION = "5.4.624";
 const PDFJS_ROOT = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/`;
 const PDFJS_BASE = `${PDFJS_ROOT}build/`;
-const CACHE = "pt-lab-ocr-v1";
+const CACHE = "pt-lab-ocr-v2";
+const OLD_CACHES = ["pt-lab-ocr-v1"];
 
 let ort = null, det = null, rec = null, dict = null, backend = "", detMax = DET_MAX;
 let ready = null;   // Promise of the init
@@ -73,6 +76,8 @@ async function gpuOk() {
 
 async function init({ backend: want = "auto", models, detMax: dm } = {}) {
   const started = performance.now();
+  // The 1.30.0 runtime's cache (#102 moved both workers to one version): free the phone's space.
+  if (typeof caches !== "undefined") for (const name of OLD_CACHES) caches.delete(name).catch(() => {});
   if (dm) detMax = dm;
   const useGpu = want === "webgpu" || (want === "auto" && await gpuOk());
   ort = await import(`${ORT_BASE}${useGpu ? "ort.webgpu.min.mjs" : "ort.wasm.min.mjs"}`);

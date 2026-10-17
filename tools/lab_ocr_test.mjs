@@ -24,7 +24,7 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css", ".json": "application/json", ".png": "image/png", ".svg": "image/svg+xml",
-  ".onnx": "application/octet-stream", ".txt": "text/plain; charset=utf-8", ".webmanifest": "application/manifest+json" };
+  ".onnx": "application/octet-stream", ".txt": "text/plain; charset=utf-8", ".wasm": "application/wasm", ".webmanifest": "application/manifest+json" };
 const server = createServer((req, res) => {
   const file = join(root, decodeURIComponent(new URL(req.url, "http://x").pathname));
   if (!existsSync(file) || statSync(file).isDirectory()) { res.writeHead(404); res.end(); return; }
@@ -144,8 +144,12 @@ try {
     check(/Northwind/i.test(it.text) && /W-2/.test(it.text), `the scanned page's text came from OCR (${it.text.length} characters: "${it.text.slice(0, 60).replace(/\n/g, " / ")}")`);
     check(it.lab && it.lab.textSource === "ocr", `the read says its text came from OCR (${it.lab && it.lab.textSource})`);
     check(it.card.docType === "W-2" && /Northwind/i.test(it.card.issuer || ""), `the rules read the OCR text: ${it.card.docType}, ${it.card.issuer}`);
-    const cached = await js(page, async () => { const c = await caches.open("pt-lab-ocr-v1"); return (await c.keys()).map((r) => r.url.split("/").pop()); });
+    const urls = await js(page, async () => { const c = await caches.open("pt-lab-ocr-v2"); return (await c.keys()).map((r) => r.url); });
+    const cached = urls.map((u) => u.split("/").pop());
     check(["det.onnx", "rec-en.onnx", "dict-en.txt"].every((f) => cached.includes(f)) && cached.some((f) => f.endsWith(".wasm")), `the models and the runtime are kept in Cache Storage (${cached.join(", ")})`);
+    // One ONNX Runtime for OCR and the matcher (#102): the lab site's own copy, the matcher's version.
+    const runtime = urls.find((u) => u.endsWith(".wasm")) || "";
+    check(runtime.startsWith(origin) && runtime.includes("/lab-models/match/vendor/ort-1.31.0-dev.20260914-8d85527a0/"), `the OCR runtime is the self-hosted one the matcher uses (${runtime.replace(origin, "")})`);
     check(perf1.longest <= 100, `no long task over 100 ms while it read, CPU ${THROTTLE}x slower (${perf1.long.length} long tasks, longest ${perf1.longest} ms, over ${perf1.ms} ms)`);
     console.log(`     long tasks: ${perf1.long.map((e) => e.ms).join(", ") || "none"}; frames ${perf1.frames}, longest gap between frames ${perf1.maxGap} ms`);
     await page.screenshot({ path: join(shots, "lab-ocr-card-phone.png") });

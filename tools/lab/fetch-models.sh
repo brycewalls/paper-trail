@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Puts the lab matcher's model and runtime files (#102) under public/lab-models/match/, so the lab
-# site serves them itself and nothing loads from a CDN at run time. Every file is pinned to an exact
+# Puts the lab matcher's model (#102) and the ONNX Runtime both the matcher and the OCR worker (#101)
+# run on under public/lab-models/match/, so the lab site serves them itself and neither loads a
+# runtime from a CDN. Every file is pinned to an exact
 # version or revision and checked against its SHA-256; a file that doesn't match is deleted and the
 # script stops. Files already in place with the right hash aren't downloaded again.
 #   bash tools/lab/fetch-models.sh
@@ -10,7 +11,10 @@
 # What it fetches, and the licenses that allow hosting them:
 #   all-MiniLM-L6-v2, quantized ONNX (Xenova/all-MiniLM-L6-v2 at 751bff3)   Apache-2.0
 #   @huggingface/transformers 4.3.0, transformers.min.js                      Apache-2.0
-#   onnxruntime-web 1.31.0-dev.20260914-8d85527a0, the plain WASM build      MIT
+#   onnxruntime-web 1.31.0-dev.20260914-8d85527a0                              MIT
+#     the plain WASM build (no WebGPU), and the WebGPU build with its asyncify binary. One version
+#     for both workers, so a phone downloads one runtime binary, not two (#102): the OCR worker and
+#     the matcher pick the same one (asyncify when the device has a WebGPU adapter, plain otherwise)
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 OUT=public/lab-models/match
@@ -33,6 +37,10 @@ $V_TF/transformers.min.js|$TF/dist/transformers.min.js|1475fd440e9932ab206682ee4
 $V_TF/LICENSE.txt|$TF/LICENSE|cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30
 $V_ORT/ort-wasm-simd-threaded.wasm|$ORT/ort-wasm-simd-threaded.wasm|06ba057753da3847e4c24f02d91ab133455b0817c69a44993a9a53a2146df9e3
 $V_ORT/ort-wasm-simd-threaded.mjs|$ORT/ort-wasm-simd-threaded.mjs|c57ca56328877353a575e51bbca6f18450027d6c9bf2307a2cb2c41363b4de9f
+$V_ORT/ort-wasm-simd-threaded.asyncify.wasm|$ORT/ort-wasm-simd-threaded.asyncify.wasm|49871f5a4409519797e127440868a6d1923339d9185907f301a5b2a1d90af082
+$V_ORT/ort-wasm-simd-threaded.asyncify.mjs|$ORT/ort-wasm-simd-threaded.asyncify.mjs|0966b6105cd936744498aa60df7a22cbd47af3374dbc64a9ab561c08a71e3611
+$V_ORT/ort.wasm.min.mjs|$ORT/ort.wasm.min.mjs|1617c813ada08592706d29a9963ab6258864dce4299bd402d2196bd648b63bfe
+$V_ORT/ort.webgpu.min.mjs|$ORT/ort.webgpu.min.mjs|5dd65363be87d182ce0617665489cab4b78359cea9f04d813b2a423c9be651a1
 "
 
 sha() { shasum -a 256 "$1" | cut -d' ' -f1; }
@@ -50,7 +58,7 @@ while IFS='|' read -r path url want; do
 done <<< "$FILES"
 
 cat > "$OUT/NOTICE.txt" <<'EOF'
-Third-party files served by the Paper Trail lab's on-device matcher (#102).
+Third-party files served by the Paper Trail lab's on-device matcher (#102) and OCR worker (#101).
 
 models/751bff3/Xenova/all-MiniLM-L6-v2/
                                   all-MiniLM-L6-v2 by sentence-transformers, ONNX export by Xenova,
@@ -61,4 +69,4 @@ vendor/ort-1.31.0-dev.20260914-8d85527a0/
                                   onnxruntime-web 1.31.0-dev.20260914-8d85527a0, Copyright (c) Microsoft
                                   Corporation. MIT License. https://github.com/microsoft/onnxruntime/blob/main/LICENSE
 EOF
-echo "Lab matcher files ready in $OUT ($fetched fetched, $(du -sh "$OUT" | cut -f1) in all)."
+echo "Lab matcher and runtime files ready in $OUT ($fetched fetched, $(du -sh "$OUT" | cut -f1) in all)."
